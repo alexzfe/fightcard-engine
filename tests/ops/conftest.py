@@ -1,17 +1,23 @@
-import json
-import sys
 from pathlib import Path
 
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[1]
-REPO = SCRIPTS.parent
-sys.path.insert(0, str(SCRIPTS))
+from ops_helpers import write_json
 
 
-def write_json(path: Path, obj) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n")
+# Registered here as well as in scripts/pytest.ini: a combined `pytest pipeline/tests scripts/tests` run uses
+# pipeline's config (strict markers) instead. Docker tests are slow, so they only run when `-m` names them.
+def pytest_configure(config):
+    config.addinivalue_line("markers", "docker: builds and runs the site image; run explicitly with -m docker")
+
+
+def pytest_collection_modifyitems(config, items):
+    if "docker" in (config.option.markexpr or ""):
+        return
+    skip = pytest.mark.skip(reason="docker test; select with -m docker")
+    for item in items:
+        if "docker" in item.keywords:
+            item.add_marker(skip)
 
 
 @pytest.fixture

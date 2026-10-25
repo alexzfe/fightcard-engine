@@ -1,6 +1,6 @@
 import pytest
 
-from conftest import write_json
+from ops_helpers import write_json
 from stale_issue import MARKER, TITLE, build_body, load_stale, main
 
 
