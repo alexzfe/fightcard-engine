@@ -190,3 +190,26 @@ def test_cli_wires_images_stage_with_limit(data, client, transport, monkeypatch)
 def test_make_client_returns_rate_limited_client():
     c = stage.make_client()
     assert isinstance(c, HttpClient) and c.min_interval >= 1.0
+
+
+def test_run_exits_nonzero_on_malformed_event_or_fighters(data, client, monkeypatch):
+    monkeypatch.setattr(stage, "make_client", lambda: client)
+    (data / "events" / "bad.json").write_text('{"id": "bad"}')
+    assert stage.run(_args(data)) == 1
+    (data / "events" / "bad.json").unlink()
+    (data / "fighters.json").write_text("[1, 2]")
+    assert stage.run(_args(data)) == 1
+
+
+def test_fighter_with_existing_image_keeps_it(data, client, transport):
+    _ok_routes(transport)
+    stage.process(data, client, NOW)
+    assert _fighters(data)["f3"]["image"] == "images/f3.png"
+
+
+def test_no_writes_when_nothing_to_do(tmp_path, client):
+    (tmp_path / "events").mkdir()
+    (tmp_path / "fighters.json").write_text("{}")
+    stage.process(tmp_path, client, NOW)
+    assert not (tmp_path / "images").exists()
+    assert (tmp_path / "fighters.json").read_text() == "{}"

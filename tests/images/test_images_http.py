@@ -57,3 +57,44 @@ def test_params_are_passed_through(transport, clock):
     client = HttpClient(transport, min_interval=1.0, clock=clock.time, sleep=clock.sleep)
     client.get("https://en.wikipedia.org/w/api.php", {"titles": "Petr Yan"})
     assert transport.calls == [("https://en.wikipedia.org/w/api.php", {"titles": "Petr Yan"})]
+
+
+class _FakeResp:
+    status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return b"hi"
+
+
+def test_urllib_transport_encodes_params_and_sets_user_agent(monkeypatch):
+    from fightcard.images import http
+
+    seen = {}
+
+    def fake_urlopen(req, timeout):
+        seen["url"], seen["ua"] = req.full_url, req.get_header("User-agent")
+        return _FakeResp()
+
+    monkeypatch.setattr(http.urllib.request, "urlopen", fake_urlopen)
+    r = http.urllib_transport("https://x.test/api", {"q": "Petr Yan"})
+    assert r == Response(200, b"hi")
+    assert seen["url"] == "https://x.test/api?q=Petr+Yan"
+    assert "fightcard" in seen["ua"]
+
+
+def test_urllib_transport_maps_http_errors_to_status(monkeypatch):
+    import urllib.error
+
+    from fightcard.images import http
+
+    def fake_urlopen(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 404, "nf", {}, None)
+
+    monkeypatch.setattr(http.urllib.request, "urlopen", fake_urlopen)
+    assert http.urllib_transport("https://x.test/a") == Response(404, b"")

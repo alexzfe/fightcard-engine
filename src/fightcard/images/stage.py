@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -44,6 +45,16 @@ def _upcoming_fighter_ids(data_dir: Path) -> list[str]:
     return list(seen)
 
 
+def _download_first(client: HttpClient, urls: Iterable[str]) -> tuple[bytes, str] | None:
+    """Body and extension of the first URL that yields a real image."""
+    for url in urls:
+        resp = client.get(url)
+        ext = validate_image(resp.body) if resp.ok else None
+        if ext:
+            return resp.body, ext
+    return None
+
+
 def process(
     data_dir: Path, client: HttpClient, now: datetime, limit: int | None = None
 ) -> Summary:
@@ -63,21 +74,19 @@ def process(
             continue
         if limit is not None and summary.hits + summary.misses >= limit:
             break
-        for url in finder.candidates(fighter.name, fighter.nickname):
-            resp = client.get(url)
-            ext = validate_image(resp.body) if resp.ok else None
-            if ext:
-                images_dir.mkdir(parents=True, exist_ok=True)
-                (images_dir / f"{fid}.{ext}").write_bytes(resp.body)
-                fighter.image = f"images/{fid}.{ext}"
-                misses.clear(fid)
-                summary.hits += 1
-                log.info("image hit %s (%s) <- %s", fighter.name, fid, url)
-                break
-        else:
+        found = _download_first(client, finder.candidates(fighter.name, fighter.nickname))
+        if found is None:
             misses.record(fid, now)
             summary.misses += 1
             log.info("image miss %s (%s)", fighter.name, fid)
+            continue
+        body, ext = found
+        images_dir.mkdir(parents=True, exist_ok=True)
+        (images_dir / f"{fid}.{ext}").write_bytes(body)
+        fighter.image = f"images/{fid}.{ext}"
+        misses.clear(fid)
+        summary.hits += 1
+        log.info("image hit %s (%s)", fighter.name, fid)
 
     if summary.hits:
         save_fighters(data_dir, fighters)
