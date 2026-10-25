@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
+
+from gh_output import emit
 
 TITLE = "Re-export finish model"
 # Lets the workflow (and a human) recognise the bot's issue regardless of edits to the title.
@@ -98,11 +99,7 @@ def main(argv: list[str] | None = None) -> int:
         events = _event_names(args.data, {e.get("event_id", "") for e in stale})
         args.out.write_text(build_body(stale, events=events, model_as_of=_model_as_of(args.data)))
 
-    lines = [f"stale={'true' if stale else 'false'}", f"count={len({e['fighter_id'] for e in stale})}"]
-    print(" ".join(lines))
-    if output := os.environ.get("GITHUB_OUTPUT"):
-        with open(output, "a") as f:
-            f.write("\n".join(lines) + "\n")
+    emit(stale=bool(stale), count=len({e["fighter_id"] for e in stale}))
     return 0
 
 

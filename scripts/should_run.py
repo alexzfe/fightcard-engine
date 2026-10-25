@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+
+from gh_output import emit
 
 # Must match the daily `cron:` entry in .github/workflows/refresh.yml (a test checks it).
 DAILY_CRON = "0 6 * * *"
@@ -63,11 +64,8 @@ def main(argv: list[str] | None = None) -> int:
     run, reason = decide(
         args.data, event_name=args.event_name, schedule=args.schedule, today=args.today or utc_today()
     )
-    line = f"run={'true' if run else 'false'}"
-    print(f"{line} ({reason})")
-    if output := os.environ.get("GITHUB_OUTPUT"):
-        with open(output, "a") as f:
-            f.write(line + "\n")
+    print(reason)
+    emit(run=run)
     return 0
 
 
