@@ -1,0 +1,64 @@
+{
+  "leagues": [
+    {
+      "calendar": [
+        {
+          "label": "UFC Fight Night: Buckley vs. Malott",
+          "startDate": "2026-10-18T00:00Z",
+          "endDate": "2026-10-18T06:59Z",
+          "event": {
+            "$ref": "http://sports.core.api.espn.pvt/v2/sports/mma/leagues/ufc/events/600060773?lang=en&region=us"
+          }
+        },
+        {
+          "label": "UFC 333: Volkanovski vs. Evloev",
+          "startDate": "2026-10-24T17:00Z",
+          "endDate": "2026-10-25T06:59Z",
+          "event": {
+            "$ref": "http://sports.core.api.espn.pvt/v2/sports/mma/leagues/ufc/events/600061267?lang=en&region=us"
+          }
+        },
+        {
+          "label": "UFC Fight Night: Moicano vs. Nolan",
+          "startDate": "2026-11-01T00:00Z",
+          "endDate": "2026-11-01T06:59Z",
+          "event": {
+            "$ref": "http://sports.core.api.espn.pvt/v2/sports/mma/leagues/ufc/events/600061420?lang=en&region=us"
+          }
+        },
+        {
+          "label": "UFC Fight Night: Bonfim vs. Brady",
+          "startDate": "2026-11-08T01:00Z",
+          "endDate": "2026-11-08T07:59Z",
+          "event": {
+            "$ref": "http://sports.core.api.espn.pvt/v2/sports/mma/leagues/ufc/events/600061268?lang=en&region=us"
+          }
+        },
+        {
+          "label": "UFC 334: Gane vs. Hokit",
+          "startDate": "2026-11-15T01:00Z",
+          "endDate": "2026-11-15T07:59Z",
+          "event": {
+            "$ref": "http://sports.core.api.espn.pvt/v2/sports/mma/leagues/ufc/events/600061400?lang=en&region=us"
+          }
+        },
+        {
+          "label": "UFC Fight Night: Procházka vs. Stirling",
+          "startDate": "2026-11-21T18:00Z",
+          "endDate": "2026-11-22T07:59Z",
+          "event": {
+            "$ref": "http://sports.core.api.espn.pvt/v2/sports/mma/leagues/ufc/events/600061665?lang=en&region=us"
+          }
+        },
+        {
+          "label": "UFC 335: Oliveira vs. Lopes",
+          "startDate": "2026-12-13T01:00Z",
+          "endDate": "2026-12-13T07:59Z",
+          "event": {
+            "$ref": "http://sports.core.api.espn.pvt/v2/sports/mma/leagues/ufc/events/600061401?lang=en&region=us"
+          }
+        }
+      ]
+    }
+  ]
+}

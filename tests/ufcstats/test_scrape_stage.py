@@ -236,6 +236,14 @@ def test_keeps_tiers_for_fights_still_on_the_card(tmp_path):
     assert all(f.finish_tier is None for f in new.fights[1:])
 
 
+def test_merge_keeps_card_segments():
+    fight = Fight(id="bout", red="a", blue="b")
+    old = Event(id="e", slug="e", name="e", date="2026-10-24", status="upcoming",
+                fights=[fight.model_copy(update={"segment": "early_prelims"})])
+    new = old.model_copy(update={"status": "completed", "fights": [fight]})
+    assert stage.merge_event(old, new).fights[0].segment == "early_prelims"
+
+
 def test_fresh_fighters_are_not_refetched_and_images_are_kept(tmp_path):
     fresh = (NOW - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
     stale = (NOW - timedelta(days=31)).strftime("%Y-%m-%dT%H:%M:%SZ")

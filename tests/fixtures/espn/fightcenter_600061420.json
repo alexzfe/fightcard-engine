@@ -1,0 +1,320 @@
+{
+  "cards": {
+    "main": {
+      "cardSegment": "main",
+      "displayName": "Main Card",
+      "competitions": [
+        {
+          "id": "401921310",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 1,
+          "competitors": [
+            {
+              "id": "5144007",
+              "athlete": {
+                "displayName": "Tom Nolan"
+              }
+            },
+            {
+              "id": "3028863",
+              "athlete": {
+                "displayName": "Renato Moicano"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401931555",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 3,
+          "competitors": [
+            {
+              "id": "4686725",
+              "athlete": {
+                "displayName": "Cody Durden"
+              }
+            },
+            {
+              "id": "4424224",
+              "athlete": {
+                "displayName": "Ode' Osbourne"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401928104",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 4,
+          "competitors": [
+            {
+              "id": "5110469",
+              "athlete": {
+                "displayName": "Luana Santos"
+              }
+            },
+            {
+              "id": "3154898",
+              "athlete": {
+                "displayName": "Yana Santos"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401928107",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 5,
+          "competitors": [
+            {
+              "id": "5350562",
+              "athlete": {
+                "displayName": "Farman Hasanov"
+              }
+            },
+            {
+              "id": "4629138",
+              "athlete": {
+                "displayName": "Jean-Paul Lebosnoyani"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401931615",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 6,
+          "competitors": [
+            {
+              "id": "4898914",
+              "athlete": {
+                "displayName": "Dakota Hope"
+              }
+            },
+            {
+              "id": "5060394",
+              "athlete": {
+                "displayName": "Francis Marshall"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401931616",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 12,
+          "competitors": [
+            {
+              "id": "5149961",
+              "athlete": {
+                "displayName": "Jacobe Smith"
+              }
+            },
+            {
+              "id": "3960071",
+              "athlete": {
+                "displayName": "Randy Brown"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "prelims1": {
+      "cardSegment": "prelims1",
+      "displayName": "Prelims",
+      "competitions": [
+        {
+          "id": "401928108",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 7,
+          "competitors": [
+            {
+              "id": "4697476",
+              "athlete": {
+                "displayName": "Andre Petroski"
+              }
+            },
+            {
+              "id": "5123963",
+              "athlete": {
+                "displayName": "Azamat Bekoev"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401928106",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 8,
+          "competitors": [
+            {
+              "id": "5085010",
+              "athlete": {
+                "displayName": "Theodor Berggren"
+              }
+            },
+            {
+              "id": "5289853",
+              "athlete": {
+                "displayName": "Rodrigo Sezinando"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401928109",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 9,
+          "competitors": [
+            {
+              "id": "5068724",
+              "athlete": {
+                "displayName": "JeongYeong Lee"
+              }
+            },
+            {
+              "id": "3955577",
+              "athlete": {
+                "displayName": "Julian Erosa"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401914106",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 10,
+          "competitors": [
+            {
+              "id": "4687604",
+              "athlete": {
+                "displayName": "Joe Kropschot"
+              }
+            },
+            {
+              "id": "5134399",
+              "athlete": {
+                "displayName": "Nick Klein"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401928105",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 11,
+          "competitors": [
+            {
+              "id": "4816066",
+              "athlete": {
+                "displayName": "Piera Rodriguez"
+              }
+            },
+            {
+              "id": "5139556",
+              "athlete": {
+                "displayName": "Talita Alencar"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401914105",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 12,
+          "competitors": [
+            {
+              "id": "4418809",
+              "athlete": {
+                "displayName": "Tainara Lisboa"
+              }
+            },
+            {
+              "id": "5130185",
+              "athlete": {
+                "displayName": "Lucia Szabová"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401931617",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 13,
+          "competitors": [
+            {
+              "id": "3960470",
+              "athlete": {
+                "displayName": "Mickey Gall"
+              }
+            },
+            {
+              "id": "5143223",
+              "athlete": {
+                "displayName": "Zach Reese"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "event": {
+    "id": "600061420",
+    "name": "UFC Fight Night: Moicano vs. Nolan",
+    "date": "2026-10-31T21:00:00.000+00:00"
+  }
+}

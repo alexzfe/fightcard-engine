@@ -1,0 +1,349 @@
+{
+  "cards": {
+    "main": {
+      "cardSegment": "main",
+      "displayName": "Main Card",
+      "competitions": [
+        {
+          "id": "401911632",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 1,
+          "competitors": [
+            {
+              "id": "4029275",
+              "athlete": {
+                "displayName": "Movsar Evloev"
+              }
+            },
+            {
+              "id": "3949584",
+              "athlete": {
+                "displayName": "Alexander Volkanovski"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401911633",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 2,
+          "competitors": [
+            {
+              "id": "3948572",
+              "athlete": {
+                "displayName": "Merab Dvalishvili"
+              }
+            },
+            {
+              "id": "4293517",
+              "athlete": {
+                "displayName": "Petr Yan"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401911634",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 3,
+          "competitors": [
+            {
+              "id": "4895691",
+              "athlete": {
+                "displayName": "Ramazan Temirov"
+              }
+            },
+            {
+              "id": "5147737",
+              "athlete": {
+                "displayName": "Lone'er Kavanagh"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401911635",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 4,
+          "competitors": [
+            {
+              "id": "4001837",
+              "athlete": {
+                "displayName": "Rizvan Kuniev"
+              }
+            },
+            {
+              "id": "2993650",
+              "athlete": {
+                "displayName": "Alexander Volkov"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401929495",
+          "cardSegment": {
+            "id": "173",
+            "name": "main",
+            "description": "Main Card"
+          },
+          "matchNumber": 5,
+          "competitors": [
+            {
+              "id": "5192314",
+              "athlete": {
+                "displayName": "Losene Keita"
+              }
+            },
+            {
+              "id": "4199009",
+              "athlete": {
+                "displayName": "Aaron Pico"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "prelims1": {
+      "cardSegment": "prelims1",
+      "displayName": "Prelims",
+      "competitions": [
+        {
+          "id": "401911637",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 6,
+          "competitors": [
+            {
+              "id": "4233039",
+              "athlete": {
+                "displayName": "Dominick Reyes"
+              }
+            },
+            {
+              "id": "4227265",
+              "athlete": {
+                "displayName": "Azamat Murzakanov"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401911639",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 7,
+          "competitors": [
+            {
+              "id": "5291025",
+              "athlete": {
+                "displayName": "Abdul-Rakhman Yakhyaev"
+              }
+            },
+            {
+              "id": "3026263",
+              "athlete": {
+                "displayName": "Nikita Krylov"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401911638",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 8,
+          "competitors": [
+            {
+              "id": "4694832",
+              "athlete": {
+                "displayName": "Cam Rowston"
+              }
+            },
+            {
+              "id": "3077822",
+              "athlete": {
+                "displayName": "Abus Magomedov"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401911640",
+          "cardSegment": {
+            "id": "174",
+            "name": "prelims1",
+            "description": "Prelims"
+          },
+          "matchNumber": 9,
+          "competitors": [
+            {
+              "id": "5092398",
+              "athlete": {
+                "displayName": "Nurullo Aliev"
+              }
+            },
+            {
+              "id": "3931156",
+              "athlete": {
+                "displayName": "Grant Dawson"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "prelims2": {
+      "cardSegment": "prelims2",
+      "displayName": "Early Prelims",
+      "competitions": [
+        {
+          "id": "401928047",
+          "cardSegment": {
+            "id": "175",
+            "name": "prelims2",
+            "description": "Early Prelims"
+          },
+          "matchNumber": 10,
+          "competitors": [
+            {
+              "id": "5454811",
+              "athlete": {
+                "displayName": "Asaf Chopurov"
+              }
+            },
+            {
+              "id": "5264462",
+              "athlete": {
+                "displayName": "Colby Thicknesse"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401930357",
+          "cardSegment": {
+            "id": "175",
+            "name": "prelims2",
+            "description": "Early Prelims"
+          },
+          "matchNumber": 11,
+          "competitors": [
+            {
+              "id": "4687434",
+              "athlete": {
+                "displayName": "Jacob Malkoun"
+              }
+            },
+            {
+              "id": "3960340",
+              "athlete": {
+                "displayName": "Abubakar Vagaev"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401930915",
+          "cardSegment": {
+            "id": "175",
+            "name": "prelims2",
+            "description": "Early Prelims"
+          },
+          "matchNumber": 12,
+          "competitors": [
+            {
+              "id": "4881997",
+              "athlete": {
+                "displayName": "Daniel Santos"
+              }
+            },
+            {
+              "id": "5145682",
+              "athlete": {
+                "displayName": "Bolaji Oki"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401930916",
+          "cardSegment": {
+            "id": "175",
+            "name": "prelims2",
+            "description": "Early Prelims"
+          },
+          "matchNumber": 13,
+          "competitors": [
+            {
+              "id": "5145777",
+              "athlete": {
+                "displayName": "Noah Gugnon"
+              }
+            },
+            {
+              "id": "5212351",
+              "athlete": {
+                "displayName": "Kody Steele"
+              }
+            }
+          ]
+        },
+        {
+          "id": "401930917",
+          "cardSegment": {
+            "id": "175",
+            "name": "prelims2",
+            "description": "Early Prelims"
+          },
+          "matchNumber": 14,
+          "competitors": [
+            {
+              "id": "4239113",
+              "athlete": {
+                "displayName": "Nicolle Caliari"
+              }
+            },
+            {
+              "id": "5080935",
+              "athlete": {
+                "displayName": "Iasmin Lucindo"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "event": {
+    "id": "600061267",
+    "name": "UFC 333: Volkanovski vs. Evloev",
+    "date": "2026-10-24T14:00:00.000+00:00"
+  }
+}
