@@ -4,7 +4,11 @@
 - **Date:** 2026-10-24
 - **Branch:** `feat/v1`
 
-## Step 0: live PoW spike — BLOCKED, not run
+## Step 0: live PoW spike
+
+**Update 2026-10-25:** the user authorized ufcstats scraping, and the orchestrator ran the live scrape. That run exposed 2 client bugs, now fixed (see "Fix cycle: live-run bugs" below). The Python solver path is verified live: a POST with the corrected format returns 204 + `Set-Cookie: _fmc`, and the next GET returns the real page.
+
+The original spike (below) was blocked; the scraper agent still made no live requests itself.
 
 The spike would have made 3 requests: GET the upcoming page, POST the solved nonce to `/__c`, then GET the upcoming page again with the `_fmc` cookie. It was written (`scratchpad/spike/spike.py`) but never executed. The Claude Code auto-mode permission classifier refused it as "Bot Check Circumvention".
 
@@ -41,6 +45,7 @@ The missing fixtures came from the research repo's existing local cache at `figh
 | `ufcstats/parsers.py` | event list (upcoming and completed), event detail with results, fighter page | `cbf67d4` (ModuleNotFoundError `parsers`) | `6284967` (51 passed) |
 | `store.py` | atomic JSON with sorted keys, 2-space indent, trailing newline; typed load/save for events, fighters, index | `e428f82` (ModuleNotFoundError `fightcard.store`) | `ff45abb` (83 passed) |
 | `ufcstats/stage.py` | upcoming → detail → events; past-upcoming and `--recent N` results; fighter details if missing or older than 30 days; merge-never-clobber; index; validation | `e428f82` | `ff45abb` |
+| live-run fix | challenge POST sent as HTTP/1.1 urlencoded form via curl_cffi with Origin/Referer; 204 is success; transport exceptions wrapped as `TransportError` (solve path → browser fallback; GET → backoff/Halt streak); browser crash → Halt | `cc3719b` (ImportError `TransportError`) | `e0ff40a` (96 passed) |
 | refactor | SoupStrainer for fighter pages (suite 8.6 s → 4.0 s), tests for the scrapling adapters, lint tidy | — | `0a19f64` (87 passed) |
 
 Validation command for every step:
@@ -75,23 +80,48 @@ uv run --project pipeline pytest pipeline/tests/ufcstats --cov=fightcard.ufcstat
 | 20 | An event page is fetched once even when it is both stale and recent | `test_event_page_fetched_once_when_both_stale_and_recent` | integration | PASS |
 | 21 | A past event with no results yet stays `upcoming` (retried next run) but leaves `index.upcoming` | `test_past_event_without_results_stays_upcoming_but_leaves_index` | integration | PASS |
 | 22 | `index.model` (owned by score) preserved; `recent` most recent first; unlisted future events left alone | `test_index_keeps_model_info`, `test_recent_lists_completed_events_most_recent_first`, `test_future_event_no_longer_listed_is_left_alone` | integration | PASS |
+| 24 | Challenge POST = curl_cffi Chrome session, `http_version="v1"`, body `nonce=<urlencoded>&n=<n>`, `Content-Type: application/x-www-form-urlencoded`, `Origin`/`Referer` derived from the challenged URL | `test_client.py::test_challenge_post_is_http1_form_with_origin_and_referer`, `test_challenge_is_solved_posted_and_cookie_cached` (referer) | unit | PASS |
+| 25 | 204 from the challenge POST counts as success | `test_204_from_challenge_post_counts_as_success` | unit | PASS |
+| 26 | curl/scrapling exceptions surface as `TransportError`, never a raw traceback | `test_transport_wraps_curl_errors` | unit | PASS |
+| 27 | `TransportError` on the challenge POST = failed solve → browser fallback | `test_transport_error_on_challenge_post_falls_back_to_browser` | unit | PASS |
+| 28 | `TransportError` on GET → 120 s backoff; two failures in a row (transport or 403/429/5xx, mixed) → Halt | `test_transport_error_on_get_backs_off_then_retries`, `test_two_transport_errors_in_a_row_halt`, `test_transport_error_and_bad_status_share_the_streak` | unit | PASS |
+| 29 | Browser fallback raising → Halt; stage prints a one-line error and exits 1 | `test_browser_crash_halts`, `test_scrape_stage.py::test_halt_prints_one_line_error` | unit/integration | PASS |
 | 23 | CLI: `fightcard --data X scrape --recent N --cookie-file F` wired through `cli.py` | `test_add_arguments_defaults`, `test_run_builds_client_and_scrapes`, `test_cli_dispatches_scrape` | integration | PASS |
 
 ## Coverage
 
 ```
 pipeline/src/fightcard/store.py                  50      0   100%
-pipeline/src/fightcard/ufcstats/client.py       133      0   100%
+pipeline/src/fightcard/ufcstats/client.py       155      0   100%
 pipeline/src/fightcard/ufcstats/parsers.py      109      3    97%
 pipeline/src/fightcard/ufcstats/pow.py           28      0   100%
 pipeline/src/fightcard/ufcstats/stage.py        130      2    98%
-TOTAL                                           450      5    99%
-87 passed
+TOTAL                                           472      5    99%
+96 passed
 ```
+
+## Fix cycle: live-run bugs (2026-10-25)
+
+The orchestrator's live run found:
+
+1. **Malformed challenge POST.**
+   - scrapling `Fetcher.post(data=dict)` failed with curl_cffi `curl: (16)` (HTTP/2 framing).
+   - A raw body without a content type got HTTP 400 `nonce`.
+   - **Fix:** `ScraplingTransport.post` now calls curl_cffi directly: `Session(impersonate="chrome").post(url, data=urlencode(...), http_version="v1", headers={Content-Type form, Origin, Referer})`. `Client` passes the challenged URL as `referer`.
+2. **Uncaught transport exception.** An exception during the challenge POST crashed the run with a traceback.
+   - **Fix:** adapter exceptions become `TransportError`.
+     - In the solve path that counts as a failed solve and goes to the browser fallback.
+     - On GETs it shares the backoff/Halt streak with 403/429/5xx.
+     - A crash in the browser fallback is a Halt.
+   - The stage turns any Halt into a one-line stderr message and exit 1.
+
+- **RED:** `cc3719b`. `pytest pipeline/tests/ufcstats` failed with `ImportError: cannot import name 'TransportError'`. The new stage test, `test_halt_prints_one_line_error`, already passed: it guards existing behaviour.
+- **GREEN:** `e0ff40a`. `96 passed`, `client.py` coverage 100%.
+- No live requests were made by the scraper agent. The orchestrator re-runs live.
 
 ## Design decisions and known gaps
 
-- **Live behaviour unverified:** the PoW POST, the browser fallback and the end-to-end scrape have never run against the live site (see Step 0).
+- **Live verification:** the corrected POST format was verified live by the orchestrator. The fixed code is awaiting the orchestrator's live re-run, and the StealthyFetcher fallback is still unverified live.
 - **Stub metadata wins:** for upcoming events, the list row's name, date and location take precedence over the detail page. The fights come from the detail page.
 - **Corner order:** completed cards list the winner first. When a fight id matches and the pair is swapped, the stored pre-fight red/blue order is kept, so the badge row doesn't flip after the event.
 - **When an event counts as completed:** a re-scraped past event is `completed` only if at least one fight has a result. Otherwise it stays `upcoming` and is retried next run, but `index.upcoming` only lists events from today's upcoming list with `date >= today`.
