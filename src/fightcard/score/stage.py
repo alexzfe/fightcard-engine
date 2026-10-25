@@ -9,8 +9,10 @@
   is already in keeps its stored tier (its fighters' records moved because of
   that bout) and its fighters are not reported as stale.
 - `index.model` comes from model/manifest.json.
-- Each fighter's `elo` is their snapshot Elo rolled forward over results since
-  the export (see `fightcard.score.elo`).
+- Each fighter's rating fields (`elo`, `elo_peak`, `p4p_rank`, the tags) come
+  from model/fighter_rating.parquet rolled forward over results since the
+  export and decayed to `--now` (see `fightcard.score.elo`). Without that file
+  every fighter is unrated.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from pathlib import Path
 
 from fightcard.models import Event, Fight, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
-from fightcard.score.elo import current_elo
+from fightcard.score.elo import fighter_ratings
 from fightcard.score.features import bout_context, bout_row
 from fightcard.store import Store, write_json
 
@@ -94,11 +96,12 @@ def run(args: argparse.Namespace) -> int:
         print(f"score: {e}", file=sys.stderr)
         return 1
     store = Store(args.data)
+    now = _now(args.now)
     fighters = store.load_fighters()
-    elo = current_elo(fighters, bundle.snapshot, bundle.manifest["as_of"])
-    fighters = {fid: f.model_copy(update={"elo": elo[fid]}) for fid, f in fighters.items()}
+    rating = fighter_ratings(fighters, bundle.ratings, bundle.snapshot, bundle.manifest["as_of"], now.date())
+    fighters = {fid: f.model_copy(update=rating[fid]) for fid, f in fighters.items()}
     store.save_fighters(fighters)
-    events, stale = score_events(list(store.load_events().values()), fighters, bundle, _now(args.now))
+    events, stale = score_events(list(store.load_events().values()), fighters, bundle, now)
     for ev in events:
         store.save_event(ev)
     stale_path = store.root / "stale_fighters.json"
@@ -111,7 +114,7 @@ def run(args: argparse.Namespace) -> int:
         index.model = ModelInfo(as_of=bundle.manifest["as_of"], version=bundle.manifest["version"])
         store.save_index(index)
     scored = sum(f.finish_tier is not None for ev in events for f in ev.fights)
-    rated = sum(v is not None for v in elo.values())
+    rated = sum(r["elo"] is not None for r in rating.values())
     print(f"score: {scored} bouts with a tier, {len(stale)} stale fighter entries, {rated} fighters with an Elo "
           f"(model {bundle.manifest['version']})", file=sys.stderr)
     return 0

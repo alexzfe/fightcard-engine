@@ -17,7 +17,11 @@ data/
 - `finish_tier`: `"high" | "medium" | "low" | null`. `null` renders as "—".
 - `segment`: `"main" | "prelims" | "early_prelims" | null`, from ESPN's fightcenter (`main`, `prelims1`, `prelims2`). `null` means unknown; the site shows no segment header for it. Scrape keeps it for fights still on the card.
 - Once `tier_frozen_at` is set, nothing may change `finish_tier` again.
-- `Fighter.elo`: integer current Elo, or `null` when unknown (no UFC history, or results since the model export are missing). Written by `score`; the site shows it next to the record.
+- Fighter rating (`docs/ELO.md`), all written by `score`; the site shows it next to the record. When the rating is unknown (no `model/fighter_rating.parquet`, not in it and no newer bouts, or results since the export are missing) every field is `null` / `false`.
+  - `Fighter.elo`: integer displayed current rating (decayed to now, anchored so active established fighters average 1500), or `null`.
+  - `Fighter.elo_peak`: integer career peak on the same displayed scale (from the 5th UFC bout on, undecayed), or `null`.
+  - `Fighter.p4p_rank`: `1`–`15` for men, `1`–`10` for women (≥5 UFC bouts and a bout in the last 365 days), or `null`.
+  - `Fighter.elo_provisional`: `true` with fewer than 3 UFC bouts. `Fighter.elo_inactive`: `true` with no bout in the last 365 days.
 - Dates are `YYYY-MM-DD`; timestamps are ISO 8601 UTC with `Z`.
 
 ## model/ layout (vendored export from fight-auto-research)
@@ -28,7 +32,8 @@ model/
   thresholds.json         { "low_max": float, "medium_max": float, "tier_finish_rates": {...} }
   fighter_snapshot.parquet  one row per fighter id; includes record w/l/d/nc as of export
   feature_spec.json       ordered features + how to assemble a bout row
-  manifest.json           { "as_of": "YYYY-MM-DD", "version": str, "research_sha": str }
+  manifest.json           { "as_of": "YYYY-MM-DD", "version": str, "research_sha": str, "rating"?: {...} }
+  fighter_rating.parquet  optional; one row per rated fighter as of export (see model/README.md)
 ```
 
 The exact `feature_spec.json` and snapshot columns are defined by the model owner. Document them in `model/README.md` when they are set.
@@ -42,7 +47,7 @@ Run from the repo root: `uv run --project pipeline fightcard --data data <stage>
 | `scrape` | `fightcard.ufcstats` | ufcstats.com, data/ | events/, fighters.json, index.json |
 | `images` | `fightcard.images` | index.json, events/, fighters.json, ESPN, Wikipedia | images/, `Fighter.image` (cards in `index.upcoming` then `index.recent`) |
 | `segments` | `fightcard.segments` | events/, fighters.json, ESPN | `Fight.segment` (upcoming events only) |
-| `score` | `fightcard.score` | model/, events/, fighters.json | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json`, `Fighter.elo` |
+| `score` | `fightcard.score` | model/, events/, fighters.json | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json`, `Fighter.elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive` |
 
 - Each stage package exposes `stage.py` with `add_arguments(parser)` and `run(args) -> int` (see `fightcard/cli.py`).
 - Non-zero exit means: do not commit, do not deploy.

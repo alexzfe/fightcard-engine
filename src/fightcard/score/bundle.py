@@ -13,6 +13,7 @@ import pandas as pd
 from fightcard.models import FinishTier
 from fightcard.score.features import encode
 
+RATINGS = "fighter_rating.parquet"  # optional: without it every fighter is unrated
 FILES = ("model.txt", "thresholds.json", "fighter_snapshot.parquet", "feature_spec.json", "manifest.json")
 
 
@@ -29,6 +30,7 @@ class Bundle:
     thresholds: dict
     manifest: dict
     snapshot: pd.DataFrame  # indexed by fighter_id
+    ratings: pd.DataFrame | None = None  # fighter_rating.parquet indexed by fighter_id; None when absent
 
     def predict(self, rows: list[dict]) -> np.ndarray:
         if not rows:
@@ -46,5 +48,8 @@ def load_bundle(model_dir: Path) -> Bundle:
         raise FileNotFoundError(f"model dir {model_dir} is missing {', '.join(missing)}")
     read = lambda name: json.loads((model_dir / name).read_text())  # noqa: E731
     snapshot = pd.read_parquet(model_dir / "fighter_snapshot.parquet").set_index("fighter_id")
+    ratings = None
+    if (model_dir / RATINGS).is_file():
+        ratings = pd.read_parquet(model_dir / RATINGS).set_index("fighter_id")
     return Bundle(lgb.Booster(model_file=str(model_dir / "model.txt")), read("feature_spec.json"),
-                  read("thresholds.json"), read("manifest.json"), snapshot)
+                  read("thresholds.json"), read("manifest.json"), snapshot, ratings)

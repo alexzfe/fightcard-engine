@@ -48,7 +48,12 @@ class Fighter(BaseModel):
     image: str | None = None  # path relative to data/, e.g. "images/<id>.png"
     details_fetched_at: str | None = None  # ISO 8601 UTC
     recent_fights: list[PastFight] | None = None  # newest first, at most 3; None = not fetched yet
-    elo: int | None = None  # current Elo (K=32, init 1500), rounded; None = unknown. Set by `score`.
+    # Rating (docs/ELO.md), all set by `score`. elo/elo_peak are on the displayed (anchored) scale, rounded.
+    elo: int | None = None  # current rating, decayed to now; None = unknown
+    elo_peak: int | None = None  # highest rating from the 5th UFC bout on; None = not reached / unknown
+    p4p_rank: int | None = None  # 1-15 men, 1-10 women; None = unranked
+    elo_provisional: bool = False  # fewer than 3 UFC bouts
+    elo_inactive: bool = False  # no bout in the last 365 days
 
 
 class Result(BaseModel):

@@ -11,7 +11,8 @@ Current export: **as of 2026-10-14** (build data through the 2026-10-10 card), v
 | `thresholds.json` | Tier cut points and their evidence (below). |
 | `fighter_snapshot.parquet` | One row per ufcstats fighter (4,628; 2,769 with UFC bouts). |
 | `feature_spec.json` | Ordered model columns, categorical levels, and how to build each feature from the snapshot. |
-| `manifest.json` | `as_of`, `version`, `research_sha`, training rows, build provenance, lightgbm version. |
+| `manifest.json` | `as_of`, `version`, `research_sha`, training rows, build provenance, lightgbm version. With a rating export it also has `"rating": {"format_version": 1, "params": {...}}`. |
+| `fighter_rating.parquet` | **Optional.** The fighter rating as of `as_of` (below). Without it, `score` leaves every fighter unrated and still scores tiers. Not in the current export yet. |
 | `examples.json` | 12 bouts with the export's own `p_finish` and tier. `pipeline/tests/score/test_score_parity.py` re-scores them, which keeps the scorer and the research code in lockstep. |
 
 ## Tiers
@@ -40,8 +41,29 @@ Each row holds a fighter's state going into any bout dated after `as_of`. Histor
 | `n_ufc_bouts` | UFC bouts in the history. **No-history guard:** 0 (or not in the snapshot) → `—`. |
 | `dob`, `first_bout_date`, `last_bout_date` | `YYYY-MM-DD` or null; inputs to `age`, `career_days` and `layoff_days` |
 | `recent_dates`, `recent_finish_loss`, `recent_ko_loss` | bouts in the last 730 days before `as_of`+1, as parallel lists; inputs to the two-year window features |
-| `elo` | Elo going into the next bout (K=32, start 1500; research `build/toolkit.py`). Also shown on the site: `score` rolls it forward over each fighter's `recent_fights` dated after `as_of` (same update, same-day batching) and writes `Fighter.elo`. An opponent not in `fighters.json` starts from their snapshot rating. If the newer bouts found don't match the record change since the export, `elo` is `null`. |
+| `elo` | Elo going into the next bout (K=32, start 1500; research `build/toolkit.py`). A finish-model feature only; the site's displayed rating comes from `fighter_rating.parquet`. |
 | every other column | a feature's per-fighter value (e.g. `elo`, `slpm`, `stance`). It doesn't depend on the bout date as long as the fighter hasn't fought again. |
+
+## fighter_rating.parquet
+
+The fighter rating from `docs/ELO.md` (n-based K, split/majority credit, lazy decay), computed by the research repo
+over full history. One row per fighter with at least one bout in scope, as of `as_of`.
+
+| column | meaning |
+|---|---|
+| `fighter_id` | ufcstats fighter id |
+| `rating` | raw post-bout rating after the last bout (undecayed) |
+| `last_bout_date` | `YYYY-MM-DD` |
+| `n_bouts` | bouts in scope, NC included (drives K) |
+| `n_ufc_bouts` | UFC-event bouts, NC included (tags, P4P eligibility, peak) |
+| `peak` | raw peak: highest post-bout rating from the 5th UFC bout on, undecayed; null until then |
+| `gender` | `"M"`, `"F"` or null (from weight classes) |
+
+`score` (`pipeline/src/fightcard/score/elo.py`) rolls it forward over the card fighters' `recent_fights` dated after
+`as_of` with the same formula (an opponent not in the export starts at 1500 with n = 0), decays everyone to `--now`,
+anchors and ranks, and writes the Fighter rating fields (see `docs/CONTRACT.md`). If the newer bouts found don't
+match the record change since the export (record from `fighter_snapshot.parquet`), that fighter is unrated and left
+out of the ranking. Fighters off our cards who fought after `as_of` stay stale until the next export.
 
 ## feature_spec.json
 
