@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from fightcard.ufcstats.client import Client, Halt, HttpError, HttpResponse
+from fightcard.ufcstats.client import Client, Halt, HttpError, HttpResponse, TransportError
 
 URL = "http://ufcstats.com/statistics/events/upcoming"
 DAY = 86400
@@ -31,13 +31,18 @@ class FakeTransport:
     def _next(self, **call) -> HttpResponse:
         call["at"] = self.clock()
         self.calls.append(call)
-        return self.responses.pop(0)
+        nxt = self.responses.pop(0)
+        if isinstance(nxt, Exception):
+            raise nxt
+        return nxt
 
     def get(self, url, cookies):
         return self._next(method="GET", url=url, cookies=dict(cookies))
 
-    def post(self, url, data, cookies):
-        return self._next(method="POST", url=url, data=dict(data), cookies=dict(cookies))
+    def post(self, url, data, cookies, referer):
+        return self._next(
+            method="POST", url=url, data=dict(data), cookies=dict(cookies), referer=referer
+        )
 
 
 @pytest.fixture
@@ -112,6 +117,7 @@ def test_challenge_is_solved_posted_and_cookie_cached(clock, cookie_file, fixtur
     assert post["method"] == "POST"
     assert post["url"] == "http://ufcstats.com/__c"
     assert post["data"]["nonce"] == "efecdc18178fd36b"
+    assert post["referer"] == URL
     assert int(post["data"]["n"]) >= 0
     assert get2["cookies"] == {"_fmc": "fresh"}
     saved = json.loads(cookie_file.read_text())
@@ -241,7 +247,7 @@ class FakeScraplingResponse:
         self.cookies = cookies if cookies is not None else {}
 
 
-def test_scrapling_transport_get_and_post(monkeypatch):
+def test_scrapling_transport_get(monkeypatch):
     from fightcard.ufcstats import client as mod
 
     calls = []
@@ -249,21 +255,81 @@ def test_scrapling_transport_get_and_post(monkeypatch):
     class FakeFetcher:
         @staticmethod
         def get(url, **kw):
-            calls.append(("get", url, kw))
-            return FakeScraplingResponse(200, "page", {"a": "1"})
-
-        @staticmethod
-        def post(url, **kw):
-            calls.append(("post", url, kw))
-            return FakeScraplingResponse(204, "", ({"name": "_fmc", "value": "v"}, {"bad": 1}))
+            calls.append((url, kw))
+            return FakeScraplingResponse(200, "page", ({"name": "_fmc", "value": "v"}, {"bad": 1}))
 
     monkeypatch.setattr(mod, "Fetcher", FakeFetcher)
+    assert mod.ScraplingTransport().get(URL, {"_fmc": "x"}) == HttpResponse(200, "page", {"_fmc": "v"})
+    assert calls[0][1]["impersonate"] == "chrome"
+    assert calls[0][1]["cookies"] == {"_fmc": "x"}
+
+
+class FakeCurlResponse:
+    status_code = 204
+    text = ""
+    cookies = {"_fmc": "posted"}
+
+
+def fake_curl_session(calls, raises=None):
+    class FakeSession:
+        def __init__(self, **kw):
+            calls.append(("init", kw))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def post(self, url, **kw):
+            calls.append(("post", url, kw))
+            if raises:
+                raise raises
+            return FakeCurlResponse()
+
+    return FakeSession
+
+
+def test_challenge_post_is_http1_form_with_origin_and_referer(monkeypatch):
+    from fightcard.ufcstats import client as mod
+
+    calls = []
+    monkeypatch.setattr(mod, "CurlSession", fake_curl_session(calls))
+    resp = mod.ScraplingTransport().post(
+        "http://ufcstats.com/__c", {"nonce": "a+b/c", "n": "17"}, {"_fmc": "old"}, referer=URL
+    )
+
+    assert resp == HttpResponse(204, "", {"_fmc": "posted"})
+    (_, init), (_, url, kw) = calls
+    assert init["impersonate"] == "chrome"
+    assert url == "http://ufcstats.com/__c"
+    assert kw["data"] == "nonce=a%2Bb%2Fc&n=17"
+    assert kw["http_version"] == "v1"
+    assert kw["headers"] == {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Origin": "http://ufcstats.com",
+        "Referer": URL,
+    }
+    assert kw["cookies"] == {"_fmc": "old"}
+
+
+def test_transport_wraps_curl_errors(monkeypatch):
+    from curl_cffi.requests.exceptions import RequestException
+
+    from fightcard.ufcstats import client as mod
+
+    class BrokenFetcher:
+        @staticmethod
+        def get(url, **kw):
+            raise RequestException("curl: (16) framing")
+
+    monkeypatch.setattr(mod, "Fetcher", BrokenFetcher)
+    monkeypatch.setattr(mod, "CurlSession", fake_curl_session([], RequestException("curl: (16)")))
     transport = mod.ScraplingTransport()
-    assert transport.get(URL, {"_fmc": "x"}) == HttpResponse(200, "page", {"a": "1"})
-    assert transport.post(URL, {"n": "1"}, {}) == HttpResponse(204, "", {"_fmc": "v"})
-    assert calls[0][2]["impersonate"] == "chrome"
-    assert calls[0][2]["cookies"] == {"_fmc": "x"}
-    assert calls[1][2]["data"] == {"n": "1"}
+    with pytest.raises(TransportError):
+        transport.get(URL, {})
+    with pytest.raises(TransportError):
+        transport.post("http://ufcstats.com/__c", {"nonce": "a", "n": "1"}, {}, referer=URL)
 
 
 def test_stealthy_cookie_returns_fmc(monkeypatch):
@@ -284,3 +350,57 @@ def test_default_cookie_file_honours_xdg_cache_home(monkeypatch, tmp_path):
 
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     assert mod.default_cookie_file() == tmp_path / "fightcard" / "ufcstats_cookie.json"
+
+
+# --- transport failures ---------------------------------------------------------
+
+
+def test_204_from_challenge_post_counts_as_success(clock, cookie_file, fixture_html):
+    challenge = HttpResponse(200, fixture_html("challenge.html"))
+    client, _ = make_client(
+        clock, cookie_file, [challenge, HttpResponse(204, "", {"_fmc": "c"}), ok("real")]
+    )
+    assert client.get(URL) == "real"
+    assert json.loads(cookie_file.read_text())["value"] == "c"
+
+
+def test_transport_error_on_challenge_post_falls_back_to_browser(clock, cookie_file, fixture_html):
+    challenge = HttpResponse(200, fixture_html("challenge.html"))
+    client, transport = make_client(
+        clock,
+        cookie_file,
+        [challenge, TransportError("curl: (16)"), ok("real")],
+        browser=lambda url: "from-browser",
+    )
+    assert client.get(URL) == "real"
+    assert [c["method"] for c in transport.calls] == ["GET", "POST", "GET"]
+    assert transport.calls[-1]["cookies"] == {"_fmc": "from-browser"}
+
+
+def test_transport_error_on_get_backs_off_then_retries(clock, cookie_file):
+    client, transport = make_client(clock, cookie_file, [TransportError("reset"), ok("after")])
+    assert client.get(URL) == "after"
+    assert 120 in clock.sleeps
+
+
+def test_two_transport_errors_in_a_row_halt(clock, cookie_file):
+    client, _ = make_client(clock, cookie_file, [TransportError("a"), TransportError("b")])
+    with pytest.raises(Halt):
+        client.get(URL)
+
+
+def test_transport_error_and_bad_status_share_the_streak(clock, cookie_file):
+    client, _ = make_client(clock, cookie_file, [HttpResponse(503, ""), TransportError("b")])
+    with pytest.raises(Halt):
+        client.get(URL)
+
+
+def test_browser_crash_halts(clock, cookie_file):
+    weird = HttpResponse(200, '<p>Checking your browser…</p><script>"/__c"</script>')
+
+    def browser(url):
+        raise RuntimeError("patchright missing")
+
+    client, _ = make_client(clock, cookie_file, [weird], browser=browser)
+    with pytest.raises(Halt):
+        client.get(URL)

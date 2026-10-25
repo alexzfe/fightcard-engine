@@ -151,6 +151,18 @@ def test_halt_fails_without_writing(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_halt_prints_one_line_error(tmp_path, capsys):
+    class Blocked:
+        def get(self, url):
+            raise Halt("HTTP 429 twice in a row")
+
+    assert scrape(tmp_path, Blocked()) == 1
+    err = capsys.readouterr().err.strip()
+    assert err.count("\n") == 0
+    assert "HTTP 429 twice in a row" in err
+    assert "Traceback" not in err
+
+
 def test_event_page_http_error_fails_without_writing(tmp_path):
     pages = site_pages()
     del pages[f"{BASE}/event-details/{UPCOMING_IDS[1]}"]
