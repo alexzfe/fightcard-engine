@@ -71,11 +71,12 @@ def _fighters(data):
 def test_downloads_headshots_for_upcoming_fighters_without_image(data, client, transport):
     _ok_routes(transport)
     summary = stage.process(data, client, NOW)
-    assert (data / "images" / "f1.png").read_bytes() == png_bytes()
-    assert (data / "images" / "f2.jpg").exists()
+    assert (data / "images" / "f1.webp").exists()
+    assert (data / "images" / "f2.webp").exists()
+    assert not (data / "images" / "f1.png").exists()
     fighters = _fighters(data)
-    assert fighters["f1"]["image"] == "images/f1.png"
-    assert fighters["f2"]["image"] == "images/f2.jpg"
+    assert fighters["f1"]["image"] == "images/f1.webp"
+    assert fighters["f2"]["image"] == "images/f2.webp"
     assert summary.hits == 2 and summary.misses == 1
 
 
@@ -107,7 +108,7 @@ def test_old_miss_is_retried_and_cleared_on_hit(data, client, transport):
     stage.process(data, client, NOW)
     misses = json.loads((data / "images" / "misses.json").read_text())
     assert "f1" not in misses
-    assert _fighters(data)["f1"]["image"] == "images/f1.png"
+    assert _fighters(data)["f1"]["image"] == "images/f1.webp"
 
 
 def test_placeholder_image_falls_through_to_next_candidate(data, client, transport):
@@ -121,14 +122,14 @@ def test_placeholder_image_falls_through_to_next_candidate(data, client, transpo
     )
     transport.add("https://upload.wikimedia.org/v.jpg", Response(200, png_bytes(fmt="JPEG")))
     stage.process(data, client, NOW)
-    assert _fighters(data)["f1"]["image"] == "images/f1.jpg"
+    assert _fighters(data)["f1"]["image"] == "images/f1.webp"
 
 
 def test_limit_caps_lookups(data, client, transport):
     _ok_routes(transport)
     summary = stage.process(data, client, NOW, limit=1)
     assert summary.hits + summary.misses == 1
-    assert _fighters(data)["f1"]["image"] == "images/f1.png"  # soonest event first
+    assert _fighters(data)["f1"]["image"] == "images/f1.webp"  # soonest event first
     assert _fighters(data)["f2"]["image"] is None
 
 
@@ -168,7 +169,7 @@ def test_run_exits_zero_and_uses_client_factory(data, client, transport, monkeyp
     _ok_routes(transport)
     monkeypatch.setattr(stage, "make_client", lambda: client)
     assert stage.run(_args(data, limit=1)) == 0
-    assert _fighters(data)["f1"]["image"] == "images/f1.png"
+    assert _fighters(data)["f1"]["image"] == "images/f1.webp"
 
 
 def test_run_exits_nonzero_when_data_unreadable(tmp_path, client, monkeypatch):
@@ -184,7 +185,7 @@ def test_cli_wires_images_stage_with_limit(data, client, transport, monkeypatch)
     _ok_routes(transport)
     monkeypatch.setattr(stage, "make_client", lambda: client)
     assert main(["--data", str(data), "images", "--limit", "2"]) == 0
-    assert _fighters(data)["f2"]["image"] == "images/f2.jpg"
+    assert _fighters(data)["f2"]["image"] == "images/f2.webp"
 
 
 def test_make_client_returns_rate_limited_client():
@@ -213,3 +214,72 @@ def test_no_writes_when_nothing_to_do(tmp_path, client):
     stage.process(tmp_path, client, NOW)
     assert not (tmp_path / "images").exists()
     assert (tmp_path / "fighters.json").read_text() == "{}"
+
+
+def test_downloaded_headshot_is_stored_as_small_webp(data, client, transport):
+    from PIL import Image
+
+    _ok_routes(transport)
+    transport.routes.insert(0, (headshot_url("3949584"), "", Response(200, png_bytes(600, 436))))
+    stage.process(data, client, NOW)
+    with Image.open(data / "images" / "f1.webp") as img:
+        assert img.format == "WEBP" and img.size == (320, 233)
+
+
+def test_existing_png_and_jpg_are_migrated_to_webp_without_network(data, client, transport):
+    from PIL import Image
+
+    images = data / "images"
+    images.mkdir()
+    (images / "f3.png").write_bytes(png_bytes(600, 436))
+    (images / "old1.jpg").write_bytes(png_bytes(fmt="JPEG"))
+    fighters = _fighters(data)
+    fighters["old1"]["image"] = "images/old1.jpg"
+    (data / "fighters.json").write_text(json.dumps(fighters))
+
+    summary = stage.migrate_images(data)
+
+    assert summary == 2
+    assert not (images / "f3.png").exists() and not (images / "old1.jpg").exists()
+    with Image.open(images / "f3.webp") as img:
+        assert img.size == (320, 233)
+    after = _fighters(data)
+    assert after["f3"]["image"] == "images/f3.webp"
+    assert after["old1"]["image"] == "images/old1.webp"
+    assert transport.calls == []
+
+
+def test_migration_is_idempotent_and_skips_misses_json(data):
+    images = data / "images"
+    images.mkdir()
+    (images / "misses.json").write_text("{}\n")
+    (images / "f3.png").write_bytes(png_bytes())
+    assert stage.migrate_images(data) == 1
+    before = (data / "fighters.json").read_text()
+    assert stage.migrate_images(data) == 0
+    assert (data / "fighters.json").read_text() == before
+    assert (images / "misses.json").exists()
+
+
+def test_migration_leaves_unreadable_image_alone(data):
+    images = data / "images"
+    images.mkdir()
+    (images / "f3.png").write_bytes(b"<html>not an image</html>")
+    assert stage.migrate_images(data) == 0
+    assert (images / "f3.png").exists()
+    assert _fighters(data)["f3"]["image"] == "images/f3.png"
+
+
+def test_process_runs_migration_first(data, client, transport):
+    images = data / "images"
+    images.mkdir()
+    (images / "f3.png").write_bytes(png_bytes())
+    _ok_routes(transport)
+    stage.process(data, client, NOW)
+    assert _fighters(data)["f3"]["image"] == "images/f3.webp"
+
+
+def test_migrate_does_not_rewrite_fighters_when_nothing_to_convert(data):
+    before = (data / "fighters.json").read_text()
+    assert stage.migrate_images(data) == 0
+    assert (data / "fighters.json").read_text() == before
