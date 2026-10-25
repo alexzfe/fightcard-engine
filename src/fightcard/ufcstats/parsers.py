@@ -13,15 +13,18 @@ from datetime import datetime
 
 from bs4 import BeautifulSoup, SoupStrainer, Tag
 
-from fightcard.models import Event, Fight, Fighter, Record, Result
+from fightcard.models import Event, Fight, Fighter, PastFight, Record, Result
 
 _DETAIL_ID = re.compile(r"/(?:event|fight|fighter)-details/([0-9a-fA-F]+)")
 _RECORD = re.compile(r"(\d+)-(\d+)-(\d+)(?:\s*\((\d+)\s*NC\))?")
 _HEIGHT = re.compile(r"(\d+)'\s*(\d+)\"")
 _INCHES = re.compile(r"(\d+(?:\.\d+)?)\"")
-# Fighter pages are mostly fight-history tables; build only the header and info boxes.
+_HISTORY_DATE = re.compile(r"([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),\s*(\d{4})")
+RECENT_FIGHTS = 3
+# Fighter pages are mostly fight-history tables; build only the header, info boxes and table body.
 _FIGHTER_PARTS = SoupStrainer(
-    ["h2", "p", "ul"], class_=["b-content__title", "b-content__Nickname", "b-list__box-list"]
+    ["h2", "p", "ul", "tbody"],
+    class_=["b-content__title", "b-content__Nickname", "b-list__box-list", "b-fight-details__table-body"],
 )
 
 
@@ -70,6 +73,17 @@ def parse_record(text: str) -> Record:
     if not m:
         return Record()
     return Record(w=int(m[1]), l=int(m[2]), d=int(m[3]), nc=int(m[4] or 0))
+
+
+def parse_history_date(text: str) -> str | None:
+    """Fight-history dates: "Apr. 04, 2026", "Sept. 14, 2024", "May 18, 2024"."""
+    m = _HISTORY_DATE.search(text or "")
+    if not m:
+        return None
+    try:
+        return datetime.strptime(f"{m[1]} {m[2]} {m[3]}", "%b %d %Y").date().isoformat()
+    except ValueError:
+        return None
 
 
 def parse_height(text: str) -> float | None:
@@ -209,6 +223,7 @@ def parse_fighter(html: str, fighter_id: str) -> Fighter:
 
     dob = value("DOB")
     return Fighter(
+        recent_fights=_parse_history(soup, fighter_id),
         id=fighter_id,
         name=_text(soup.find("span", class_="b-content__title-highlight")),
         nickname=_text(soup.find("p", class_="b-content__Nickname")) or None,
@@ -218,3 +233,33 @@ def parse_fighter(html: str, fighter_id: str) -> Fighter:
         stance=value("STANCE"),
         dob=parse_date(dob) if dob else None,
     )
+
+
+def _parse_history(soup: BeautifulSoup, fighter_id: str) -> list[PastFight]:
+    """Completed bouts, newest first: 0 flag, 1 fighters (opponent second), 6 event + date,
+    7 method, 8 round, 9 time. The "next" row (upcoming bout) is skipped."""
+    fights: list[PastFight] = []
+    for row in soup.select("tbody.b-fight-details__table-body tr.b-fight-details__table-row"):
+        cols = row.find_all("td", recursive=False)
+        flag = _text(row.find("i", class_="b-flag__text")).lower()
+        if flag not in ("win", "loss", "draw", "nc") or len(cols) < 10:
+            continue
+        links = cols[1].find_all("a", href=lambda h: h and "fighter-details" in h)
+        opponent = next((a for a in links if extract_id(a["href"]) != fighter_id), None)
+        event_ps = cols[6].find_all("p")
+        round_text = _first_p(cols[8])
+        fights.append(
+            PastFight(
+                result=flag,
+                opponent=_text(opponent) or "Unknown",
+                opponent_id=extract_id(opponent["href"]) if opponent else None,
+                method=_first_p(cols[7]) or None,
+                round=int(round_text) if round_text.isdigit() else None,
+                time=_first_p(cols[9]) or None,
+                event=_text(event_ps[0]) if event_ps else "",
+                date=parse_history_date(_text(event_ps[-1])) if event_ps else None,
+            )
+        )
+        if len(fights) == RECENT_FIGHTS:
+            break
+    return fights

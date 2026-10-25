@@ -1,5 +1,5 @@
 import pytest
-from fightcard.models import Record, Result
+from fightcard.models import PastFight, Record, Result
 from fightcard.ufcstats.parsers import (
     EventStub,
     extract_id,
@@ -7,6 +7,7 @@ from fightcard.ufcstats.parsers import (
     parse_event_list,
     parse_fighter,
     parse_height,
+    parse_history_date,
     parse_record,
     slugify,
 )
@@ -236,3 +237,44 @@ def test_parse_fighter_with_nickname_nc_and_missing_values():
     assert fighter.nickname == "The Hammer"
     assert fighter.record == Record(w=5, l=1, d=0, nc=1)
     assert (fighter.height_in, fighter.reach_in, fighter.stance, fighter.dob) == (None, None, None, None)
+
+
+def test_parse_fighter_page_last_three_fights_newest_first(fixture_html):
+    fighter = parse_fighter(fixture_html("fighter.html"), "b6452706b373eea1")
+    assert fighter.recent_fights == [
+        PastFight(result="win", opponent="Chris Duncan", opponent_id="fd406a32a6fb3a29", method="SUB",
+                  round=2, time="3:14", event="UFC Fight Night: Moicano vs. Duncan", date="2026-04-04"),
+        PastFight(result="loss", opponent="Beneil Dariush", opponent_id="08af939f41b5a57b", method="U-DEC",
+                  round=3, time="5:00", event="UFC 317: Topuria vs. Oliveira", date="2025-06-28"),
+        PastFight(result="loss", opponent="Islam Makhachev", opponent_id="275aca31f61ba28c", method="SUB",
+                  round=1, time="4:05", event="UFC 311: Makhachev vs. Moicano", date="2025-01-18"),
+    ]
+
+
+def test_parse_fighter_without_history_has_empty_recent_fights():
+    html = '<h2 class="b-content__title"><span class="b-content__title-highlight">New Guy</span></h2>'
+    assert parse_fighter(html, "f1").recent_fights == []
+
+
+def test_fighter_history_draw_and_nc_flags():
+    def row(flag):
+        return f"""
+    <tr class="b-fight-details__table-row">
+      <td><p><a class="b-flag"><i class="b-flag__inner"><i class="b-flag__text">{flag}</i></i></a></p></td>
+      <td><p><a href="http://ufcstats.com/fighter-details/f1">Me</a></p>
+          <p><a href="http://ufcstats.com/fighter-details/f2">Them</a></p></td>
+      <td></td><td></td><td></td><td></td>
+      <td><p><a href="http://ufcstats.com/event-details/e1">UFC 1</a></p><p>Nov. 12, 1993</p></td>
+      <td><p>CNC</p></td><td><p>1</p></td><td><p>1:00</p></td>
+    </tr>"""
+    html = f'<table><tbody class="b-fight-details__table-body">{row("draw")}{row("nc")}</tbody></table>'
+    assert [f.result for f in parse_fighter(html, "f1").recent_fights] == ["draw", "nc"]
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [("Apr. 04, 2026", "2026-04-04"), ("Sept. 14, 2024", "2024-09-14"), ("May 18, 2024", "2024-05-18"),
+     ("June 01, 2024", "2024-06-01"), ("garbage", None)],
+)
+def test_parse_history_date(text, expected):
+    assert parse_history_date(text) == expected

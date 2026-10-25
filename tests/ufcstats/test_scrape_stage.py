@@ -241,7 +241,7 @@ def test_fresh_fighters_are_not_refetched_and_images_are_kept(tmp_path):
     stale = (NOW - timedelta(days=31)).strftime("%Y-%m-%dT%H:%M:%SZ")
     fighters = {
         "b6452706b373eea1": Fighter(id="b6452706b373eea1", name="Kept", image="images/m.png",
-                                    details_fetched_at=fresh),
+                                    details_fetched_at=fresh, recent_fights=[]),
         "6c3b2525436cf5d4": Fighter(id="6c3b2525436cf5d4", name="Old", image="images/n.png",
                                     details_fetched_at=stale),
         "unrelated": Fighter(id="unrelated", name="Not on any card"),
@@ -259,6 +259,18 @@ def test_fresh_fighters_are_not_refetched_and_images_are_kept(tmp_path):
     assert out["6c3b2525436cf5d4"].image == "images/n.png"
     assert out["6c3b2525436cf5d4"].details_fetched_at == NOW_ISO
     assert "unrelated" in out
+
+
+def test_fresh_fighter_without_recent_fights_is_refetched(tmp_path):
+    # backfill: fighters fetched before recent_fights existed have it unset
+    fresh = (NOW - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    fighters = {"b6452706b373eea1": Fighter(id="b6452706b373eea1", name="Renato Moicano", details_fetched_at=fresh)}
+    store = seed(tmp_path, fighters=fighters)
+    client = make_client()
+    scrape(tmp_path, client)
+
+    assert f"{BASE}/fighter-details/b6452706b373eea1" in fighter_urls(client)
+    assert len(store.load_fighters()["b6452706b373eea1"].recent_fights) == 3
 
 
 def test_fighter_page_error_falls_back_to_card_name(tmp_path):
@@ -315,7 +327,7 @@ def test_event_page_fetched_once_when_both_stale_and_recent(tmp_path):
 def test_newly_completed_event_refreshes_its_fighters(tmp_path):
     fresh = (NOW - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     winner = COMPLETED_CARD.event.fights[0].red
-    seed(tmp_path, past_upcoming_event(), fighters={winner: Fighter(id=winner, name="W", details_fetched_at=fresh)})
+    seed(tmp_path, past_upcoming_event(), fighters={winner: Fighter(id=winner, name="W", details_fetched_at=fresh, recent_fights=[])})
     client = make_client()
     scrape(tmp_path, client, recent=0)
     assert f"{BASE}/fighter-details/{winner}" in fighter_urls(client)
@@ -323,7 +335,7 @@ def test_newly_completed_event_refreshes_its_fighters(tmp_path):
 
 def test_already_completed_event_does_not_refresh_fresh_fighters(tmp_path):
     fresh = (NOW - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    fighters = {fid: Fighter(id=fid, name=n, details_fetched_at=fresh) for fid, n in COMPLETED_CARD.fighters.items()}
+    fighters = {fid: Fighter(id=fid, name=n, details_fetched_at=fresh, recent_fights=[]) for fid, n in COMPLETED_CARD.fighters.items()}
     seed(tmp_path, COMPLETED_CARD.event, fighters=fighters)
     client = make_client()
     scrape(tmp_path, client, recent=1)

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 FinishTier = Literal["high", "medium", "low"]
 EventStatus = Literal["upcoming", "completed"]
+PastResult = Literal["win", "loss", "draw", "nc"]
 
 
 class Record(BaseModel):
@@ -19,6 +20,19 @@ class Record(BaseModel):
     l: int = 0
     d: int = 0
     nc: int = 0
+
+
+class PastFight(BaseModel):
+    """One completed bout from the fighter's ufcstats history, from their side."""
+
+    result: PastResult
+    opponent: str
+    opponent_id: str | None = None
+    method: str | None = None  # e.g. "KO/TKO", "SUB", "U-DEC"
+    round: int | None = None
+    time: str | None = None  # "4:12"
+    event: str
+    date: str | None = None  # YYYY-MM-DD
 
 
 class Fighter(BaseModel):
@@ -32,6 +46,7 @@ class Fighter(BaseModel):
     dob: str | None = None  # YYYY-MM-DD
     image: str | None = None  # path relative to data/, e.g. "images/<id>.png"
     details_fetched_at: str | None = None  # ISO 8601 UTC
+    recent_fights: list[PastFight] | None = None  # newest first, at most 3; None = not fetched yet
 
 
 class Result(BaseModel):

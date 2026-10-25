@@ -88,7 +88,7 @@ def merge_event(old: Event | None, new: Event) -> Event:
 
 
 def is_fresh(fighter: Fighter, now: datetime) -> bool:
-    if not fighter.details_fetched_at:
+    if not fighter.details_fetched_at or fighter.recent_fights is None:
         return False
     fetched = datetime.fromisoformat(fighter.details_fetched_at)
     return now - fetched < FIGHTER_MAX_AGE
