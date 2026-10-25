@@ -121,10 +121,15 @@ class _Run:
         stubs = parse_event_list(self.client.get(UPCOMING_URL))
         if not stubs:
             raise ValidationError("upcoming list parsed to 0 events")
+        soonest = min(stubs, key=lambda s: s.date or "9999-99-99")
         for stub in stubs:
             event = self._detail(stub.url, stub.id)
             if not event.fights:
-                raise ValidationError(f"upcoming event {stub.id} ({stub.name}) has 0 fights")
+                if stub is soonest:
+                    raise ValidationError(f"soonest upcoming event {stub.id} ({stub.name}) has 0 fights")
+                # far-out cards often have no bouts yet: don't write or index them
+                log.info("skipping event %s (%s): 0 fights announced", stub.id, stub.name)
+                continue
             name = stub.name or event.name
             self.scraped[stub.id] = event.model_copy(update={
                 "status": "upcoming",
@@ -134,6 +139,8 @@ class _Run:
                 "location": stub.location or event.location,
             })
             self.upcoming_ids.append(stub.id)
+        if not self.upcoming_ids:
+            raise ValidationError("all upcoming events together have 0 fights")
 
     def results(self) -> None:
         stale = sorted(
