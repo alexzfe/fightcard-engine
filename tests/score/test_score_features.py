@@ -114,3 +114,22 @@ def test_bout_context():
 def test_tier_of_boundaries():
     t = {"low_max": 0.4, "medium_max": 0.6}
     assert [tier_of(p, t) for p in (0.1, 0.4, 0.41, 0.6, 0.61)] == ["low", "low", "medium", "medium", "high"]
+
+
+def test_fighter_missing_from_snapshot_gives_unknown_values():
+    row = bout_row(_snap(), SPEC, "a", "ghost", "2026-11-01", {})
+    assert math.isnan(row["elo_min"]) and math.isnan(row["fights_2y_sum"])
+
+
+def test_single_part_location():
+    assert parse_location("Somewhere") == ("Somewhere", None, None)
+
+
+def test_unknown_spec_entries_raise():
+    bad_kind = {**SPEC, "features": [{"name": "x", "kind": "num", "combiners": ["min"],
+                                      "source": {"kind": "telepathy"}}]}
+    with pytest.raises(ValueError, match="telepathy"):
+        bout_row(_snap(), bad_kind, "a", "b", "2026-11-01", {})
+    bad_comb = {**SPEC, "features": [{**SPEC["features"][0], "combiners": ["median"]}]}
+    with pytest.raises(ValueError, match="median"):
+        bout_row(_snap(), bad_comb, "a", "b", "2026-11-01", {})

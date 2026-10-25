@@ -86,10 +86,6 @@ def _combine(a, b, how: str):
         return a + b
     if how == "absdiff":
         return abs(a - b)
-    if how == "mean":
-        return (a + b) / 2
-    if how == "product":
-        return a * b
     raise ValueError(f"unknown combiner {how!r}")
 
 
