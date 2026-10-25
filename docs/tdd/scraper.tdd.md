@@ -46,6 +46,7 @@ The missing fixtures came from the research repo's existing local cache at `figh
 | `store.py` | atomic JSON with sorted keys, 2-space indent, trailing newline; typed load/save for events, fighters, index | `e428f82` (ModuleNotFoundError `fightcard.store`) | `ff45abb` (83 passed) |
 | `ufcstats/stage.py` | upcoming → detail → events; past-upcoming and `--recent N` results; fighter details if missing or older than 30 days; merge-never-clobber; index; validation | `e428f82` | `ff45abb` |
 | live-run fix | challenge POST sent as HTTP/1.1 urlencoded form via curl_cffi with Origin/Referer; 204 is success; transport exceptions wrapped as `TransportError` (solve path → browser fallback; GET → backoff/Halt streak); browser crash → Halt | `cc3719b` (ImportError `TransportError`) | `e0ff40a` (96 passed) |
+| empty far-out cards | per CONTRACT `637e50e`: only fatal if 0 upcoming events, the soonest event has 0 fights, or 0 fights in total; other 0-fight events are skipped (not written, not indexed, existing file untouched, one INFO line each) | `049defd` (2 failed: run aborted on `18944a1a6ac1becf has 0 fights`) | `9f8b58f` (99 passed) |
 | refactor | SoupStrainer for fighter pages (suite 8.6 s → 4.0 s), tests for the scrapling adapters, lint tidy | — | `0a19f64` (87 passed) |
 
 Validation command for every step:
@@ -73,7 +74,9 @@ uv run --project pipeline pytest pipeline/tests/ufcstats --cov=fightcard.ufcstat
 | 13 | Fighter page: name, nickname, W-L-D (NC), height/reach in inches, stance, DOB ISO; `--` → null | `test_parse_fighter_page`, `test_parse_fighter_with_nickname_nc_and_missing_values` | unit | PASS |
 | 14 | JSON: sorted keys, 2-space indent, trailing newline, UTF-8 (not `\u` escapes), atomic | `test_store.py::*` | unit | PASS |
 | 15 | A fresh scrape writes 7 upcoming + 1 completed events, every card fighter once, and the index in date order | `test_scrape_stage.py::test_fresh_scrape_writes_events_fighters_and_index` | integration | PASS |
-| 16 | 0 upcoming events, an upcoming event with 0 fights, a Halt, or an event-page HTTP error → exit 1 with **nothing written** | `test_zero_upcoming_events_fails_without_writing` and 3 siblings | integration | PASS |
+| 16 | 0 upcoming events, the soonest upcoming event with 0 fights, all upcoming events with 0 fights, a Halt, or an event-page HTTP error → exit 1 with **nothing written** | `test_zero_upcoming_events_fails_without_writing`, `test_soonest_upcoming_event_without_fights_fails_without_writing`, `test_all_upcoming_events_without_fights_fails_without_writing`, `test_halt_*`, `test_event_page_http_error_fails_without_writing` | integration | PASS |
+| 16b | Later upcoming events with 0 fights: not written, out of `index.upcoming`, one INFO log line each, run exits 0 | `test_far_out_events_without_fights_are_skipped` | integration | PASS |
+| 16c | An event already in `data/` whose card is now empty: file left untouched, kept out of `index.upcoming` | `test_previously_written_event_now_empty_is_left_alone_and_unindexed` | integration | PASS |
 | 17 | Merge keeps `finish_tier`/`tier_frozen_at` for surviving fights and drops removed fights | `test_keeps_tiers_for_fights_still_on_the_card` | integration | PASS |
 | 18 | Fighter details fetched only if missing, older than 30 days, or the fighter just fought; `image` kept; unrelated fighters kept | `test_fresh_fighters_are_not_refetched_and_images_are_kept`, `test_newly_completed_event_refreshes_its_fighters`, `test_already_completed_event_does_not_refresh_fresh_fighters` | integration | PASS |
 | 19 | A past upcoming event is re-scraped as completed; pre-fight corner order and tier kept | `test_past_upcoming_event_is_rescraped_as_completed` | integration | PASS |
@@ -95,9 +98,9 @@ pipeline/src/fightcard/store.py                  50      0   100%
 pipeline/src/fightcard/ufcstats/client.py       155      0   100%
 pipeline/src/fightcard/ufcstats/parsers.py      109      3    97%
 pipeline/src/fightcard/ufcstats/pow.py           28      0   100%
-pipeline/src/fightcard/ufcstats/stage.py        130      2    98%
-TOTAL                                           472      5    99%
-96 passed
+pipeline/src/fightcard/ufcstats/stage.py        136      3    98%
+TOTAL                                           478      6    99%
+99 passed
 ```
 
 ## Fix cycle: live-run bugs (2026-10-25)
@@ -118,6 +121,17 @@ The orchestrator's live run found:
 - **RED:** `cc3719b`. `pytest pipeline/tests/ufcstats` failed with `ImportError: cannot import name 'TransportError'`. The new stage test, `test_halt_prints_one_line_error`, already passed: it guards existing behaviour.
 - **GREEN:** `e0ff40a`. `96 passed`, `client.py` coverage 100%.
 - No live requests were made by the scraper agent. The orchestrator re-runs live.
+
+## Fix cycle: far-out events with no bouts (2026-10-25)
+
+The orchestrator's live run failed validation with `upcoming event 64be3dc99eaa42b6 (UFC 336) has 0 fights`. Far-out cards legitimately have no bouts yet, and CONTRACT `637e50e` relaxed the rule.
+
+- **New rule:** exit 1 only if there are 0 upcoming events, the soonest upcoming event (by date) has 0 fights, or all upcoming events together have 0 fights. The soonest event is checked as soon as it is fetched.
+- **Skipped events:** any other 0-fight event is skipped with `INFO skipping event <id> (<name>): 0 fights announced`. It is not written and not listed in `index.upcoming`. An existing file for it is left untouched, because only scraped events are rewritten.
+- **RED:** `049defd`. Two new tests failed because the run still aborted on the first empty card.
+- **GREEN:** `9f8b58f`. 99 passed.
+- **Coverage note:** the explicit "0 fights in total" raise (`stage.py`, after the loop) is unreachable while the soonest-event rule exists, because if every card is empty the soonest one raises first. It is kept to state the contract rule directly, and it is the one uncovered line added.
+- No live requests were made by the scraper agent.
 
 ## Design decisions and known gaps
 
