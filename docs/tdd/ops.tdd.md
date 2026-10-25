@@ -72,3 +72,10 @@ skipped there only because this machine's mise `actionlint`/`shellcheck` shims h
   matches the flag in `pipeline/src/fightcard/ufcstats/stage.py`, but no test asserts it across the two owners.
 - Infra validation stopped at what runs offline: fmt, validate and ansible-lint. `terraform plan` and
   `ansible --check` need real credentials, so they run on the infra PR.
+
+## Follow-up (orchestrator request)
+
+| Task | RED | GREEN |
+|---|---|---|
+| Collect `pipeline/tests` and `scripts/tests` in one run: shared helpers moved from `conftest` to `scripts/tests/ops_helpers.py`. The `docker` marker is now registered in conftest too, because a combined run uses pipeline's strict config; docker tests skip unless `-m` names them. | db4ca60, `test_suite_layout.py`: `ImportError: cannot import name 'REPO' from 'conftest' (pipeline/tests/ufcstats/conftest.py)` | ced62f1: `pytest pipeline/tests scripts/tests` 222 passed, 7 skipped; `-m docker` 6 passed |
+| `release.yml` runs the site's Playwright e2e. Chromium is cached in `~/.cache/ms-playwright`, keyed on `site/package-lock.json`; a cache hit still runs `install-deps`. | ba08fc6: `assert 'npm run test:e2e' in release.yml` failed | 4458fc3: actionlint `0 errors in 3 files`; combined pytest 224 passed, 6 skipped; local `npm run test:e2e` 10 passed |
