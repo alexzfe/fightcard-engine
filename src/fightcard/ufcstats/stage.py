@@ -15,7 +15,12 @@ from pathlib import Path
 from fightcard.models import Event, Fighter, Index
 from fightcard.store import Store
 from fightcard.ufcstats.client import Client, Halt, HttpError
-from fightcard.ufcstats.parsers import parse_event_detail, parse_event_list, parse_fighter, slugify
+from fightcard.ufcstats.parsers import (
+    parse_event_detail,
+    parse_event_list,
+    parse_fighter,
+    slugify,
+)
 
 log = logging.getLogger(__name__)
 
@@ -85,7 +90,7 @@ def merge_event(old: Event | None, new: Event) -> Event:
 def is_fresh(fighter: Fighter, now: datetime) -> bool:
     if not fighter.details_fetched_at:
         return False
-    fetched = datetime.fromisoformat(fighter.details_fetched_at.replace("Z", "+00:00"))
+    fetched = datetime.fromisoformat(fighter.details_fetched_at)
     return now - fetched < FIGHTER_MAX_AGE
 
 

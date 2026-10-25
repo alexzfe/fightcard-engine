@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-
 from fightcard.models import Event, Fight, Fighter, Index, ModelInfo
 from fightcard.store import Store
 from fightcard.ufcstats import stage

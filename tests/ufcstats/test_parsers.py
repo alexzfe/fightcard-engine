@@ -1,5 +1,4 @@
 import pytest
-
 from fightcard.models import Record, Result
 from fightcard.ufcstats.parsers import (
     EventStub,

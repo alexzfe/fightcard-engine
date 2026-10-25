@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, SoupStrainer, Tag
 
 from fightcard.models import Event, Fight, Fighter, Record, Result
 
@@ -19,6 +19,10 @@ _DETAIL_ID = re.compile(r"/(?:event|fight|fighter)-details/([0-9a-fA-F]+)")
 _RECORD = re.compile(r"(\d+)-(\d+)-(\d+)(?:\s*\((\d+)\s*NC\))?")
 _HEIGHT = re.compile(r"(\d+)'\s*(\d+)\"")
 _INCHES = re.compile(r"(\d+(?:\.\d+)?)\"")
+# Fighter pages are mostly fight-history tables; build only the header and info boxes.
+_FIGHTER_PARTS = SoupStrainer(
+    ["h2", "p", "ul"], class_=["b-content__title", "b-content__Nickname", "b-list__box-list"]
+)
 
 
 @dataclass(frozen=True)
@@ -191,7 +195,7 @@ def parse_event_detail(html: str, event_id: str) -> ParsedEvent:
 
 def parse_fighter(html: str, fighter_id: str) -> Fighter:
     """A /fighter-details/<id> page: name, nickname, record, height, reach, stance, DOB."""
-    soup = BeautifulSoup(html, "lxml")
+    soup = BeautifulSoup(html, "lxml", parse_only=_FIGHTER_PARTS)
     info: dict[str, str] = {}
     for item in soup.select("li.b-list__box-list-item"):
         label = item.find("i", class_="b-list__box-item-title")

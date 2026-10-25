@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from fightcard.models import Event, Fight, Fighter, Index, ModelInfo
 from fightcard.store import Store, read_json, write_json
 
@@ -67,3 +68,12 @@ def test_index_round_trip(tmp_path):
                   model=ModelInfo(as_of="2026-10-01", version="1"))
     store.save_index(index)
     assert store.load_index() == index
+
+
+def test_failed_write_keeps_old_file_and_cleans_up(tmp_path):
+    path = tmp_path / "x.json"
+    write_json(path, {"a": 1})
+    with pytest.raises(TypeError):
+        write_json(path, {"a": object()})
+    assert json.loads(path.read_text()) == {"a": 1}
+    assert [p.name for p in tmp_path.iterdir()] == ["x.json"]

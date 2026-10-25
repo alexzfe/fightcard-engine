@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from fightcard.ufcstats.client import Client, Halt, HttpError, HttpResponse
 
 URL = "http://ufcstats.com/statistics/events/upcoming"
@@ -109,7 +108,7 @@ def test_challenge_is_solved_posted_and_cookie_cached(clock, cookie_file, fixtur
 
     assert client.get(URL) == "real"
 
-    get1, post, get2 = transport.calls
+    _, post, get2 = transport.calls
     assert post["method"] == "POST"
     assert post["url"] == "http://ufcstats.com/__c"
     assert post["data"]["nonce"] == "efecdc18178fd36b"
@@ -231,3 +230,57 @@ def test_request_count_is_tracked(clock, cookie_file):
     client.get(URL)
     client.get(URL)
     assert client.requests == 2
+
+
+# --- default adapters (scrapling), with scrapling itself faked -----------------
+
+class FakeScraplingResponse:
+    def __init__(self, status=200, html="<html/>", cookies=None):
+        self.status = status
+        self.html_content = html
+        self.cookies = cookies if cookies is not None else {}
+
+
+def test_scrapling_transport_get_and_post(monkeypatch):
+    from fightcard.ufcstats import client as mod
+
+    calls = []
+
+    class FakeFetcher:
+        @staticmethod
+        def get(url, **kw):
+            calls.append(("get", url, kw))
+            return FakeScraplingResponse(200, "page", {"a": "1"})
+
+        @staticmethod
+        def post(url, **kw):
+            calls.append(("post", url, kw))
+            return FakeScraplingResponse(204, "", ({"name": "_fmc", "value": "v"}, {"bad": 1}))
+
+    monkeypatch.setattr(mod, "Fetcher", FakeFetcher)
+    transport = mod.ScraplingTransport()
+    assert transport.get(URL, {"_fmc": "x"}) == HttpResponse(200, "page", {"a": "1"})
+    assert transport.post(URL, {"n": "1"}, {}) == HttpResponse(204, "", {"_fmc": "v"})
+    assert calls[0][2]["impersonate"] == "chrome"
+    assert calls[0][2]["cookies"] == {"_fmc": "x"}
+    assert calls[1][2]["data"] == {"n": "1"}
+
+
+def test_stealthy_cookie_returns_fmc(monkeypatch):
+    from fightcard.ufcstats import client as mod
+
+    class FakeStealthy:
+        @staticmethod
+        def fetch(url, **kw):
+            assert kw["headless"] is True
+            return FakeScraplingResponse(cookies=[{"name": "_fmc", "value": "browser"}])
+
+    monkeypatch.setattr(mod, "StealthyFetcher", FakeStealthy)
+    assert mod.stealthy_cookie(URL) == "browser"
+
+
+def test_default_cookie_file_honours_xdg_cache_home(monkeypatch, tmp_path):
+    from fightcard.ufcstats import client as mod
+
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    assert mod.default_cookie_file() == tmp_path / "fightcard" / "ufcstats_cookie.json"

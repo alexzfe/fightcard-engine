@@ -1,7 +1,6 @@
 import hashlib
 
 import pytest
-
 from fightcard.ufcstats.pow import Challenge, is_challenge, parse_challenge, solve
 
 
