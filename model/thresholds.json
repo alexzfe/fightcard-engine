@@ -1,0 +1,99 @@
+{
+  "low_max": 0.42849160588727814,
+  "medium_max": 0.5562006103940996,
+  "oos": {
+    "constant_log_loss": 0.6929762661705656,
+    "finish_rate": 0.4907559572719803,
+    "folds": [
+      {
+        "end": "2016-10-01",
+        "log_loss": 0.6727982118177835,
+        "n": 459,
+        "name": "fold1",
+        "start": "2015-10-01"
+      },
+      {
+        "end": "2017-10-01",
+        "log_loss": 0.6731804258283879,
+        "n": 451,
+        "name": "fold2",
+        "start": "2016-10-01"
+      },
+      {
+        "end": "2018-10-01",
+        "log_loss": 0.6643762639972843,
+        "n": 473,
+        "name": "fold3",
+        "start": "2017-10-01"
+      },
+      {
+        "end": "2019-10-01",
+        "log_loss": 0.6476330756736981,
+        "n": 520,
+        "name": "fold4",
+        "start": "2018-10-01"
+      },
+      {
+        "end": "2020-10-01",
+        "log_loss": 0.6605443740719344,
+        "n": 440,
+        "name": "fold5",
+        "start": "2019-10-01"
+      },
+      {
+        "end": "2021-10-01",
+        "log_loss": 0.6751670852387004,
+        "n": 493,
+        "name": "fold6",
+        "start": "2020-10-01"
+      },
+      {
+        "end": "2022-10-01",
+        "log_loss": 0.6820223630544912,
+        "n": 520,
+        "name": "fold7",
+        "start": "2021-10-01"
+      },
+      {
+        "end": "2023-10-01",
+        "log_loss": 0.6722022339043884,
+        "n": 520,
+        "name": "fold8",
+        "start": "2022-10-01"
+      },
+      {
+        "end": "2024-10-01",
+        "log_loss": 0.6453960011154444,
+        "n": 487,
+        "name": "fold9",
+        "start": "2023-10-01"
+      },
+      {
+        "end": "2025-10-01",
+        "log_loss": 0.6602683173760282,
+        "n": 505,
+        "name": "fold10",
+        "start": "2024-10-01"
+      }
+    ],
+    "log_loss": 0.66533996802487,
+    "method": "time-ordered folds (harness scored folds, all before TEST_START): each fold predicted by a model trained only on earlier bouts",
+    "n": 4868
+  },
+  "rule": "low if p <= low_max, medium if p <= medium_max, else high",
+  "tier_counts": {
+    "high": 1623,
+    "low": 1623,
+    "medium": 1622
+  },
+  "tier_finish_rates": {
+    "high": 0.6241528034504005,
+    "low": 0.36845348120764015,
+    "medium": 0.4796547472256473
+  },
+  "tier_mean_pred": {
+    "high": 0.646629215062592,
+    "low": 0.3477623155714053,
+    "medium": 0.4897490961492546
+  }
+}

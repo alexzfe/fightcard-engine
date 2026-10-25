@@ -1,0 +1,1177 @@
+{
+  "categorical": {
+    "event_city": [
+      "Abu Dhabi",
+      "Adelaide",
+      "Albany",
+      "Albuquerque",
+      "Anaheim",
+      "Atlanta",
+      "Atlantic City",
+      "Auburn Hills",
+      "Auckland",
+      "Austin",
+      "Baku",
+      "Baltimore",
+      "Bangor",
+      "Barueri",
+      "Beijing",
+      "Belem",
+      "Belfast",
+      "Belgrade",
+      "Belo Horizonte",
+      "Berlin",
+      "Birmingham",
+      "Boise",
+      "Boston",
+      "Brasilia",
+      "Brisbane",
+      "Brooklyn",
+      "Broomfield",
+      "Buenos Aires",
+      "Buffalo",
+      "Busan",
+      "Calgary",
+      "Charlotte",
+      "Chicago",
+      "Cincinnati",
+      "Cleveland",
+      "Cologne",
+      "Columbus",
+      "Copenhagen",
+      "Curitiba",
+      "Dallas",
+      "Denver",
+      "Des Moines",
+      "Detroit",
+      "Doha",
+      "Dublin",
+      "Duluth",
+      "East Rutherford",
+      "Edmonton",
+      "Elmont",
+      "Fairfax",
+      "Fayetteville",
+      "Fort Campbell",
+      "Fortaleza",
+      "Fresno",
+      "Gdansk",
+      "Glasgow",
+      "Glendale",
+      "Goiania",
+      "Gold Coast",
+      "Greenville",
+      "Halifax",
+      "Hamburg",
+      "Hidalgo",
+      "Hollywood",
+      "Houston",
+      "Indianapolis",
+      "Inglewood",
+      "Jacksonville",
+      "Jaragua do Sul",
+      "Kallang",
+      "Kansas City",
+      "Killeen",
+      "Krakow",
+      "Las Vegas",
+      "Ledyard",
+      "Lincoln",
+      "Liverpool",
+      "London",
+      "Los Angeles",
+      "Louisville",
+      "Macau",
+      "Manchester",
+      "Manila",
+      "Melbourne",
+      "Memphis",
+      "Mexico City",
+      "Miami",
+      "Milwaukee",
+      "Minneapolis",
+      "Moncton",
+      "Monterrey",
+      "Montevideo",
+      "Montreal",
+      "Moscow",
+      "Nashville",
+      "Natal",
+      "New Orleans",
+      "New York City",
+      "Newark",
+      "Newcastle",
+      "Norfolk",
+      "Nottingham",
+      "Oakland",
+      "Oberhausen",
+      "Oklahoma City",
+      "Omaha",
+      "Orlando",
+      "Ottawa",
+      "Paris",
+      "Perth",
+      "Philadelphia",
+      "Phoenix",
+      "Pittsburgh",
+      "Portland",
+      "Porto Alegre",
+      "Prague",
+      "Quebec City",
+      "Raleigh",
+      "Rio Rancho",
+      "Rio de Janeiro",
+      "Riyadh",
+      "Rochester",
+      "Rosemont",
+      "Rotterdam",
+      "Sacramento",
+      "Saint Petersburg",
+      "Saitama",
+      "Salt Lake City",
+      "San Antonio",
+      "San Diego",
+      "San Jose",
+      "Santiago",
+      "Sao Paulo",
+      "Saskatoon",
+      "Seattle",
+      "Seoul",
+      "Shanghai",
+      "Shenzhen",
+      "Singapore",
+      "Sioux Falls",
+      "St. Louis",
+      "Stockholm",
+      "Sunrise",
+      "Sydney",
+      "Tampa",
+      "Toronto",
+      "Tulsa",
+      "Uberlandia",
+      "Uncasville",
+      "Uniondale",
+      "Utica",
+      "Vancouver",
+      "Washington",
+      "Wichita",
+      "Winnipeg",
+      "Zagreb"
+    ],
+    "event_country": [
+      "Argentina",
+      "Australia",
+      "Azerbaijan",
+      "Brazil",
+      "Canada",
+      "Chile",
+      "China",
+      "Croatia",
+      "Czech Republic",
+      "Denmark",
+      "France",
+      "Germany",
+      "Ireland",
+      "Japan",
+      "Mexico",
+      "Netherlands",
+      "New Zealand",
+      "Philippines",
+      "Poland",
+      "Qatar",
+      "Russia",
+      "Saudi Arabia",
+      "Serbia",
+      "Singapore",
+      "South Korea",
+      "Sweden",
+      "USA",
+      "United Arab Emirates",
+      "United Kingdom",
+      "Uruguay"
+    ],
+    "event_state": [
+      "Abu Dhabi",
+      "Alberta",
+      "Arizona",
+      "Berlin",
+      "British Columbia",
+      "Buenos Aires",
+      "California",
+      "Ceara",
+      "Colorado",
+      "Connecticut",
+      "DC",
+      "Distrito Federal",
+      "England",
+      "Florida",
+      "Georgia",
+      "Goias",
+      "Guangdong",
+      "Hamburg",
+      "Hebei",
+      "Idaho",
+      "Ile-de-France",
+      "Illinois",
+      "Indiana",
+      "Iowa",
+      "Kansas",
+      "Kentucky",
+      "Leinster",
+      "Louisiana",
+      "Maine",
+      "Manitoba",
+      "Maryland",
+      "Massachusetts",
+      "Michigan",
+      "Minas Gerais",
+      "Minnesota",
+      "Missouri",
+      "Moscow",
+      "Nebraska",
+      "Nevada",
+      "New Brunswick",
+      "New Jersey",
+      "New Mexico",
+      "New South Wales",
+      "New York",
+      "North Carolina",
+      "North Rhine-Westphalia",
+      "Northern Ireland",
+      "Nova Scotia",
+      "Nuevo Leon",
+      "Ohio",
+      "Oklahoma",
+      "Ontario",
+      "Oregon",
+      "Para",
+      "Parana",
+      "Pennsylvania",
+      "Quebec",
+      "Queensland",
+      "Rio Grande do Norte",
+      "Rio Grande do Sul",
+      "Rio de Janeiro",
+      "Riyadh",
+      "Saint Petersburg",
+      "Saitama",
+      "Santa Catarina",
+      "Sao Paulo",
+      "Saskatchewan",
+      "Scotland",
+      "South Australia",
+      "South Carolina",
+      "South Dakota",
+      "Tennessee",
+      "Texas",
+      "Utah",
+      "Victoria",
+      "Virginia",
+      "Vojvodina",
+      "Washington",
+      "Western Australia",
+      "Wisconsin",
+      "Zuid-Holland"
+    ],
+    "gender": [
+      "F",
+      "M"
+    ],
+    "stance_pair": [
+      "Open Stance|Orthodox",
+      "Open Stance|Southpaw",
+      "Orthodox|Orthodox",
+      "Orthodox|Sideways",
+      "Orthodox|Southpaw",
+      "Orthodox|Switch",
+      "Orthodox|Unknown",
+      "Southpaw|Southpaw",
+      "Southpaw|Switch",
+      "Southpaw|Unknown",
+      "Switch|Switch",
+      "Switch|Unknown"
+    ],
+    "weight_class": [
+      "Bantamweight",
+      "Catch Weight",
+      "Featherweight",
+      "Flyweight",
+      "Heavyweight",
+      "Light Heavyweight",
+      "Lightweight",
+      "Middleweight",
+      "Welterweight",
+      "Women's Bantamweight",
+      "Women's Featherweight",
+      "Women's Flyweight",
+      "Women's Strawweight"
+    ]
+  },
+  "columns": [
+    "weight_class",
+    "gender",
+    "event_city",
+    "event_state",
+    "event_country",
+    "sched_rounds",
+    "title_fight",
+    "year",
+    "age_min",
+    "age_max",
+    "age_sum",
+    "age_absdiff",
+    "height_cm_min",
+    "height_cm_max",
+    "height_cm_sum",
+    "height_cm_absdiff",
+    "reach_cm_min",
+    "reach_cm_max",
+    "reach_cm_sum",
+    "reach_cm_absdiff",
+    "stance_pair",
+    "no_history_sum",
+    "n_fights_min",
+    "n_fights_max",
+    "n_fights_sum",
+    "n_fights_absdiff",
+    "n_ufc_fights_min",
+    "n_ufc_fights_max",
+    "n_ufc_fights_sum",
+    "n_ufc_fights_absdiff",
+    "n_stat_fights_min",
+    "n_stat_fights_max",
+    "n_stat_fights_sum",
+    "n_stat_fights_absdiff",
+    "minutes_fought_min",
+    "minutes_fought_max",
+    "minutes_fought_sum",
+    "minutes_fought_absdiff",
+    "layoff_days_min",
+    "layoff_days_max",
+    "layoff_days_sum",
+    "layoff_days_absdiff",
+    "career_days_min",
+    "career_days_max",
+    "career_days_sum",
+    "career_days_absdiff",
+    "fights_2y_min",
+    "fights_2y_max",
+    "fights_2y_sum",
+    "fights_2y_absdiff",
+    "win_rate_min",
+    "win_rate_max",
+    "win_rate_sum",
+    "win_rate_absdiff",
+    "win_streak_min",
+    "win_streak_max",
+    "win_streak_sum",
+    "win_streak_absdiff",
+    "loss_streak_min",
+    "loss_streak_max",
+    "loss_streak_sum",
+    "loss_streak_absdiff",
+    "last1_result_min",
+    "last1_result_max",
+    "last1_result_sum",
+    "last1_result_absdiff",
+    "last1_ko_min",
+    "last1_ko_max",
+    "last1_ko_sum",
+    "last1_ko_absdiff",
+    "last1_sub_min",
+    "last1_sub_max",
+    "last1_sub_sum",
+    "last1_sub_absdiff",
+    "last2_result_min",
+    "last2_result_max",
+    "last2_result_sum",
+    "last2_result_absdiff",
+    "last2_ko_min",
+    "last2_ko_max",
+    "last2_ko_sum",
+    "last2_ko_absdiff",
+    "last2_sub_min",
+    "last2_sub_max",
+    "last2_sub_sum",
+    "last2_sub_absdiff",
+    "last3_result_min",
+    "last3_result_max",
+    "last3_result_sum",
+    "last3_result_absdiff",
+    "last3_ko_min",
+    "last3_ko_max",
+    "last3_ko_sum",
+    "last3_ko_absdiff",
+    "last3_sub_min",
+    "last3_sub_max",
+    "last3_sub_sum",
+    "last3_sub_absdiff",
+    "finish_win_rate_min",
+    "finish_win_rate_max",
+    "finish_win_rate_sum",
+    "finish_win_rate_absdiff",
+    "finished_rate_min",
+    "finished_rate_max",
+    "finished_rate_sum",
+    "finished_rate_absdiff",
+    "ko_loss_rate_min",
+    "ko_loss_rate_max",
+    "ko_loss_rate_sum",
+    "ko_loss_rate_absdiff",
+    "decision_rate_min",
+    "decision_rate_max",
+    "decision_rate_sum",
+    "decision_rate_absdiff",
+    "finished_2y_min",
+    "finished_2y_max",
+    "finished_2y_sum",
+    "finished_2y_absdiff",
+    "kod_2y_min",
+    "kod_2y_max",
+    "kod_2y_sum",
+    "kod_2y_absdiff",
+    "slpm_min",
+    "slpm_max",
+    "slpm_sum",
+    "slpm_absdiff",
+    "sapm_min",
+    "sapm_max",
+    "sapm_sum",
+    "sapm_absdiff",
+    "sig_acc_min",
+    "sig_acc_max",
+    "sig_acc_sum",
+    "sig_acc_absdiff",
+    "sig_def_min",
+    "sig_def_max",
+    "sig_def_sum",
+    "sig_def_absdiff",
+    "head_absorbed_pm_min",
+    "head_absorbed_pm_max",
+    "head_absorbed_pm_sum",
+    "head_absorbed_pm_absdiff",
+    "kd_pm_min",
+    "kd_pm_max",
+    "kd_pm_sum",
+    "kd_pm_absdiff",
+    "kd_opp_pm_min",
+    "kd_opp_pm_max",
+    "kd_opp_pm_sum",
+    "kd_opp_pm_absdiff",
+    "td_att_pm_min",
+    "td_att_pm_max",
+    "td_att_pm_sum",
+    "td_att_pm_absdiff",
+    "td_landed_pm_min",
+    "td_landed_pm_max",
+    "td_landed_pm_sum",
+    "td_landed_pm_absdiff",
+    "td_acc_min",
+    "td_acc_max",
+    "td_acc_sum",
+    "td_acc_absdiff",
+    "td_def_min",
+    "td_def_max",
+    "td_def_sum",
+    "td_def_absdiff",
+    "sub_att_pm_min",
+    "sub_att_pm_max",
+    "sub_att_pm_sum",
+    "sub_att_pm_absdiff",
+    "sub_att_opp_pm_min",
+    "sub_att_opp_pm_max",
+    "sub_att_opp_pm_sum",
+    "sub_att_opp_pm_absdiff",
+    "ctrl_share_min",
+    "ctrl_share_max",
+    "ctrl_share_sum",
+    "ctrl_share_absdiff",
+    "ctrl_opp_share_min",
+    "ctrl_opp_share_max",
+    "ctrl_opp_share_sum",
+    "ctrl_opp_share_absdiff",
+    "elo_min",
+    "elo_max",
+    "elo_sum",
+    "elo_absdiff",
+    "opp_elo_mean_min",
+    "opp_elo_mean_max",
+    "opp_elo_mean_sum",
+    "opp_elo_mean_absdiff"
+  ],
+  "context": {
+    "cat": [
+      "weight_class",
+      "gender",
+      "event_city",
+      "event_state",
+      "event_country"
+    ],
+    "num": [
+      "sched_rounds",
+      "title_fight",
+      "year"
+    ]
+  },
+  "features": [
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "age",
+      "source": {
+        "column": "dob",
+        "kind": "age",
+        "max": 65.0,
+        "min": 14.0
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "height_cm",
+      "source": {
+        "column": "height_cm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "reach_cm",
+      "source": {
+        "column": "reach_cm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "pair"
+      ],
+      "kind": "cat",
+      "name": "stance",
+      "source": {
+        "column": "stance",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "sum"
+      ],
+      "kind": "num",
+      "name": "no_history",
+      "source": {
+        "column": "no_history",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "n_fights",
+      "source": {
+        "column": "n_fights",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "n_ufc_fights",
+      "source": {
+        "column": "n_ufc_fights",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "n_stat_fights",
+      "source": {
+        "column": "n_stat_fights",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "minutes_fought",
+      "source": {
+        "column": "minutes_fought",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "layoff_days",
+      "source": {
+        "column": "last_bout_date",
+        "kind": "days_since"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "career_days",
+      "source": {
+        "column": "first_bout_date",
+        "kind": "days_since"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "fights_2y",
+      "source": {
+        "days": 730,
+        "kind": "window_count"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "win_rate",
+      "source": {
+        "column": "win_rate",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "win_streak",
+      "source": {
+        "column": "win_streak",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "loss_streak",
+      "source": {
+        "column": "loss_streak",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "last1_result",
+      "source": {
+        "column": "last1_result",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "last1_ko",
+      "source": {
+        "column": "last1_ko",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "last1_sub",
+      "source": {
+        "column": "last1_sub",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "last2_result",
+      "source": {
+        "column": "last2_result",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "last2_ko",
+      "source": {
+        "column": "last2_ko",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "last2_sub",
+      "source": {
+        "column": "last2_sub",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "last3_result",
+      "source": {
+        "column": "last3_result",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "last3_ko",
+      "source": {
+        "column": "last3_ko",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "last3_sub",
+      "source": {
+        "column": "last3_sub",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "finish_win_rate",
+      "source": {
+        "column": "finish_win_rate",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "finished_rate",
+      "source": {
+        "column": "finished_rate",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "ko_loss_rate",
+      "source": {
+        "column": "ko_loss_rate",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "decision_rate",
+      "source": {
+        "column": "decision_rate",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "finished_2y",
+      "source": {
+        "column": "finish_loss",
+        "days": 730,
+        "kind": "window_sum"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "kod_2y",
+      "source": {
+        "column": "ko_loss",
+        "days": 730,
+        "kind": "window_sum"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "slpm",
+      "source": {
+        "column": "slpm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "sapm",
+      "source": {
+        "column": "sapm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "sig_acc",
+      "source": {
+        "column": "sig_acc",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "sig_def",
+      "source": {
+        "column": "sig_def",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "head_absorbed_pm",
+      "source": {
+        "column": "head_absorbed_pm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "kd_pm",
+      "source": {
+        "column": "kd_pm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "kd_opp_pm",
+      "source": {
+        "column": "kd_opp_pm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "td_att_pm",
+      "source": {
+        "column": "td_att_pm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "td_landed_pm",
+      "source": {
+        "column": "td_landed_pm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "td_acc",
+      "source": {
+        "column": "td_acc",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "td_def",
+      "source": {
+        "column": "td_def",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "sub_att_pm",
+      "source": {
+        "column": "sub_att_pm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "sub_att_opp_pm",
+      "source": {
+        "column": "sub_att_opp_pm",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "ctrl_share",
+      "source": {
+        "column": "ctrl_share",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "ctrl_opp_share",
+      "source": {
+        "column": "ctrl_opp_share",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "elo",
+      "source": {
+        "column": "elo",
+        "kind": "static"
+      }
+    },
+    {
+      "combiners": [
+        "min",
+        "max",
+        "sum",
+        "absdiff"
+      ],
+      "kind": "num",
+      "name": "opp_elo_mean",
+      "source": {
+        "column": "opp_elo_mean",
+        "kind": "static"
+      }
+    }
+  ],
+  "format_version": 1,
+  "notes": "column '<name>_<combiner>' = combiner(value(fighter a), value(fighter b)); combiners are order-free (min, max, sum, absdiff; pair = '|'.join(sorted)). value() from the snapshot: source.kind static -> column; age -> (date - dob) days / 365.25, NaN outside [min, max]; days_since -> (date - column) days; window_count -> recent_dates >= date - days; window_sum -> nansum(recent_<column>) over those. Categorical columns are encoded as the index of the value in `categorical[col]` (NaN if unseen or missing).",
+  "snapshot_as_of": "2026-10-14"
+}

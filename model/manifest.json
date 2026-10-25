@@ -1,0 +1,22 @@
+{
+  "as_of": "2026-10-14",
+  "build": {
+    "built_at": "2026-10-15T02:58:21.246658+00:00",
+    "code_version": null
+  },
+  "exported_at": "2026-10-25T02:20:07Z",
+  "features_hash": "05af2c4985f733d7ab96d34ec71687f5135eaa0413e03fd487d227418b8bc942",
+  "format_version": 1,
+  "lightgbm": "4.7.0",
+  "model_hash": "cc8580e8cb67d3c6518280bd8fd1bfa82165989e0083e3a31cdf786826100382",
+  "n_fighters": 4628,
+  "research_dirty": false,
+  "research_sha": "d8131cd4891c39f5296aa9814e76021ffba30ae1",
+  "train": {
+    "finish_rate": 0.5183453237410072,
+    "last_bout": "2026-10-10",
+    "rows": 8340,
+    "start_year": 2005
+  },
+  "version": "2026-10-14+5006318a"
+}

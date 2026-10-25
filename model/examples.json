@@ -1,0 +1,206 @@
+[
+  {
+    "blue": "3920d0cc288f9b0d",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "M",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Lightweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.6065882796089689,
+    "red": "eb393afdbe3293d5",
+    "tier": "high"
+  },
+  {
+    "blue": "4c88a1db5a46c6a4",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "M",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Lightweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.48011187465768934,
+    "red": "72f890c5d421e705",
+    "tier": "medium"
+  },
+  {
+    "blue": "81d2c551886bd5a1",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "F",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Women's Bantamweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.5135997983544189,
+    "red": "07047eb7d17fb0a2",
+    "tier": "medium"
+  },
+  {
+    "blue": "8bd4200561c77a62",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "F",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Women's Strawweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.25264398581140374,
+    "red": "8e5d953bdb9ae5e7",
+    "tier": "low"
+  },
+  {
+    "blue": "a93f94c923c3a9cb",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "M",
+      "sched_rounds": 5.0,
+      "title_fight": 0.0,
+      "weight_class": "Middleweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.6077353465410211,
+    "red": "2f181c0467965b98",
+    "tier": "high"
+  },
+  {
+    "blue": "e564146b9cf6dbef",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "M",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Light Heavyweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.7450613339367005,
+    "red": "49edd0d90f60fb7d",
+    "tier": "high"
+  },
+  {
+    "blue": "2e45d08b3f2f02c8",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "M",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Bantamweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.6455075707314617,
+    "red": "b9124c308671e303",
+    "tier": "high"
+  },
+  {
+    "blue": "9eed2bcc9e0b92af",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "M",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Welterweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.6548482414328655,
+    "red": "d8da10db80131bec",
+    "tier": "high"
+  },
+  {
+    "blue": "a4a80dd7336ffd59",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "F",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Women's Flyweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.3548607940722399,
+    "red": "e4faa79383c9f214",
+    "tier": "low"
+  },
+  {
+    "blue": "eee0ef3e2b14816b",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "M",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Featherweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.5165712254010106,
+    "red": "8fd808923cffff82",
+    "tier": "medium"
+  },
+  {
+    "blue": "73a78713bd899f4c",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "M",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Heavyweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.6620662175311242,
+    "red": "e03187ec8b5b6abc",
+    "tier": "high"
+  },
+  {
+    "blue": "6add18754930182b",
+    "context": {
+      "event_city": "Las Vegas",
+      "event_country": "USA",
+      "event_state": "Nevada",
+      "gender": "M",
+      "sched_rounds": 3.0,
+      "title_fight": 0.0,
+      "weight_class": "Light Heavyweight",
+      "year": 2026.0
+    },
+    "date": "2026-10-21",
+    "p_finish": 0.728892380081793,
+    "red": "6ac9bc2953c47345",
+    "tier": "high"
+  }
+]
