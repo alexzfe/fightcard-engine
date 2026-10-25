@@ -43,7 +43,7 @@ Run from the repo root: `uv run --project pipeline fightcard --data data <stage>
 
 - Each stage package exposes `stage.py` with `add_arguments(parser)` and `run(args) -> int` (see `fightcard/cli.py`).
 - Non-zero exit means: do not commit, do not deploy.
-- `scrape` must exit non-zero if it finds 0 upcoming events, or 0 fights in any upcoming event.
+- `scrape` must exit non-zero if it finds 0 upcoming events, if the soonest upcoming event has 0 fights, or if all upcoming events together have 0 fights. Far-out events with no bouts announced yet are not written and stay out of `index.upcoming` until fights appear.
 - `score` writes `data/stale_fighters.json` (list of `{fighter_id, name, event_id}`), or removes it when nothing is stale. CI uses that file to open or update the "Re-export finish model" issue.
 
 ## Ownership (parallel build)
