@@ -19,8 +19,7 @@
 | `sources.py` | `ImageFinder.candidates()` lazily yields URLs in this order: 1) ESPN scoreboard athlete id (fetched once per run), else ESPN search id, giving `a.espncdn.com/.../full/{id}.png`; 2) Wikipedia `pageimages` thumbnail (600 px), but only if the page title matches the name (a "(fighter)" suffix is OK). |
 | `download.py` | Pillow validation. Accepts PNG, JPEG or WEBP with the shorter side ≥64 px; everything else is rejected (placeholders, HTML, BMP). |
 | `misses.py` | `data/images/misses.json`, `{id: ISO}`. Skipped for 7 days, retried at ≥7 days. Contract formatting. |
-| `_store.py` | Private loader/saver for `fighters.json` and `events/*.json`. A stand-in until `fightcard.store` lands. |
-| `stage.py` | `fightcard --data data images [--limit N]`: upcoming events only, soonest first, fighters without an image. Writes `images/<id>.<ext>` and sets `Fighter.image`. Exits 0 on misses and network failures, 1 if data/ is unreadable. |
+| `stage.py` | Reads and writes data/ through `fightcard.store` (misses.json uses `store.write_json`, which is atomic). `fightcard --data data images [--limit N]`: upcoming events only, soonest first, fighters without an image. Writes `images/<id>.<ext>` and sets `Fighter.image`. Exits 0 on misses and network failures, 1 if data/ is unreadable. |
 
 ## Task report
 
@@ -66,4 +65,4 @@
 - `--cov=fightcard.images`: 100%.
 - The live check is behind `@pytest.mark.live`, so it is deselected by default.
 - `misses.json` is written (as `{}`) after any run that had hits. This is harmless.
-- `_store.py` should be replaced by `fightcard.store` once the scraper lands it.
+- Interim `_store.py` was replaced by `fightcard.store` once the scraper landed it. Tests still pass: 68 passed, 100% coverage.

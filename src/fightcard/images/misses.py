@@ -6,6 +6,8 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from fightcard.store import write_json
+
 RETRY_AFTER = timedelta(days=7)
 
 
@@ -43,5 +45,4 @@ class Misses:
         self.entries.pop(fighter_id, None)
 
     def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(self.entries, indent=2, sort_keys=True) + "\n")
+        write_json(self.path, self.entries)

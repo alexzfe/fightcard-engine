@@ -13,13 +13,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fightcard.images._store import DataError, load_events, load_fighters, save_fighters
 from fightcard.images.download import validate_image
 from fightcard.images.http import HttpClient
 from fightcard.images.misses import Misses
 from fightcard.images.sources import ImageFinder
+from fightcard.models import Event, Fighter
+from fightcard.store import Store
 
 log = logging.getLogger(__name__)
+
+
+class DataError(Exception):
+    """data/ is missing or unreadable."""
 
 
 @dataclass
@@ -33,12 +38,19 @@ def make_client() -> HttpClient:
     return HttpClient(min_interval=1.0)
 
 
-def _upcoming_fighter_ids(data_dir: Path) -> list[str]:
-    events = sorted(
-        (e for e in load_events(data_dir) if e.status == "upcoming"), key=lambda e: e.date
-    )
+def _load(store: Store) -> tuple[dict[str, Fighter], list[Event]]:
+    if not store.root.is_dir():
+        raise DataError(f"{store.root} is not a directory")
+    try:
+        return store.load_fighters(), list(store.load_events().values())
+    except (OSError, ValueError, AttributeError) as e:
+        raise DataError(f"cannot read {store.root}: {e}") from e
+
+
+def _upcoming_fighter_ids(events: list[Event]) -> list[str]:
+    upcoming = sorted((e for e in events if e.status == "upcoming"), key=lambda e: e.date)
     seen: dict[str, None] = {}
-    for event in events:
+    for event in upcoming:
         for fight in event.fights:
             seen.setdefault(fight.red)
             seen.setdefault(fight.blue)
@@ -58,8 +70,9 @@ def _download_first(client: HttpClient, urls: Iterable[str]) -> tuple[bytes, str
 def process(
     data_dir: Path, client: HttpClient, now: datetime, limit: int | None = None
 ) -> Summary:
-    fighters = load_fighters(data_dir)
-    fighter_ids = _upcoming_fighter_ids(data_dir)
+    store = Store(data_dir)
+    fighters, events = _load(store)
+    fighter_ids = _upcoming_fighter_ids(events)
     images_dir = data_dir / "images"
     misses = Misses.load(images_dir / "misses.json")
     finder = ImageFinder(client)
@@ -89,7 +102,7 @@ def process(
         log.info("image hit %s (%s)", fighter.name, fid)
 
     if summary.hits:
-        save_fighters(data_dir, fighters)
+        store.save_fighters(fighters)
     if summary.hits or summary.misses:
         misses.save()
     return summary
