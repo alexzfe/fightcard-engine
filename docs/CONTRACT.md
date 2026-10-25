@@ -39,7 +39,7 @@ Run from the repo root: `uv run --project pipeline fightcard --data data <stage>
 | Stage | Package | Reads | Writes |
 |---|---|---|---|
 | `scrape` | `fightcard.ufcstats` | ufcstats.com, data/ | events/, fighters.json, index.json |
-| `images` | `fightcard.images` | fighters.json, ESPN, Wikipedia | images/, `Fighter.image` |
+| `images` | `fightcard.images` | index.json, events/, fighters.json, ESPN, Wikipedia | images/, `Fighter.image` (cards in `index.upcoming` then `index.recent`) |
 | `segments` | `fightcard.segments` | events/, fighters.json, ESPN | `Fight.segment` (upcoming events only) |
 | `score` | `fightcard.score` | model/, events/, fighters.json | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json` |
 

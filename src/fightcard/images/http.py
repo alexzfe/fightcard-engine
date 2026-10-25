@@ -11,7 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-USER_AGENT = "fightcard/0.1 (+https://ufc.xlobax.com; non-commercial fan site)"
+# No URL: site.api.espn.com/.../scoreboard answers 403 to any User-Agent containing one.
+USER_AGENT = "fightcard/0.1 (non-commercial fan site)"
 
 
 @dataclass(frozen=True)

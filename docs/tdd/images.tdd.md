@@ -19,7 +19,7 @@
 | `sources.py` | `ImageFinder.candidates()` lazily yields URLs in this order: 1) ESPN scoreboard athlete id (fetched once per run), else ESPN search id, giving `a.espncdn.com/.../full/{id}.png`; 2) Wikipedia `pageimages` thumbnail (600 px), but only if the page title matches the name (a "(fighter)" suffix is OK). |
 | `download.py` | Pillow validation. Accepts PNG, JPEG or WEBP with the shorter side ≥64 px; everything else is rejected (placeholders, HTML, BMP). |
 | `misses.py` | `data/images/misses.json`, `{id: ISO}`. Skipped for 7 days, retried at ≥7 days. Contract formatting. |
-| `stage.py` | Reads and writes data/ through `fightcard.store` (misses.json uses `store.write_json`, which is atomic). `fightcard --data data images [--limit N]`: upcoming events only, soonest first, fighters without an image. Writes `images/<id>.<ext>` and sets `Fighter.image`. Exits 0 on misses and network failures, 1 if data/ is unreadable. |
+| `stage.py` | Reads and writes data/ through `fightcard.store` (misses.json uses `store.write_json`, which is atomic). `fightcard --data data images [--limit N]`: the cards the site shows (`index.upcoming` soonest first, then `index.recent` most recent first; upcoming only if there is no index), fighters without an image. Writes `images/<id>.<ext>` and sets `Fighter.image`. Exits 0 on misses and network failures, 1 if data/ is unreadable. |
 
 ## Task report
 
@@ -45,7 +45,7 @@
 | 6 | Scoreboard ids are used first, scoreboard fetched once, search skipped on a hit | `test_finder_uses_scoreboard_before_search`, `test_finder_skips_search_when_scoreboard_matched` | integration (fixture) | PASS |
 | 7 | Order is ESPN search → Wikipedia; a Wikipedia page with a different title is rejected | `test_finder_falls_back_*`, `test_parse_wikipedia_*` | integration (fixture) | PASS |
 | 8 | Only real images ≥64 px are accepted; a placeholder falls through to the next candidate | `test_images_download.py`, `test_placeholder_image_falls_through_to_next_candidate` | unit/integration | PASS |
-| 9 | Only upcoming-event fighters without an image are processed, soonest event first | `test_skips_fighters_with_images_and_past_events`, `test_limit_caps_lookups` | integration | PASS |
+| 9 | Fighters without an image on the site's cards are processed: upcoming soonest first, then recent results. Archive events outside the index are skipped. Without an index, upcoming only | `test_without_index_skips_fighters_with_images_and_past_events`, `test_recent_results_on_the_site_get_headshots_but_the_archive_does_not`, `test_upcoming_cards_come_before_recent_results`, `test_limit_caps_lookups` | integration | PASS |
 | 10 | Misses recorded; skipped within 7 days, retried after, cleared on a hit | `test_images_misses.py`, `test_miss_is_recorded_*`, `test_old_miss_is_retried_*` | unit/integration | PASS |
 | 11 | `fighters.json` and `misses.json` follow the contract format (sorted, 2-space, trailing newline); no writes when nothing changed | `test_fighters_json_is_written_per_contract`, `test_record_and_clear_then_save_*`, `test_no_writes_when_nothing_to_do` | integration | PASS |
 | 12 | CLI `images --limit N` is wired up; exit 0 on misses, 1 on unreadable or malformed data/ | `test_cli_wires_images_stage_with_limit`, `test_run_exits_*` | integration | PASS |
@@ -81,3 +81,11 @@
   - Spot check: a 320×233 RGBA WebP with no EXIF or ICC.
   - All 102 `Fighter.image` entries now end in `.webp`.
   - data/ was not committed.
+
+## Round 2: recent results and a URL-free User-Agent (2026-10-25)
+
+Bug: UFC 333 showed 0 of 28 headshots. It was first scraped on 2026-10-25, the day after it happened, so it was never upcoming and the stage never looked it up (none of its fighters were in `misses.json`). The stage now covers `index.recent` as well.
+
+The images User-Agent also contained the site URL, and ESPN's scoreboard answers 403 to any User-Agent with a URL (found during the segments work). It now matches the segments stage: `fightcard/0.1 (non-commercial fan site)`.
+
+RED (`5b19e84`): `test_recent_results_on_the_site_get_headshots_but_the_archive_does_not` and `test_urllib_transport_encodes_params_and_sets_user_agent` failed. GREEN: `241 passed, 1 deselected`. Ruff on images/ shows the same 3 findings as before the change.

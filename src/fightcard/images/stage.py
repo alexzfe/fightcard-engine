@@ -1,4 +1,4 @@
-"""`fightcard images`: download headshots for fighters on upcoming cards.
+"""`fightcard images`: download headshots for fighters on the cards the site shows.
 
 A lookup miss never fails the pipeline; only unreadable data/ does.
 """
@@ -17,7 +17,7 @@ from fightcard.images.download import normalize_image
 from fightcard.images.http import HttpClient
 from fightcard.images.misses import Misses
 from fightcard.images.sources import ImageFinder
-from fightcard.models import Event, Fighter
+from fightcard.models import Event, Fighter, Index
 from fightcard.store import Store
 
 log = logging.getLogger(__name__)
@@ -40,19 +40,28 @@ def make_client() -> HttpClient:
     return HttpClient(min_interval=1.0)
 
 
-def _load(store: Store) -> tuple[dict[str, Fighter], list[Event]]:
+def _load(store: Store) -> tuple[dict[str, Fighter], list[Event], Index | None]:
     if not store.root.is_dir():
         raise DataError(f"{store.root} is not a directory")
     try:
-        return store.load_fighters(), list(store.load_events().values())
+        return store.load_fighters(), list(store.load_events().values()), store.load_index()
     except (OSError, ValueError, AttributeError) as e:
         raise DataError(f"cannot read {store.root}: {e}") from e
 
 
-def _upcoming_fighter_ids(events: list[Event]) -> list[str]:
-    upcoming = sorted((e for e in events if e.status == "upcoming"), key=lambda e: e.date)
+def _fighter_ids(events: list[Event], index: Index | None) -> list[str]:
+    """Fighters on the site's cards: upcoming soonest first, then recent results most recent first.
+
+    A card first scraped after it happened was never upcoming, so recent results are looked up too.
+    Older completed events (not in the index) are left alone. Without an index, upcoming only.
+    """
+    if index is None:
+        cards = sorted((e for e in events if e.status == "upcoming"), key=lambda e: e.date)
+    else:
+        by_id = {e.id: e for e in events}
+        cards = [by_id[eid] for eid in [*index.upcoming, *index.recent] if eid in by_id]
     seen: dict[str, None] = {}
-    for event in upcoming:
+    for event in cards:
         for fight in event.fights:
             seen.setdefault(fight.red)
             seen.setdefault(fight.blue)
@@ -79,7 +88,7 @@ def migrate_images(data_dir: Path) -> int:
     if not legacy:
         return 0
     store = Store(data_dir)
-    fighters, _ = _load(store)
+    fighters, _, _ = _load(store)
     by_image = {f.image: f for f in fighters.values() if f.image}
     converted = 0
     for path in legacy:
@@ -105,8 +114,8 @@ def process(
     migrated = migrate_images(data_dir)
     if migrated:
         log.info("converted %d legacy headshots to webp", migrated)
-    fighters, events = _load(store)
-    fighter_ids = _upcoming_fighter_ids(events)
+    fighters, events, index = _load(store)
+    fighter_ids = _fighter_ids(events, index)
     images_dir = data_dir / "images"
     misses = Misses.load(images_dir / "misses.json")
     finder = ImageFinder(client)
