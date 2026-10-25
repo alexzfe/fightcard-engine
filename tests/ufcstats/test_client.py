@@ -201,7 +201,7 @@ def test_falls_back_to_browser_after_two_failed_solves(clock, cookie_file, fixtu
 def test_halts_when_browser_cannot_get_cookie(clock, cookie_file, fixture_html):
     challenge = HttpResponse(200, fixture_html("challenge.html"))
     client, _ = make_client(
-        clock, cookie_file, [challenge, ok(), challenge, ok()], browser=lambda url: None
+        clock, cookie_file, [challenge, ok(), challenge, ok(), challenge], browser=lambda url: None
     )
     with pytest.raises(Halt):
         client.get(URL)
@@ -210,7 +210,10 @@ def test_halts_when_browser_cannot_get_cookie(clock, cookie_file, fixture_html):
 def test_halts_when_challenge_persists_after_browser_cookie(clock, cookie_file, fixture_html):
     challenge = HttpResponse(200, fixture_html("challenge.html"))
     client, _ = make_client(
-        clock, cookie_file, [challenge, ok(), challenge, ok(), challenge], browser=lambda url: "b"
+        clock,
+        cookie_file,
+        [challenge, ok(), challenge, ok(), challenge, challenge],
+        browser=lambda url: "b",
     )
     with pytest.raises(Halt):
         client.get(URL)
