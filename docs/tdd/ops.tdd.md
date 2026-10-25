@@ -68,8 +68,7 @@ skipped there only because this machine's mise `actionlint`/`shellcheck` shims h
 
 - The workflows are checked structurally and with actionlint, but they have never run on GitHub: there is no remote
   yet. The first real run is step 5 of the `docs/DEPLOY.md` checklist.
-- `--cookie-file`: `refresh.yml` passes `--cookie-file .cache/ufcstats/cookies.json` to `fightcard scrape`. The
-  scraper's `stage.py` didn't exist when this was written, though its `Client(cookie_file=...)` does. The scraper
-  stage must expose that flag, or the step fails with an argparse error.
+- `--cookie-file`: `refresh.yml` passes `--cookie-file .cache/ufcstats/cookies.json` to `fightcard scrape`. This
+  matches the flag in `pipeline/src/fightcard/ufcstats/stage.py`, but no test asserts it across the two owners.
 - Infra validation stopped at what runs offline: fmt, validate and ansible-lint. `terraform plan` and
   `ansible --check` need real credentials, so they run on the infra PR.
