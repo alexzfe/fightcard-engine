@@ -49,6 +49,8 @@
 | 10 | Misses recorded; skipped within 7 days, retried after, cleared on a hit | `test_images_misses.py`, `test_miss_is_recorded_*`, `test_old_miss_is_retried_*` | unit/integration | PASS |
 | 11 | `fighters.json` and `misses.json` follow the contract format (sorted, 2-space, trailing newline); no writes when nothing changed | `test_fighters_json_is_written_per_contract`, `test_record_and_clear_then_save_*`, `test_no_writes_when_nothing_to_do` | integration | PASS |
 | 12 | CLI `images --limit N` is wired up; exit 0 on misses, 1 on unreadable or malformed data/ | `test_cli_wires_images_stage_with_limit`, `test_run_exits_*` | integration | PASS |
+| 13 | Downloads are stored as WebP, at most 320 px wide, aspect kept, never upscaled, alpha kept, EXIF/ICC stripped, much smaller than the source PNG | `test_normalize_*`, `test_downloaded_headshot_is_stored_as_small_webp` | unit/integration | PASS |
+| 14 | Legacy png/jpg files in data/images are converted to WebP in place and `Fighter.image` is updated, with no network. Idempotent; `misses.json` and unreadable files are left alone; `process()` migrates first | `test_existing_png_and_jpg_are_migrated_*`, `test_migration_*`, `test_process_runs_migration_first`, `test_migrate_does_not_rewrite_*` | integration | PASS |
 
 ## Live run (hand-made temp data dir, 6 real fighters)
 
@@ -66,3 +68,16 @@
 - The live check is behind `@pytest.mark.live`, so it is deselected by default.
 - `misses.json` is written (as `{}`) after any run that had hits. This is harmless.
 - Interim `_store.py` was replaced by `fightcard.store` once the scraper landed it. Tests still pass: 68 passed, 100% coverage.
+
+## Cycle 2: WebP normalisation and migration (2026-10-25)
+
+- **Why:** ESPN PNGs are 600×436 and about 280 KB each, so data/images had grown to 24 MB in git.
+- **RED (`78c35d9`):** `test_images_download.py` failed with `ImportError: cannot import name 'normalize_image'`. Stage tests failed 12 times, with `'images/f1.png' == 'images/f1.webp'` assertion errors and a missing `stage.migrate_images`.
+- **GREEN (`01bcf76`):** `download.normalize_image` produces WebP: width ≤320 (LANCZOS), quality 82, method 6, and `info` cleared so no metadata is written. `stage.migrate_images` converts png/jpg files in place, and `process()` runs it first.
+  - `pipeline/tests/images`: 80 passed, coverage 100%.
+  - Full suite: 206 passed.
+- **Real run:** `uv run --project pipeline fightcard --data data images` converted 102 legacy headshots, with 0 hits, 0 misses and 4 skipped (misses still inside the retry window). No fetches.
+  - **data/images went from 24 MB to 1.3 MB** (102 WebP files, 1,056,742 bytes, about 10 KB each).
+  - Spot check: a 320×233 RGBA WebP with no EXIF or ICC.
+  - All 102 `Fighter.image` entries now end in `.webp`.
+  - data/ was not committed.
