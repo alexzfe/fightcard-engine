@@ -12,6 +12,7 @@ dependencies = [
     "lightgbm>=4",
     "pyarrow>=16",
     "pillow>=10",
+    "pandas>=2.2",
 ]
 
 [project.scripts]
