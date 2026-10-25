@@ -85,7 +85,8 @@ def test_urllib_transport_encodes_params_and_sets_user_agent(monkeypatch):
     r = http.urllib_transport("https://x.test/api", {"q": "Petr Yan"})
     assert r == Response(200, b"hi")
     assert seen["url"] == "https://x.test/api?q=Petr+Yan"
-    assert "fightcard" in seen["ua"]
+    # site.api.espn.com/.../scoreboard answers 403 to any User-Agent containing a URL.
+    assert seen["ua"].startswith("fightcard/") and "http" not in seen["ua"]
 
 
 def test_urllib_transport_maps_http_errors_to_status(monkeypatch):

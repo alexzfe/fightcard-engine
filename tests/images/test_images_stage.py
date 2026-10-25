@@ -80,12 +80,45 @@ def test_downloads_headshots_for_upcoming_fighters_without_image(data, client, t
     assert summary.hits == 2 and summary.misses == 1
 
 
-def test_skips_fighters_with_images_and_past_events(data, client, transport):
+def _queried(transport):
+    return " ".join(" ".join(str(v) for v in p.values()) for _, p in transport.calls)
+
+
+def _index(data, upcoming, recent):
+    (data / "index.json").write_text(json.dumps(
+        {"generated_at": "2026-10-24T00:00:00Z", "upcoming": upcoming, "recent": recent}
+    ))
+
+
+def test_without_index_skips_fighters_with_images_and_past_events(data, client, transport):
     _ok_routes(transport)
     stage.process(data, client, NOW)
-    queried = " ".join(" ".join(str(v) for v in p.values()) for _, p in transport.calls)
-    assert "Petr Yan" not in queried
-    assert "Retired Guy" not in queried
+    assert "Petr Yan" not in _queried(transport)
+    assert "Retired Guy" not in _queried(transport)
+
+
+def test_recent_results_on_the_site_get_headshots_but_the_archive_does_not(data, client, transport):
+    # A card first scraped after it happened (UFC 333 on the first live run) was never upcoming.
+    ev = _event("ea", "2026-08-01", "completed", [("arch1", "arch2")])
+    (data / "events" / "ea.json").write_text(json.dumps(ev))
+    archive = {"arch1": {"id": "arch1", "name": "Archive Only"}, "arch2": {"id": "arch2", "name": "Archive Too"}}
+    (data / "fighters.json").write_text(json.dumps({**FIGHTERS, **archive}))
+    _index(data, ["e1", "e2"], ["e0"])
+    _ok_routes(transport)
+    stage.process(data, client, NOW)
+    assert "Retired Guy" in _queried(transport)
+    assert "Other Retired" in _queried(transport)
+    assert "Archive Only" not in _queried(transport)
+    assert "Petr Yan" not in _queried(transport)
+
+
+def test_upcoming_cards_come_before_recent_results(data, client, transport):
+    _index(data, ["e1", "e2"], ["e0"])
+    _ok_routes(transport)
+    summary = stage.process(data, client, NOW, limit=3)
+    assert summary.hits + summary.misses == 3
+    assert "Nobody Atall" in _queried(transport)
+    assert "Retired Guy" not in _queried(transport)
 
 
 def test_miss_is_recorded_and_not_retried_within_a_week(data, client, transport):
