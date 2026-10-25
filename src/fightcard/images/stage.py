@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fightcard.images.download import validate_image
+from fightcard.images.download import normalize_image
 from fightcard.images.http import HttpClient
 from fightcard.images.misses import Misses
 from fightcard.images.sources import ImageFinder
@@ -21,6 +21,8 @@ from fightcard.models import Event, Fighter
 from fightcard.store import Store
 
 log = logging.getLogger(__name__)
+
+_LEGACY_SUFFIXES = {".png", ".jpg", ".jpeg"}
 
 
 class DataError(Exception):
@@ -57,20 +59,52 @@ def _upcoming_fighter_ids(events: list[Event]) -> list[str]:
     return list(seen)
 
 
-def _download_first(client: HttpClient, urls: Iterable[str]) -> tuple[bytes, str] | None:
-    """Body and extension of the first URL that yields a real image."""
+def _download_first(client: HttpClient, urls: Iterable[str]) -> bytes | None:
+    """Normalised WebP of the first URL that yields a real image."""
     for url in urls:
         resp = client.get(url)
-        ext = validate_image(resp.body) if resp.ok else None
-        if ext:
-            return resp.body, ext
+        webp = normalize_image(resp.body) if resp.ok else None
+        if webp:
+            return webp
     return None
+
+
+def migrate_images(data_dir: Path) -> int:
+    """Convert legacy png/jpg headshots in data/images to WebP in place; no network.
+
+    Returns the number of files converted.
+    """
+    images_dir = data_dir / "images"
+    legacy = sorted(p for p in images_dir.glob("*") if p.suffix.lower() in _LEGACY_SUFFIXES)
+    if not legacy:
+        return 0
+    store = Store(data_dir)
+    fighters, _ = _load(store)
+    by_image = {f.image: f for f in fighters.values() if f.image}
+    converted = 0
+    for path in legacy:
+        webp = normalize_image(path.read_bytes())
+        if webp is None:
+            log.warning("cannot convert %s; left as is", path.name)
+            continue
+        (images_dir / f"{path.stem}.webp").write_bytes(webp)
+        path.unlink()
+        fighter = by_image.get(f"images/{path.name}")
+        if fighter is not None:
+            fighter.image = f"images/{path.stem}.webp"
+        converted += 1
+    if converted:
+        store.save_fighters(fighters)
+    return converted
 
 
 def process(
     data_dir: Path, client: HttpClient, now: datetime, limit: int | None = None
 ) -> Summary:
     store = Store(data_dir)
+    migrated = migrate_images(data_dir)
+    if migrated:
+        log.info("converted %d legacy headshots to webp", migrated)
     fighters, events = _load(store)
     fighter_ids = _upcoming_fighter_ids(events)
     images_dir = data_dir / "images"
@@ -93,10 +127,9 @@ def process(
             summary.misses += 1
             log.info("image miss %s (%s)", fighter.name, fid)
             continue
-        body, ext = found
         images_dir.mkdir(parents=True, exist_ok=True)
-        (images_dir / f"{fid}.{ext}").write_bytes(body)
-        fighter.image = f"images/{fid}.{ext}"
+        (images_dir / f"{fid}.webp").write_bytes(found)
+        fighter.image = f"images/{fid}.webp"
         misses.clear(fid)
         summary.hits += 1
         log.info("image hit %s (%s)", fighter.name, fid)
