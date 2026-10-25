@@ -2,16 +2,17 @@
   "as_of": "2026-10-14",
   "build": {
     "built_at": "2026-10-15T02:58:21.246658+00:00",
-    "code_version": null
+    "code_version": "e1dba4eb98fae9a6f146ca4155daa6ee1a88be3788a747c12715a3d8cde9637f",
+    "commit": "507237fea2454550b4094edb19e9913e589465ce"
   },
-  "exported_at": "2026-10-25T02:20:07Z",
+  "exported_at": "2026-10-25T02:28:18Z",
   "features_hash": "05af2c4985f733d7ab96d34ec71687f5135eaa0413e03fd487d227418b8bc942",
   "format_version": 1,
   "lightgbm": "4.7.0",
   "model_hash": "cc8580e8cb67d3c6518280bd8fd1bfa82165989e0083e3a31cdf786826100382",
   "n_fighters": 4628,
   "research_dirty": false,
-  "research_sha": "d8131cd4891c39f5296aa9814e76021ffba30ae1",
+  "research_sha": "d179cf2b1619292a8af076f84bec6a4b3c275598",
   "train": {
     "finish_rate": 0.5183453237410072,
     "last_bout": "2026-10-10",
