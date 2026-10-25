@@ -85,3 +85,34 @@ def current_elo(fighters: dict[str, Fighter], snapshot: pd.DataFrame, as_of: str
         else:
             out[fid] = round(rating.get(fid, start(fid)))
     return out
+
+
+# Contract rating (docs/ELO.md): stubs
+class State:
+    def __init__(self, **kw):
+        raise NotImplementedError
+
+
+class Bout:
+    def __init__(self, *a, **kw):
+        raise NotImplementedError
+
+
+def k_factor(n):
+    raise NotImplementedError
+
+
+def credit(result, method):
+    raise NotImplementedError
+
+
+def decay(rating, last, day):
+    raise NotImplementedError
+
+
+def roll_forward(states, bouts):
+    raise NotImplementedError
+
+
+def fighter_ratings(fighters, ratings, snapshot, as_of, now):
+    raise NotImplementedError

@@ -172,15 +172,56 @@ def test_unchanged_run_rewrites_identical_files(data, model_dir):
     assert (root / "events" / "future.json").read_text() == before
 
 
-def test_writes_current_elo_into_fighters_json(data, model_dir, veterans, capsys):
+def write_ratings(model_dir: Path, veterans: list[dict]) -> list[float]:
+    """fighter_rating.parquet for the veterans: ratings symmetric around 1500, all last fought 2026-10-01."""
+    ratings = [1500 + 50 * (i - 2.5) for i in range(len(veterans))]
+    pd.DataFrame([{"fighter_id": v["fighter_id"], "rating": r, "peak": r + 10, "n_bouts": 12, "n_ufc_bouts": 8,
+                   "last_bout_date": "2026-10-01", "gender": "M"} for v, r in zip(veterans, ratings)]
+                 ).to_parquet(model_dir / "fighter_rating.parquet")
+    return ratings
+
+
+def test_writes_rating_fields_into_fighters_json(data, model_dir, veterans, capsys):
     root, store = data
+    ratings = write_ratings(model_dir, veterans)
     assert score(root, model_dir) == 0
     fighters = store.load_fighters()
-    for v in veterans:
-        assert fighters[v["fighter_id"]].elo == round(v["elo"])
-    assert fighters["nobody"].elo is None
-    assert sum(f.elo is None for f in fighters.values()) == 2  # nobody and the rookie
+    for i, (v, r) in enumerate(zip(veterans, ratings)):
+        f = fighters[v["fighter_id"]]
+        # mean of the decayed ratings is exactly 1500, so there is no anchor shift
+        assert f.elo == round(1500 + (r - 1500) * 0.9 ** (31 / 365.25))
+        assert f.elo_peak == round(r + 10)
+        assert f.p4p_rank == len(veterans) - i
+        assert (f.elo_provisional, f.elo_inactive) == (False, False)
+    for fid in ("nobody", fighters_without_snapshot_history(fighters, veterans)):
+        assert (fighters[fid].elo, fighters[fid].elo_peak, fighters[fid].p4p_rank) == (None, None, None)
     assert "6 fighters with an Elo" in capsys.readouterr().err
     before = store.fighters_path.read_text()
     score(root, model_dir)
     assert store.fighters_path.read_text() == before
+
+
+def fighters_without_snapshot_history(fighters: dict, veterans: list[dict]) -> str:
+    """The rookie's id: the one fighter who is neither a veteran nor "nobody"."""
+    [rookie] = set(fighters) - {v["fighter_id"] for v in veterans} - {"nobody"}
+    return rookie
+
+
+def test_decay_follows_now(data, model_dir, veterans):
+    root, store = data
+    ratings = write_ratings(model_dir, veterans)
+    score(root, model_dir, now="2027-11-01T06:00:00Z")  # 396 days after the last bout
+    f = store.load_fighters()[veterans[-1]["fighter_id"]]
+    assert f.elo == round(1500 + (ratings[-1] - 1500) * 0.9 ** (396 / 365.25))
+    assert (f.elo_inactive, f.p4p_rank) == (True, None)
+
+
+def test_without_a_rating_export_fighters_are_unrated_and_tiers_still_score(data, model_dir, capsys):
+    root, store = data
+    (model_dir / "fighter_rating.parquet").unlink(missing_ok=True)
+    set_thresholds(model_dir, -1.0, 2.0)
+    assert score(root, model_dir) == 0
+    for f in store.load_fighters().values():
+        assert (f.elo, f.elo_peak, f.p4p_rank, f.elo_provisional, f.elo_inactive) == (None, None, None, False, False)
+    assert tiers(store, "future") == {"ok": "medium", "rookie": None, "unknown": None}
+    assert "0 fighters with an Elo" in capsys.readouterr().err
