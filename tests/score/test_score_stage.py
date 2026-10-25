@@ -170,3 +170,17 @@ def test_unchanged_run_rewrites_identical_files(data, model_dir):
     before = (root / "events" / "future.json").read_text()
     score(root, model_dir, now="2026-11-02T06:00:00Z")
     assert (root / "events" / "future.json").read_text() == before
+
+
+def test_writes_current_elo_into_fighters_json(data, model_dir, veterans, capsys):
+    root, store = data
+    assert score(root, model_dir) == 0
+    fighters = store.load_fighters()
+    for v in veterans:
+        assert fighters[v["fighter_id"]].elo == round(v["elo"])
+    assert fighters["nobody"].elo is None
+    assert sum(f.elo is None for f in fighters.values()) == 2  # nobody and the rookie
+    assert "6 fighters with an Elo" in capsys.readouterr().err
+    before = store.fighters_path.read_text()
+    score(root, model_dir)
+    assert store.fighters_path.read_text() == before
