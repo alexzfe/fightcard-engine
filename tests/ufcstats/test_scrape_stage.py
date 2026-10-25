@@ -41,7 +41,12 @@ class FakeClient:
         raise HttpError(url, 404)
 
 
-def site_pages(upcoming=None, detail=None):
+def empty_card() -> str:
+    """The upcoming detail page with its fight table removed (no bouts announced)."""
+    return read_fixture("event_detail_upcoming.html").split('<tbody class="b-fight-details__table-body">')[0]
+
+
+def site_pages(upcoming=None, detail=None, empty=()):
     pages = {
         stage.UPCOMING_URL: upcoming if upcoming is not None else read_fixture("upcoming.html"),
         stage.COMPLETED_URL: read_fixture("completed.html"),
@@ -51,6 +56,8 @@ def site_pages(upcoming=None, detail=None):
         pages[f"{BASE}/event-details/{event_id}"] = (
             detail if detail is not None else read_fixture("event_detail_upcoming.html")
         )
+    for event_id in empty:
+        pages[f"{BASE}/event-details/{event_id}"] = empty_card()
     return pages
 
 
@@ -136,10 +143,36 @@ def test_zero_upcoming_events_fails_without_writing(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_upcoming_event_without_fights_fails_without_writing(tmp_path):
-    detail = read_fixture("event_detail_upcoming.html").split('<tbody class="b-fight-details__table-body">')[0]
-    assert scrape(tmp_path, make_client(detail=detail)) != 0
+def test_all_upcoming_events_without_fights_fails_without_writing(tmp_path):
+    assert scrape(tmp_path, make_client(detail=empty_card())) != 0
     assert list(tmp_path.iterdir()) == []
+
+
+def test_soonest_upcoming_event_without_fights_fails_without_writing(tmp_path, capsys):
+    assert scrape(tmp_path, make_client(empty=[UPCOMING_IDS[0]])) != 0
+    assert list(tmp_path.iterdir()) == []
+    assert UPCOMING_IDS[0] in capsys.readouterr().err
+
+
+def test_far_out_events_without_fights_are_skipped(tmp_path, caplog):
+    far = UPCOMING_IDS[5:]  # UFC 336 and the Sydney Fight Night: no bouts announced
+    caplog.set_level("INFO", logger="fightcard.ufcstats.stage")
+    assert scrape(tmp_path, make_client(empty=far)) == 0
+
+    store = Store(tmp_path)
+    for event_id in far:
+        assert store.load_event(event_id) is None
+    assert store.load_index().upcoming == UPCOMING_IDS[:5]
+    skipped = [r for r in caplog.records if r.levelname == "INFO" and "0 fights" in r.getMessage()]
+    assert sorted(r.getMessage().split()[2] for r in skipped) == sorted(far)
+
+
+def test_previously_written_event_now_empty_is_left_alone_and_unindexed(tmp_path):
+    old = UPCOMING_CARD.event.model_copy(update={"id": UPCOMING_IDS[6], "date": "2027-02-06"})
+    store = seed(tmp_path, old)
+    assert scrape(tmp_path, make_client(empty=[UPCOMING_IDS[6]])) == 0
+    assert store.load_event(UPCOMING_IDS[6]) == old
+    assert UPCOMING_IDS[6] not in store.load_index().upcoming
 
 
 def test_halt_fails_without_writing(tmp_path):
