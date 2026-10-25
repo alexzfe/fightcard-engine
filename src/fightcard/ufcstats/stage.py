@@ -70,7 +70,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def merge_event(old: Event | None, new: Event) -> Event:
-    """Keep finish tiers (and pre-fight corner order) for fights still on the card."""
+    """Keep finish tiers, card segments and pre-fight corner order for fights still on the card."""
     if old is None:
         return new
     previous = {f.id: f for f in old.fights}
@@ -78,7 +78,11 @@ def merge_event(old: Event | None, new: Event) -> Event:
     for fight in new.fights:
         prev = previous.get(fight.id)
         if prev is not None:
-            update = {"finish_tier": prev.finish_tier, "tier_frozen_at": prev.tier_frozen_at}
+            update = {
+                "finish_tier": prev.finish_tier,
+                "tier_frozen_at": prev.tier_frozen_at,
+                "segment": prev.segment,
+            }
             # completed cards list the winner first; keep the corners the site already showed
             if (fight.red, fight.blue) == (prev.blue, prev.red):
                 update |= {"red": prev.red, "blue": prev.blue}

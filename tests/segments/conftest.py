@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from segments_helpers import FakeTransport
-
 from fightcard.images.http import HttpClient
+from segments_helpers import FakeTransport
 
 
 @pytest.fixture

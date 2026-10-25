@@ -15,6 +15,7 @@ data/
 
 - All JSON is UTF-8, 2-space indent, keys sorted, trailing newline (stable diffs).
 - `finish_tier`: `"high" | "medium" | "low" | null`. `null` renders as "—".
+- `segment`: `"main" | "prelims" | "early_prelims" | null`, from ESPN's fightcenter (`main`, `prelims1`, `prelims2`). `null` means unknown; the site shows no segment header for it. Scrape keeps it for fights still on the card.
 - Once `tier_frozen_at` is set, nothing may change `finish_tier` again.
 - Dates are `YYYY-MM-DD`; timestamps are ISO 8601 UTC with `Z`.
 
@@ -39,11 +40,13 @@ Run from the repo root: `uv run --project pipeline fightcard --data data <stage>
 |---|---|---|---|
 | `scrape` | `fightcard.ufcstats` | ufcstats.com, data/ | events/, fighters.json, index.json |
 | `images` | `fightcard.images` | fighters.json, ESPN, Wikipedia | images/, `Fighter.image` |
+| `segments` | `fightcard.segments` | events/, fighters.json, ESPN | `Fight.segment` (upcoming events only) |
 | `score` | `fightcard.score` | model/, events/, fighters.json | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json` |
 
 - Each stage package exposes `stage.py` with `add_arguments(parser)` and `run(args) -> int` (see `fightcard/cli.py`).
 - Non-zero exit means: do not commit, do not deploy.
 - `scrape` must exit non-zero if it finds 0 upcoming events, if the soonest upcoming event has 0 fights, or if all upcoming events together have 0 fights. Far-out events with no bouts announced yet are not written and stay out of `index.upcoming` until fights appear.
+- `segments` exits 0 when ESPN is down or an event can't be matched, and keeps the segments it already has. It exits 1 only if data/ is unreadable.
 - `score` writes `data/stale_fighters.json` (list of `{fighter_id, name, event_id}`), or removes it when nothing is stale. CI uses that file to open or update the "Re-export finish model" issue.
 
 ## Ownership (parallel build)
@@ -54,6 +57,7 @@ Each owner edits only their paths. Contract changes (`models.py`, this doc, `pyp
 |---|---|
 | scraper | `pipeline/src/fightcard/ufcstats/`, `pipeline/src/fightcard/store.py`, `pipeline/tests/ufcstats/`, `pipeline/tests/fixtures/ufcstats/` |
 | images | `pipeline/src/fightcard/images/`, `pipeline/tests/images/`, `pipeline/tests/fixtures/espn/`, `pipeline/tests/fixtures/wikipedia/` |
+| segments | `pipeline/src/fightcard/segments/`, `pipeline/tests/segments/`, `pipeline/tests/fixtures/espn/fightcenter_*.json`, `pipeline/tests/fixtures/espn/scoreboard_calendar.json` |
 | model | `~/Projects/fight-auto-research` (`export/` + tests, on branch `feat/export`), `model/`, `pipeline/src/fightcard/score/`, `pipeline/tests/score/` |
 | site | `site/` |
 | ops | `Dockerfile`, `.dockerignore`, `.github/`, `scripts/`, `~/Projects/infra` (branch `add-ufc-site`, no push) |

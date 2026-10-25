@@ -12,6 +12,7 @@ STAGES = {
     "scrape": "fightcard.ufcstats.stage",
     "images": "fightcard.images.stage",
     "score": "fightcard.score.stage",
+    "segments": "fightcard.segments.stage",
 }
 
 

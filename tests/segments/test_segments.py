@@ -2,13 +2,12 @@ import argparse
 from datetime import date
 
 import pytest
-from segments_helpers import fixture_json
-
 from fightcard import cli
 from fightcard.images.http import Response
 from fightcard.models import Event, Fight, Fighter
 from fightcard.segments import espn, stage
 from fightcard.store import Store
+from segments_helpers import fixture_json
 
 MOICANO_ESPN_ID = "600061420"
 SCOREBOARD = fixture_json("scoreboard_calendar.json")
@@ -20,7 +19,7 @@ FIGHTCENTER = espn.FIGHTCENTER_URL.format(event_id=MOICANO_ESPN_ID)
 MOICANO_BOUTS = [
     ("Renato Moicano", "Tom Nolan"),          # main event
     ("Yana Santos", "Luana Santos"),          # main card; shared surname
-    ("Jean-Paul Lebosnoyani", "Farman Hasanov"),
+    ("Azamat Bekoev", "Andre Petroski"),       # prelims
     ("Zach Reese", "Mickey Gall"),
     ("Nobody Atall", "Someone Else"),         # not on ESPN's card
 ]

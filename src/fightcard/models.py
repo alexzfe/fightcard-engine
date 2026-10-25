@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 FinishTier = Literal["high", "medium", "low"]
+CardSegment = Literal["main", "prelims", "early_prelims"]
 EventStatus = Literal["upcoming", "completed"]
 PastResult = Literal["win", "loss", "draw", "nc"]
 
@@ -65,6 +66,7 @@ class Fight(BaseModel):
     finish_tier: FinishTier | None = None  # None renders as "—"
     tier_frozen_at: str | None = None  # ISO 8601; set once the event starts
     result: Result | None = None
+    segment: CardSegment | None = None  # from ESPN; None = unknown
 
 
 class Event(BaseModel):
