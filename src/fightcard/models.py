@@ -48,6 +48,7 @@ class Fighter(BaseModel):
     image: str | None = None  # path relative to data/, e.g. "images/<id>.png"
     details_fetched_at: str | None = None  # ISO 8601 UTC
     recent_fights: list[PastFight] | None = None  # newest first, at most 3; None = not fetched yet
+    elo: int | None = None  # current Elo (K=32, init 1500), rounded; None = unknown. Set by `score`.
 
 
 class Result(BaseModel):

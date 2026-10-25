@@ -40,6 +40,7 @@ Each row holds a fighter's state going into any bout dated after `as_of`. Histor
 | `n_ufc_bouts` | UFC bouts in the history. **No-history guard:** 0 (or not in the snapshot) → `—`. |
 | `dob`, `first_bout_date`, `last_bout_date` | `YYYY-MM-DD` or null; inputs to `age`, `career_days` and `layoff_days` |
 | `recent_dates`, `recent_finish_loss`, `recent_ko_loss` | bouts in the last 730 days before `as_of`+1, as parallel lists; inputs to the two-year window features |
+| `elo` | Elo going into the next bout (K=32, start 1500; research `build/toolkit.py`). Also shown on the site: `score` rolls it forward over each fighter's `recent_fights` dated after `as_of` (same update, same-day batching) and writes `Fighter.elo`. An opponent not in `fighters.json` starts from their snapshot rating. If the newer bouts found don't match the record change since the export, `elo` is `null`. |
 | every other column | a feature's per-fighter value (e.g. `elo`, `slpm`, `stance`). It doesn't depend on the bout date as long as the fighter hasn't fought again. |
 
 ## feature_spec.json

@@ -17,6 +17,7 @@ data/
 - `finish_tier`: `"high" | "medium" | "low" | null`. `null` renders as "—".
 - `segment`: `"main" | "prelims" | "early_prelims" | null`, from ESPN's fightcenter (`main`, `prelims1`, `prelims2`). `null` means unknown; the site shows no segment header for it. Scrape keeps it for fights still on the card.
 - Once `tier_frozen_at` is set, nothing may change `finish_tier` again.
+- `Fighter.elo`: integer current Elo, or `null` when unknown (no UFC history, or results since the model export are missing). Written by `score`; the site shows it next to the record.
 - Dates are `YYYY-MM-DD`; timestamps are ISO 8601 UTC with `Z`.
 
 ## model/ layout (vendored export from fight-auto-research)
@@ -41,7 +42,7 @@ Run from the repo root: `uv run --project pipeline fightcard --data data <stage>
 | `scrape` | `fightcard.ufcstats` | ufcstats.com, data/ | events/, fighters.json, index.json |
 | `images` | `fightcard.images` | index.json, events/, fighters.json, ESPN, Wikipedia | images/, `Fighter.image` (cards in `index.upcoming` then `index.recent`) |
 | `segments` | `fightcard.segments` | events/, fighters.json, ESPN | `Fight.segment` (upcoming events only) |
-| `score` | `fightcard.score` | model/, events/, fighters.json | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json` |
+| `score` | `fightcard.score` | model/, events/, fighters.json | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json`, `Fighter.elo` |
 
 - Each stage package exposes `stage.py` with `add_arguments(parser)` and `run(args) -> int` (see `fightcard/cli.py`).
 - Non-zero exit means: do not commit, do not deploy.
