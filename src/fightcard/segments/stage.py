@@ -9,10 +9,13 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from fightcard.images.http import HttpClient
+from fightcard.images.http import HttpClient, Response
 from fightcard.images.names import names_match
 from fightcard.models import Event, Fight, Fighter
 from fightcard.segments import espn
@@ -32,8 +35,23 @@ class Summary:
     unmatched: int = 0  # fights on a read card that ESPN doesn't list
 
 
+# site.api.espn.com answers 403 to a User-Agent containing a URL, so don't reuse images.http's.
+USER_AGENT = "fightcard/0.1 (non-commercial fan site)"
+
+
+def _transport(url: str, params: dict | None = None, timeout: float = 15.0) -> Response:
+    if params:
+        url = f"{url}?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return Response(resp.status, resp.read())
+    except urllib.error.HTTPError as e:
+        return Response(e.code, b"")
+
+
 def make_client() -> HttpClient:
-    return HttpClient(min_interval=1.0)
+    return HttpClient(transport=_transport, min_interval=1.0)
 
 
 def _get_json(client: HttpClient, url: str, params: dict | None = None):

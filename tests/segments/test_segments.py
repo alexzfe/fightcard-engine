@@ -193,3 +193,31 @@ def test_run_exits_zero_on_network_failure_and_one_on_missing_data(tmp_path, mon
     monkeypatch.setattr(stage, "make_client", lambda: client)  # every URL 404s
     assert stage.run(argparse.Namespace(data=tmp_path)) == 0
     assert stage.run(argparse.Namespace(data=tmp_path / "missing")) == 1
+
+
+def test_user_agent_has_no_url(monkeypatch):
+    # site.api.espn.com/.../scoreboard answers 403 to any User-Agent containing a URL.
+    seen = {}
+
+    class FakeResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return b"{}"
+
+    def fake_urlopen(req, timeout):
+        seen["ua"] = req.get_header("User-agent")
+        seen["url"] = req.full_url
+        return FakeResp()
+
+    monkeypatch.setattr(stage.urllib.request, "urlopen", fake_urlopen)
+    resp = stage.make_client().get(espn.FIGHTCENTER_URL.format(event_id="1"), espn.FIGHTCENTER_PARAMS)
+    assert resp.ok
+    assert seen["ua"].startswith("fightcard/") and "http" not in seen["ua"]
+    assert seen["url"].endswith("/fightcenter/1?region=us&lang=en")
