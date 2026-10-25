@@ -19,8 +19,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin, urlsplit
 
+from curl_cffi.requests import Session as CurlSession
 from scrapling.fetchers import Fetcher, StealthyFetcher
 
 from fightcard.ufcstats.pow import is_challenge, parse_challenge, solve
@@ -34,6 +35,10 @@ MAX_SOLVES = 2
 
 class Halt(Exception):
     """ufcstats is blocking us; stop the run without writing anything."""
+
+
+class TransportError(Exception):
+    """The request never produced an HTTP response (connection reset, curl error, ...)."""
 
 
 class HttpError(Exception):
@@ -53,7 +58,9 @@ class HttpResponse:
 class Transport(Protocol):
     def get(self, url: str, cookies: dict[str, str]) -> HttpResponse: ...
 
-    def post(self, url: str, data: dict[str, str], cookies: dict[str, str]) -> HttpResponse: ...
+    def post(
+        self, url: str, data: dict[str, str], cookies: dict[str, str], referer: str
+    ) -> HttpResponse: ...
 
 
 def _cookie_dict(cookies) -> dict[str, str]:
@@ -71,16 +78,41 @@ def _to_response(resp) -> HttpResponse:
     return HttpResponse(status=resp.status, text=resp.html_content, cookies=_cookie_dict(resp.cookies))
 
 
+def _origin(url: str) -> str:
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}"
+
+
 class ScraplingTransport:
-    """curl_cffi via scrapling Fetcher, impersonating Chrome."""
+    """GETs via scrapling Fetcher (curl_cffi, impersonating Chrome).
+
+    The challenge POST goes straight to curl_cffi: ufcstats rejects scrapling's
+    HTTP/2 form POST (curl error 16) and a body without a form content type (400).
+    Verified live 2026-10-25: HTTP/1.1 urlencoded body + Origin/Referer → 204 with _fmc.
+    Any exception below the HTTP layer is raised as TransportError.
+    """
 
     def get(self, url: str, cookies: dict[str, str]) -> HttpResponse:
-        return _to_response(Fetcher.get(url, cookies=cookies, impersonate="chrome", timeout=30))
+        try:
+            return _to_response(Fetcher.get(url, cookies=cookies, impersonate="chrome", timeout=30))
+        except Exception as exc:
+            raise TransportError(f"GET {url}: {exc}") from exc
 
-    def post(self, url: str, data: dict[str, str], cookies: dict[str, str]) -> HttpResponse:
-        return _to_response(
-            Fetcher.post(url, data=data, cookies=cookies, impersonate="chrome", timeout=30)
-        )
+    def post(
+        self, url: str, data: dict[str, str], cookies: dict[str, str], referer: str
+    ) -> HttpResponse:
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": _origin(referer),
+            "Referer": referer,
+        }
+        try:
+            with CurlSession(impersonate="chrome") as session:
+                resp = session.post(url, data=urlencode(data), headers=headers, cookies=cookies,
+                                    http_version="v1", timeout=30)
+                return HttpResponse(resp.status_code, resp.text, _cookie_dict(dict(resp.cookies)))
+        except Exception as exc:
+            raise TransportError(f"POST {url}: {exc}") from exc
 
 
 def stealthy_cookie(url: str) -> str | None:
@@ -145,20 +177,28 @@ class Client:
                 self.sleep(remaining)
         self._last_request = self.clock()
 
-    def _send(self, send: Callable[[], HttpResponse], url: str) -> HttpResponse:
+    def _send(
+        self, send: Callable[[], HttpResponse], url: str, retry_transport_errors: bool = True
+    ) -> HttpResponse:
         while True:
             self._wait()
-            resp = send()
             self.requests += 1
-            if resp.status in (403, 429) or resp.status >= 500:
-                self._bad_streak += 1
-                if self._bad_streak >= 2:
-                    raise Halt(f"HTTP {resp.status} twice in a row ({url})")
-                log.warning("HTTP %s on %s; backing off %ss", resp.status, url, self.backoff)
-                self.sleep(self.backoff)
-                continue
-            self._bad_streak = 0
-            return resp
+            try:
+                resp = send()
+            except TransportError as exc:
+                if not retry_transport_errors:
+                    raise
+                problem = str(exc)
+            else:
+                if not (resp.status in (403, 429) or resp.status >= 500):
+                    self._bad_streak = 0
+                    return resp
+                problem = f"HTTP {resp.status}"
+            self._bad_streak += 1
+            if self._bad_streak >= 2:
+                raise Halt(f"{problem}; second failure in a row ({url})")
+            log.warning("%s on %s; backing off %ss", problem, url, self.backoff)
+            self.sleep(self.backoff)
 
     def _get(self, url: str) -> HttpResponse:
         return self._send(lambda: self.transport.get(url, self._cookies()), url)
@@ -168,7 +208,11 @@ class Client:
         n = solve(challenge)
         post_url = urljoin(url, challenge.path)
         data = {"nonce": challenge.nonce, "n": str(n)}
-        resp = self._send(lambda: self.transport.post(post_url, data, self._cookies()), post_url)
+        resp = self._send(
+            lambda: self.transport.post(post_url, data, self._cookies(), referer=url),
+            post_url,
+            retry_transport_errors=False,
+        )
         cookie = resp.cookies.get(COOKIE_NAME)
         if 200 <= resp.status < 300 and cookie:
             self._store_cookie(cookie)
@@ -183,14 +227,17 @@ class Client:
                 break
             try:
                 self._post_solution(url, resp.text)
-            except (ValueError, RuntimeError) as exc:
+            except (ValueError, RuntimeError, TransportError) as exc:
                 log.warning("cannot solve challenge: %s", exc)
                 break
             resp = self._get(url)
 
         if is_challenge(resp.text):
             log.warning("python solver failed; falling back to browser for %s", COOKIE_NAME)
-            cookie = self.browser(url)
+            try:
+                cookie = self.browser(url)
+            except Exception as exc:
+                raise Halt(f"browser fallback failed: {exc}") from exc
             if not cookie:
                 raise Halt("browser could not obtain the challenge cookie")
             self._store_cookie(cookie)
