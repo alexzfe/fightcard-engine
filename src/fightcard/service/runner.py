@@ -108,9 +108,12 @@ def script_gate(cfg: Config, event: str, cron: str) -> tuple[bool, str]:
     return decision.get("run") == "true", reason
 
 
-def _fmt(value: object) -> str:
-    text = str(value)
-    return f'"{text}"' if not text or any(c.isspace() for c in text) else text
+def logfmt(prefix: str, **fields: object) -> str:
+    """`prefix k=v k2="v w"`: one greppable line; values with spaces (or empty) are quoted."""
+    def fmt(value: object) -> str:
+        text = str(value)
+        return f'"{text}"' if not text or any(c.isspace() for c in text) else text
+    return " ".join([prefix, *(f"{k}={fmt(v)}" for k, v in fields.items())])
 
 
 def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
@@ -121,7 +124,7 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
     run_id = run_id or f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{os.getpid()}"
 
     def log(**fields: object) -> None:
-        out(" ".join([f"fightcard-run run={run_id}", *(f"{k}={_fmt(v)}" for k, v in fields.items())]))
+        out(logfmt(f"fightcard-run run={run_id}", **fields))
 
     started = clock()
 
