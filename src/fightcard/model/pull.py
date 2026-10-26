@@ -35,6 +35,7 @@ VERSION = re.compile(r"[0-9A-Za-z][0-9A-Za-z._+-]{0,63}")  # a directory name: n
 RESERVED = "current"  # the symlink's name: no version may take it
 SHA256 = re.compile(r"[0-9a-f]{64}")
 _STAGING, _LINK = ".tmp-", ".current-"
+_SCHEMES = ("http", "https")
 TIMEOUT = 30  # seconds, per socket operation
 LATEST_MAX = 1 << 20
 FILE_MAX = 256 << 20
@@ -134,12 +135,24 @@ def _prune(root: Path, keep: int) -> None:
             shutil.rmtree(root / version)
 
 
+class _HttpOnly(urllib.request.HTTPRedirectHandler):
+    """urllib follows a redirect to ftp: as well; a bucket only ever answers over http(s)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if urllib.parse.urlsplit(newurl).scheme not in _SCHEMES:
+            raise Failed(f"{req.full_url} redirects to {newurl}, which is not an http(s) url")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_HttpOnly)
+
+
 def _read(url: str, sink: Callable[[bytes], None], limit: int) -> None:
     """Stream `url` into `sink`; anything that goes wrong on the way is a Failed."""
-    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
+    if urllib.parse.urlsplit(url).scheme not in _SCHEMES:
         raise Failed(f"{url} is not an http(s) url")
     try:
-        with urllib.request.urlopen(url, timeout=TIMEOUT) as response:
+        with _OPENER.open(url, timeout=TIMEOUT) as response:
             size = 0
             while chunk := response.read(1 << 16):
                 size += len(chunk)

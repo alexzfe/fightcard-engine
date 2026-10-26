@@ -430,7 +430,7 @@ def test_a_redirect_to_a_scheme_other_than_http_is_refused(root, capsys, monkeyp
         redirector.stop()
     err = capsys.readouterr().err
     assert opened == []  # never followed
-    assert "failed, keeping" in err and "not an http(s) url" in err, err
+    assert "failed, keeping" in err and ("not an http(s) url" in err or "is not allowed" in err), err  # urllib's own
     assert current(root) == BAKED_VERSION
 
 
