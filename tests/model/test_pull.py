@@ -34,7 +34,7 @@ def current(root: Path) -> str:
 
 
 def kept(root: Path) -> list[str]:
-    return sorted(p.name for p in root.iterdir() if p.is_dir() and not p.name.startswith("."))
+    return sorted(p.name for p in root.iterdir() if p.is_dir() and not p.is_symlink() and not p.name.startswith("."))
 
 
 @pytest.fixture(autouse=True)
