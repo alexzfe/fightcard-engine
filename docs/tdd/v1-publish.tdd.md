@@ -67,7 +67,7 @@ etags before {index "6adf9fa0-93", f1.webp "6adf9fa0-20", snapshot "6adf9fa0-9c8
 
 - `uv run pytest -q --cov=fightcard.publish`: **build.py 97%, generations.py 100%, stage.py 97%, total 98%**
   (missed: the "not an object" branches for index/fighters, and the `_positive` error message).
-  `uv run pytest -q`: **433 passed, 1 skipped, 45 deselected**.
+  `uv run pytest -q`: **434 passed, 1 skipped, 45 deselected** (433 before the fighter-reference check).
 - CI (`ci.yml`) runs the default suite only, so the docker tests run locally. The static config checks run in CI.
 - No lock against two concurrent publishers on one root (documented in `generations.py` and CONTRACT).
 - Out of scope, per the brief: the service Dockerfile, the scheduler, infra `sites.yml`, the site's refresh.
