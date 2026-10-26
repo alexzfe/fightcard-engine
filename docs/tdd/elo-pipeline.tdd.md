@@ -56,8 +56,8 @@
 
 ## Interpretations (Contract ambiguities)
 
-- **What counts as a UFC bout** for a post-`as_of` bout: any event whose name doesn't start with `DWCS` or `Road to UFC` (the non-UFC names seen in `recent_fights`). This must match the research `n_ufc_bouts`.
-- **Peak** updates only on a day with a UFC bout, once `n_ufc ≥ 5` after that day.
+- **What counts as a UFC bout** for a post-`as_of` bout: any event whose name doesn't start with `DWCS` or `Road to UFC`. Now pinned in ELO.md, matched **case-insensitively** since cycle 2.
+- **Peak:** cycle 1 updated it only on a day with a UFC bout. Superseded in cycle 2: ELO.md now pins any bout once `n_ufc ≥ 5`.
 - **NC and decay:** an NC bout decays the stored rating to the bout day (the same-day rule decays each fighter to the day before applying a zero change).
 - **Anchor population** includes unrated (null-rule) fighters, using the bouts we know; they are only hidden and unranked. Debutant opponents added by the roll-forward are part of the population.
 - **Unrated fighters** get every field null / false, including peak and tags.
@@ -65,6 +65,33 @@
 
 ## Coverage and known gaps
 
-- Parity test against the research repo's golden cases (`model/rating_cases.json`) is still to come. The core (`roll_forward` → `Step` with `k`, `pre`, `delta`, `post`) is shaped for it.
-- The vendored `model/` has no `fighter_rating.parquet` yet, so the live site shows no ratings until the next export.
+- The vendored `model/` has no `fighter_rating.parquet` yet, so the live site shows no ratings until the new export is copied in (not done here: `model/` is vendored by hand, and regenerated data isn't committed from this branch).
 - Known limitation (Contract): fighters off our cards who fought after `as_of` stay stale until the next re-export.
+
+## Cycle 2: research parity, case-insensitive UFC names, pinned peak (2026-10-25)
+
+- **Why:** the research export landed with golden cases. ufcstats names the 2026 events `Road To UFC 5.x`, which the case-sensitive prefix counted as UFC. ELO.md now pins the peak to any bout once the fighter has ≥5 UFC bouts.
+- **Fixture:** `pipeline/tests/score/fixtures/rating_cases.json`, vendored byte-identical (`cmp`) from the research `tests/fixtures/rating_cases.json` and the export output. Schema: the research `export/rating.py` docstring.
+- **RED (`0ac7aba`):** `uv run pytest -q tests/score` gave `18 failed, 69 passed`:
+  - 10 golden cases: `TypeError` on `Bout(weight_class=...)` (no gender inference yet).
+  - The params check: missing `DAYS_PER_YEAR` / `K_*` / `NO_UPDATE_METHODS`.
+  - `credit` for `win`/`loss` Overturned and `draw` CNC: gave 1 / 0 / 0.5, want no update.
+  - Peak after a non-UFC bout once `n_ufc ≥ 5`.
+  - `Road To UFC 5.2`, `ROAD TO UFC 5.3`, `dwcs 10.7` counted as UFC.
+- **GREEN (`0e40cbc`):** `uv run pytest -q` gave **`301 passed, 1 deselected`**. `elo.py` coverage is 100% (169 stmts). Changes:
+  - CNC/Overturned never update, whatever the recorded result (ELO.md: "count as NC").
+  - `Bout.weight_class` sets `State.gender`: any Women's → F, else a named division → M; catch/open weight or none leaves it.
+  - `Step` gains `e_a`, `w_a`, `peak_a`, `peak_b`, so it is a full golden log row.
+  - The peak updates on any bout once `n_ufc ≥ 5`.
+  - The UFC prefix match is lower-cased.
+  - Params are constants checked against `rating_cases.json` `params`.
+- **Test fixed during GREEN:** the new peak assertion in `test_peak_counts_from_the_fifth_ufc_bout_and_only_rises` was wrong. It followed a loss, so one win against `b` didn't reach a new high. The non-UFC win now comes against a 2200-rated opponent, so it does set a new high. Under the old UFC-only rule the peak would stay at `top`, so the test still fails there.
+- **Smoke with the real export** (`--model-dir <export-out>`, a scratch copy of data/, `--now 2026-10-25`): `49 bouts with a tier, 0 stale fighter entries, 133 fighters with an Elo`, exit 0. Top of the card: Yan 1764 (#3 P4P), Volkanovski 1724 (peak 1808, #8), Volkov 1721 (#9). Women ranked: Suarez #5, Jandiroba #10. The one unrated fighter is a UFC debutant with no in-scope bouts.
+
+| # | Guarantee | Test | Type | Result |
+|---|---|---|---|---|
+| 19 | The roll-forward reproduces every research golden case: per-bout `pre/k/e/w/delta/post/peak` and final `rating/n/n_ufc/last/peak/gender` to 1e-9 (debut, decay_gap, same_day, split_majority, favourite_split_win, draw, nc_counts_n, cnc_overturned, peak_fifth_ufc, gender) | `test_rating_parity.py::test_golden_case[*]` (10) | parity | PASS |
+| 20 | Our formula and display constants equal the export's `params` | `test_rating_parity.py::test_format_and_params_match_ours` | parity | PASS |
+| 21 | CNC / Overturned never update, whatever the recorded result | `test_credit_by_result_and_method[win-Overturned…, loss-Overturned…, draw-CNC…]` | unit | PASS |
+| 22 | DWCS / Road to UFC in any letter case are not UFC bouts | `test_contender_series_and_road_to_ufc_are_not_ufc_bouts_in_any_case[*]` (5) | integration | PASS |
+| 23 | Once the fighter has ≥5 UFC bouts, any bout (UFC or not) can set the peak | `test_peak_counts_from_the_fifth_ufc_bout_and_only_rises`, golden `peak_fifth_ufc` | unit/parity | PASS |
