@@ -148,3 +148,25 @@ next-upcoming row (next.png) never counts.
 | S5 | `score` passes on an empty completed store row; still fails on a completed row with outcome-less bouts | `tests/score/test_score_stage.py::test_an_empty_completed_card_in_the_store_passes`, `…::test_a_listed_card_whose_bouts_have_no_outcome_yet_still_fails` |
 | S6 | scrape: an empty listed card is backfilled once (store and data/ `completed`, in `index.recent`), not refetched, `score` passes; an unlisted empty card stays `upcoming` | `tests/ufcstats/test_scrape_history.py::test_an_empty_listed_card_is_backfilled_once`, `…::test_an_empty_unlisted_card_keeps_its_parsed_status` |
 | S7 | A skipped backfill event (404 or no outcome) is recorded in `backfill_skips`, not retried within 7 days, retried at 7 days, row removed once it goes in; waiting events leave the 20-a-run cap to others | `…::test_a_skipped_backfill_event_is_retried_only_after_seven_days`, `…::test_a_backfill_page_without_outcomes_backs_off_too`, `…::test_events_backing_off_leave_the_cap_to_the_others` |
+
+### Review fixes round 3 (decision 2 → option A)
+
+The round 2 narrow rule stands (the listing settles `completed` only for cards with no bouts). Decision 2: `score`
+reads `backfill_skips` read-only and tolerates its absence. A completed data/ event dated up to `--now` that the
+store doesn't have in full and that **is** in `backfill_skips` is one WARNING line naming the event and its recorded
+reason; the exit code is unaffected and the ratings leave it out. Every other such event still exits 1. Test runs
+use `set -o pipefail` and print pytest's exit code, so no checkpoint went in on a red suite.
+
+| Step | Command | Result |
+|---|---|---|
+| RED (`e2dd3a6`) | `set -o pipefail; uv run pytest -q` | `3 failed, 535 passed, 1 skipped` (exit 1): score 2 (a skipped event still exits 1; a second, unskipped event's message also lists the skipped one) + `test_layout`'s rerun of the score tests. The two absent-table guards pass already |
+| GREEN (`8746e67`) | `set -o pipefail; uv run pytest -q` | `538 passed, 1 skipped, 51 deselected` (exit 0) |
+| Docs (`297dbae`) | `uv run pytest -q tests/test_docs.py` | `37 passed`. CONTRACT.md: score's stale-store rule and its `backfill_skips` exception; the backfill paragraph points to it. ELO.md in brief |
+| Final | `-m seed`; `-m docker` | seed `6 passed`; docker `44 passed` (both exit 0) |
+| Coverage | `uv run pytest -q --cov=fightcard.score.stage --cov-report=term-missing tests/score` | `score/stage.py` 99% (line 70, `_guard`'s fighter-not-in-fighters.json branch, uncovered before too) |
+
+| # | What is guaranteed | Test |
+|---|---|---|
+| S8 | A completed event missing from the store that the backfill skipped: exit 0, exactly one WARNING line naming the event and its reason, ratings written | `tests/score/test_score_stage.py::test_a_completed_event_the_backfill_skipped_warns_and_ratings_are_written` |
+| S9 | Only the skipped event is relaxed: another missing event still exits 1, names only itself, writes nothing | `…::test_a_skipped_event_relaxes_only_itself` |
+| S10 | A store without `backfill_skips` (pre-table `history ingest`): strict as before, no "unusable" error; a complete one passes | `…::test_a_store_without_the_backfill_skips_table_stays_strict`, `…::test_a_store_without_the_backfill_skips_table_passes_when_complete` |
