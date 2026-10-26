@@ -41,6 +41,8 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
   change what a value means. Such a breaking change ships as `/v2/`, served next to `/v1/` while consumers move.
 - `index.json` carries `contract_version`, a string. It starts at `"1"`. An additive change bumps the minor
   part (`"1.1"`, `"1.2"`, …); the major part always matches the URL.
+  - `"1"`: the first `/v1/` publish.
+  - `"1.1"`: `Result.outcome`, the fighter rating fields (`elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`), the model summary in `index.model` and `index.model.stale_fighters`. All optional, so data written before them still validates.
 - Consumers must ignore fields they don't know.
 - Changing `models.py` is a contract change: it must stay additive while `/v1/` is live, and this doc changes
   with it.
@@ -98,7 +100,7 @@ Same formatting rule as above. Field meanings, which `/v1/` inherits:
 - Once `tier_frozen_at` is set, nothing may change `finish_tier` again.
 - `Fight.result.outcome`: `"win" | "draw" | "nc" | null`, from ufcstats' W/L flag. `winner` is `null` for both a draw and a no contest; `outcome` tells them apart. `null` in data written before the field existed (2026-10-26) or when the page shows no flag. Optional, so older data still validates.
 - `index.model`: the finish model that scored this generation: its `as_of` and `version` (`model.as_of`, `model.version`: the pulled model once `FIGHTCARD_MODEL_URL` is set, else the one baked into the image; `docs/SERVICE.md`), plus the summary the how-it-works page quotes (`train_rows`, `trees`, `low_max`, `medium_max`, `oos`, `tiers`, `importance` by theme). Written by `score`; the summary fields are null in data written before it.
-  - `index.model.stale_fighters`: integer, how many distinct fighters the staleness guard nulled in this run (their record moved since the export, so their bouts get no tier); `0` when none. `null` in data written before it. Research's export gate reads it with `model.version`. Added without a new `/v1/` version, like the fields before it: nothing was removed or renamed.
+  - `index.model.stale_fighters`: integer, how many distinct fighters the staleness guard nulled in this run (their record moved since the export, so their bouts get no tier); `0` when none. `null` in data written before it. Research's export gate reads it with `model.version`.
 - Fighter rating (`docs/ELO.md`), all written by `score`; the site shows it next to the record. It comes from the full-history pass over the history store (`score --history-db`). When the rating is unknown (no bout in scope) every field is `null` / `false`. A missing or stale store fails `score` instead (see Pipeline CLI), so it never nulls every fighter.
   - `Fighter.elo`: integer displayed current rating (decayed to now, anchored so active established fighters average 1500), or `null`.
   - `Fighter.elo_peak`: integer career peak on the same displayed scale (from the 5th UFC bout on, undecayed), or `null`.
