@@ -101,37 +101,54 @@ file of its version is up:
 
 1. Fetch `latest.json`. If its `version` is the one `current` points at, that's all: `up to date`.
 2. Otherwise download each file into a staging dir under `state/model/`. `latest.json` is checked before anything is
-   fetched: `format_version` 1, a plain version name, only the bundle's file names (an unknown or path-like name is
-   rejected), a sha256 for each, and every required file listed.
+   fetched: `format_version` 1, a plain version name, an `as_of` date, only the bundle's file names (an unknown or
+   path-like name is rejected), a sha256 for each, and every required file listed. Redirects are followed only to
+   http(s) URLs. An `as_of` older than the running model's is held too (no silent downgrade; going back is the pin,
+   below); the same date is fine.
 3. The candidate then has to pass every gate, in this order: the **sha256** of each file; `manifest.json` names the
    same version; `load_bundle` loads it; `thresholds.json`'s `low_max` and `medium_max` **equal the running model's**;
-   and `examples.json` re-scores to its own `p_finish` and tier (the parity check of `tests/score/test_score_parity.py`).
-   A new cut point changes what Low, Medium and High mean, so it needs a person: ship it by hand ([model/README.md](../model/README.md)).
+   and `examples.json` re-scores to its own `p_finish` and tier (the parity check of `tests/score/test_score_parity.py`;
+   anything malformed in it, or that raises while scoring, is a hold, not a crash). `manifest.json`'s `as_of` is
+   held to the same not-older rule. A new cut point changes what Low, Medium and High mean, so it needs a person: ship it by hand ([model/README.md](../model/README.md)).
 4. It's renamed to `state/model/<version>/` and `state/model/current` (a relative symlink, like publish's) is
    switched to it by an atomic rename, so score sees the old model or the new one. The previous version stays kept,
    and only the last 3 versions are (oldest pruned first; never the one `current` names).
 
 **Held, or unreachable: the current model stays.** A version that fails a gate is *held*: the log says
-`model pull: held <version>: <reason>; keeping <current>`, and the next run tries it again (a fresh `latest.json`
-may have moved on). A bucket that is down, answers 404, returns something unreadable, cuts off or sends a file over
+`model pull: held <version>: <reason>; keeping <current>`. Before the gate runs, the pull writes
+`state/model/.held-<version>` (the file digests, the running version and why); a gate verdict, or a pull that dies
+inside the gate (LightGBM can end the process on a corrupt file), leaves it there. While `latest.json` names the same
+files and the same model is running, the version is not fetched again, and the same `held` line is logged every run.
+It is tried again when the digests or the running version change, and the marker goes when `latest.json` moves on or
+the version is adopted (delete the file to force a retry). A checksum mismatch leaves no marker: it says nothing
+about the model, so the next run fetches again. A bucket that is down, answers 404, returns something unreadable, cuts off or sends a file over
 256 MiB is *unreachable*: `model pull: failed, keeping <current>`, no verdict on any model. Either way the pull
 ends with exit 0, and the runner goes on even if the pull crashes or hangs (its 5 min timeout), so a pull does not fail the
 run: score runs on the model it had. Look for `step=model` in the run's lines and `model pull:` in the output.
 
 **No-op, and the first boot.** With `FIGHTCARD_MODEL_URL` unset (and no pin) the pull is a no-op that logs one
 line and creates nothing: `state/model` doesn't exist, and score reads `FIGHTCARD_MODEL_DIR` (`/app/model`, the
-baked model). The first boot with a url or a pin copies the baked model to `state/model/<its version>/` and points
-`current` at it, so there is always a model to compare a new one with and to roll back to. From then on score reads
-`state/model/current`. A `current` that no longer loads is seeded again from the baked model.
+baked model), also if an earlier configuration left a `state/model/current` behind. The first boot with a url or a pin
+copies the baked model to `state/model/<its version>/` and points `current` at it, so there is always a model to
+compare a new one with and to roll back to. Score reads `state/model/current` only when a pull is configured (a url
+or a pin) and there is one; the runner passes the baked model as `--fallback-model-dir`, which score uses, with an
+`ERROR` line, if `current` won't load. A `current` that no longer loads is seeded again from the baked model.
 
-**Which model scored.** score logs `(model <version>)`, and `/v1/index.json` carries `model.version`, `model.as_of`
+**A new image.** When the image's baked model is newer (a later `as_of` than `current`'s), every pull adopts it (the gates
+above, except the cut-point check: the image defines the cut points, so bundles with the new ones aren't held
+forever), and under a pin it is only kept, so it can be pinned. A baked model that is not newer but differs from
+`current` is logged each run: `baked model <v> … is not newer than current <v>`.
+
+**Which model scored.** score logs `score: model <version> (as_of …) from <dir>`, and `/v1/index.json` carries `model.version`, `model.as_of`
 and `model.stale_fighters` (the number of fighters whose record moved since the export, whose bouts get no tier).
 Research's export gate reads them: it exports when the box already runs the newest published version and
 `model.stale_fighters` is above 0 ([CONTRACT.md](CONTRACT.md)).
 
 **Pin and rollback.** `FIGHTCARD_MODEL_PIN=<version>` makes the pull switch `current` to that kept version, without
 fetching anything, and keep it there: newer versions in the bucket wait until the pin is removed. A pin can only
-name a kept version (the last 3) that still loads; anything else is held and the current model stays. To roll back:
+name a kept version (the last 3) that still loads; anything else logs an `ERROR FIGHTCARD_MODEL_PIN … ` line on
+every run and the current model stays. Pinning is the only way to roll back, because a `latest.json` older than the
+running model is held. To roll back:
 
 ```sh
 docker compose exec app ls /srv/fightcard/state/model     # the kept versions, oldest first
@@ -139,8 +156,9 @@ docker compose exec -e FIGHTCARD_MODEL_PIN=<version> app fightcard-service run  
 ```
 
 For it to last, set `FIGHTCARD_MODEL_PIN: <version>` in the app's `env` in infra's `sites.yml` and deploy; remove it
-to resume pulling. Or have research point `latest.json` back at the older version: a version that differs from
-`current`, older or not, is pulled and gated like any other.
+to resume pulling. Pulling an older export would be a new `as_of`, so it is the pin, not `latest.json`, that goes back.
+
+A pull sweeps `state/model/.tmp-*` (staging) and `.current-*` (a switch that was killed half way) before it starts.
 
 ## Volume
 

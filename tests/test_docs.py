@@ -133,14 +133,14 @@ def test_service_doc_covers_the_model_pull(term):
     "same files",            # ... what has to change
     "as_of",                 # a latest.json older than the running model is held (no silent downgrade)
     "older",
-    "redirect",              # only http(s) is followed
+    "Redirects",             # only http(s) is followed
     "ERROR",                 # an unusable pin is loud
     "baked model is newer",  # an upgraded image's model replaces an older current
     "--fallback-model-dir",  # a current that won't load is as good as none
     ".current-",             # swept with .tmp-*
 ])
 def test_service_doc_covers_the_review_fixes(term):
-    assert term in model_section(), term
+    assert term in " ".join(model_section().split()), term
 
 
 def test_service_doc_no_longer_rolls_back_through_latest_json():
