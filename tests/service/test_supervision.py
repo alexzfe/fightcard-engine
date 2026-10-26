@@ -13,7 +13,9 @@ import re
 import signal
 import subprocess
 import sys
+import threading
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -257,3 +259,43 @@ def test_serve_stops_a_run_past_the_whole_run_cap(fake):
         serve_proc.terminate()
         out, _ = serve_proc.communicate(timeout=20)
     assert "fightcard-serve status=timeout" in out
+
+
+def test_a_slot_that_fires_mid_run_starts_when_the_real_run_ends(fake, monkeypatch):
+    """Real run processes (a 2 s scrape), a scripted clock: 06:00 starts one; 06:17 fires while it runs."""
+    from fightcard.service import serve
+    monkeypatch.setattr(serve, "NGINX", [sys.executable, "-c", "import time; time.sleep(300)"])
+    monkeypatch.setenv("FIGHTCARD_BIN", fake.fightcard)
+    monkeypatch.setenv("FIGHTCARD_ROOT", str(fake.root))
+    monkeypatch.setenv("FAKE_SLEEP_SCRAPE", "2")
+    (fake.root / "generations" / "x").mkdir(parents=True)
+    (fake.root / "current").symlink_to("generations/x")
+    times = iter(["05:59:59", "06:00:00", "06:17:30"])
+    clock = {"now": None}
+
+    def now():
+        clock["now"] = next(times, None) or clock["now"]
+        return datetime.fromisoformat(f"2026-10-26 {clock['now']}").replace(tzinfo=UTC)
+
+    runs: list[subprocess.Popen] = []
+
+    def spawn(argv, **kwargs):
+        proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, **kwargs)
+        if "run" in argv:
+            runs.append(proc)
+        return proc
+
+    lines: list[str] = []
+    stop = threading.Event()
+    ticks = iter(range(100))  # 10 s at most
+
+    def sleep(seconds):
+        time.sleep(0.1)
+        if next(ticks, None) is None or len(runs) == 2 and runs[1].poll() is not None:
+            stop.set()
+
+    serve.serve(fake, spawn=spawn, now=now, sleep=sleep, out=lines.append, stop=stop)
+    print("\n".join(lines))
+    assert [r.args[-1] for r in runs] == ["0 6 * * *", "17 * * * *"]
+    assert any("status=queued" in line for line in lines)
+    assert all(r.returncode is not None for r in runs)

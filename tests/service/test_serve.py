@@ -10,6 +10,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 from fightcard.service import runner, serve
 from fightcard.service.runner import Config
 
@@ -19,16 +21,16 @@ REPO = Path(__file__).resolve().parents[2]
 class FakeProc:
     pids = itertools.count(2**22 + 1)  # above Linux's pid_max, so never a real process
 
-    def __init__(self, argv, lifetime: int | None, **kwargs):
-        self.argv, self.lifetime, self.code, self.kwargs = argv, lifetime, None, kwargs
+    def __init__(self, argv, world: World, lifetime: int | None, **kwargs):
+        """`lifetime`: how many of the world's ticks it runs for (None: until signalled)."""
+        self.argv, self.world, self.code, self.kwargs = argv, world, None, kwargs
+        self.ends_at = None if lifetime is None else world.ticks + lifetime
         self.pid = next(self.pids)
         self.signals: list[int] = []
 
     def poll(self):
-        if self.code is None and self.lifetime is not None:
-            self.lifetime -= 1
-            if self.lifetime <= 0:
-                self.code = 0
+        if self.code is None and self.ends_at is not None and self.world.ticks >= self.ends_at:
+            self.code = 0
         return self.code
 
     def send_signal(self, sig):
@@ -50,12 +52,14 @@ class World:
         self.steps, self.run_lifetime, self.nginx_dies_at = steps, run_lifetime, nginx_dies_at
         self.stop = threading.Event()
         self.procs: list[FakeProc] = []
+        self.spawned_at: list[datetime] = []
         self.lines: list[str] = []
         self.ticks = 0
 
     def spawn(self, argv, **kwargs):
-        proc = FakeProc(argv, None if argv[0] == "nginx" else self.run_lifetime, **kwargs)
+        proc = FakeProc(argv, self, None if argv[0] == "nginx" else self.run_lifetime, **kwargs)
         self.procs.append(proc)
+        self.spawned_at.append(self.now)
         return proc
 
     def killpg(self, pgid, sig):
@@ -118,7 +122,44 @@ def test_never_starts_a_run_while_the_last_is_still_going(tmp_path):
     world = World("2026-10-26 05:50:00", steps=60, run_lifetime=None)  # the 06:00 run never ends
     world.serve(config(tmp_path))
     assert len(world.runs) == 1
-    assert any("status=busy" in line and 'cron="17 * * * *"' in line for line in world.lines)
+    assert any("status=queued" in line and 'cron="17 * * * *"' in line for line in world.lines)
+
+
+# Finding 2: a slot that fires during a run waits for it instead of being dropped.
+
+HOURLY = RUN + ["--event", "schedule", "--cron", "17 * * * *"]
+DAILY = RUN + ["--event", "schedule", "--cron", "0 6 * * *"]
+
+
+def test_a_busy_slot_runs_as_soon_as_the_run_ends(tmp_path):
+    world = World("2026-10-26 05:59:40", steps=60, run_lifetime=40)  # the 06:00 run ends at about 06:20
+    world.serve(config(tmp_path))
+    assert world.runs == [DAILY, HOURLY]
+    assert world.spawned_at[2] < datetime(2026, 10, 26, 6, 25, tzinfo=UTC)  # not at the next slot, 07:17
+
+
+STARTUP = RUN + ["--event", "startup"]
+
+
+@pytest.mark.parametrize("start,published,until,first", [
+    ("04:50:00", False, "06:05", STARTUP),  # 05:17 queues, then 06:00 takes its place
+    ("05:16:40", True, "06:20", HOURLY),    # 06:00 queues, then 06:17 doesn't take its place
+])
+def test_a_pending_daily_slot_wins_over_an_hourly_one(tmp_path, start, published, until, first):
+    begin = datetime.fromisoformat(f"2026-10-26 {start}").replace(tzinfo=UTC)
+    lifetime = int((datetime.fromisoformat(f"2026-10-26 {until}").replace(tzinfo=UTC) - begin).total_seconds() // 30)
+    assert lifetime * 30 < serve.RUN_TIMEOUT
+    world = World(f"2026-10-26 {start}", steps=lifetime + 20, run_lifetime=lifetime)
+    world.serve(config(tmp_path, published=published))
+    assert world.runs == [first, DAILY]  # the daily one bypasses the gate, so it's the one worth keeping
+
+
+def test_at_most_one_slot_waits(tmp_path):
+    # A startup run from 06:59 to about 08:20 spans the 07:17 and 08:17 slots; only one run follows it.
+    world = World("2026-10-26 06:59:00", steps=180, run_lifetime=162)
+    world.serve(config(tmp_path, published=False))
+    assert world.runs == [STARTUP, HOURLY]
+    assert world.spawned_at[2] < datetime(2026, 10, 26, 8, 25, tzinfo=UTC)
 
 
 def test_stop_ends_the_run_and_stops_nginx_gracefully(tmp_path):
