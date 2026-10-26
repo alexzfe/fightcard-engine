@@ -67,9 +67,18 @@ def listed_ids(listing_html: str) -> set[str]:
     return {stub.id for stub in parse_event_list(listing_html)}
 
 
-def upsert_card(conn: sqlite3.Connection, parsed: ParsedEvent, listed: set[str]) -> None:
-    """An event page: the event, its card, and the fighters' names as the card spells them."""
+def completed_ids(listing_html: str) -> set[str]:
+    """The listing's completed events: every row but the next upcoming event's (next.png)."""
+    return {stub.id for stub in parse_event_list(listing_html) if not stub.next}
+
+
+def upsert_card(conn: sqlite3.Connection, parsed: ParsedEvent, listed: set[str], completed: set[str]) -> None:
+    """An event page: the event, its card, and the fighters' names as the card spells them. A card with no bouts
+    (all cancelled) parses as upcoming; in `completed` (`completed_ids`) it's stored completed. A listed card with
+    bouts keeps its parsed status: completed once a result is on the page."""
     ev = parsed.event
+    if ev.id in completed and not ev.fights:
+        ev = ev.model_copy(update={"status": "completed"})
     upsert_event(conn, ev, is_ufc_event(ev.name, ev.id in listed), "listing" if ev.id in listed else "history")
     for fid, name in parsed.fighters.items():
         upsert_fighter(conn, fid, name)
@@ -107,13 +116,13 @@ def ingest(conn: sqlite3.Connection, html_dir: Path) -> dict[str, int]:
     with conn:
         pages = _Pages(conn, html_dir)
         listing, _ = pages.read(html_dir / LISTING, LISTING_URL)
-        listed = listed_ids(listing)
+        listed, completed = listed_ids(listing), completed_ids(listing)
         seen: set[str] = set()
         no_outcome: list[str] = []
         for path in sorted((html_dir / "event-details").glob("*.html")):
             html, _ = pages.read(path, f"{BASE_URL}/event-details/{path.stem}")
             parsed = parse_event_detail(html, path.stem)
-            upsert_card(conn, parsed, listed)
+            upsert_card(conn, parsed, listed, completed)
             seen |= parsed.fighters.keys()
             counts["events"] += 1
             counts["fights"] += len(parsed.event.fights)

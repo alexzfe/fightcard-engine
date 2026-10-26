@@ -329,3 +329,10 @@ def test_complete_events_are_completed_rows_with_no_bouts_or_a_bout_with_an_outc
             update={"status": "completed"}), True, "listing")  # listed, results not in yet
         upsert_event(db, event("next"), True, "listing")  # upcoming, no bouts
     assert store_mod.complete_events(db, ["empty", "rated", "pending", "next", "absent"]) == {"empty", "rated"}
+
+
+def test_a_listed_card_with_bouts_keeps_its_parsed_status_until_a_result_is_in(db):
+    """Listed right after the event, results not on the page yet: upcoming, as before (data/ too)."""
+    with db:
+        ingest_mod.upsert_card(db, card([fight("f1", outcome=None)]), listed={"e1"}, completed={"e1"})
+    assert db.execute("SELECT status FROM events WHERE event_id = 'e1'").fetchone() == ("upcoming",)

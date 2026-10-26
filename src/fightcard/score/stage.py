@@ -16,8 +16,8 @@
   default store is `<--data>/../history/history.sqlite` (beside data/, not the
   cwd). A missing, empty, non-SQLite or never-ingested store is an error: exit
   1 before writing anything, so the last good generation stays live. So is a
-  stale store: a completed event in data/ dated up to `--now` with no bout with
-  a result in the store. Each run logs the store's newest completed event and
+  stale store: a completed event in data/ dated up to `--now` the store doesn't
+  have in full (a completed row with no bouts, or with a bout with a result). Each run logs the store's newest completed event and
   last page fetch against `--now`.
   `--no-history` scores tiers only and leaves the rating fields as they are.
 """
@@ -25,7 +25,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sqlite3
 import sys
 from contextlib import closing
@@ -36,7 +35,7 @@ import pandas as pd
 
 from fightcard.history.display import fighter_ratings
 from fightcard.history.rating import history_ratings
-from fightcard.history.store import TABLES
+from fightcard.history.store import TABLES, complete_events
 from fightcard.models import BestWin, Event, Fight, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
 from fightcard.score.features import bout_context, bout_row
@@ -122,12 +121,9 @@ def _store_line(conn: sqlite3.Connection, db: Path, now: datetime) -> str:
 
 
 def _missing_events(conn: sqlite3.Connection, events: list[Event], as_of: str) -> list[str]:
-    """Completed events dated up to `as_of` with no bout with a result in the store, sorted."""
+    """Completed events dated up to `as_of` the store doesn't have in full (`complete_events`), sorted."""
     want = sorted(ev.id for ev in events if ev.status == "completed" and ev.date <= as_of)
-    have = {eid for (eid,) in conn.execute(
-        "SELECT DISTINCT event_id FROM fights "
-        "WHERE outcome IS NOT NULL AND event_id IN (SELECT value FROM json_each(?))",
-        (json.dumps(want),))}
+    have = complete_events(conn, want)
     return [eid for eid in want if eid not in have]
 
 
