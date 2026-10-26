@@ -59,3 +59,44 @@ def test_parity_failures_names_an_example_whose_tier_moved():
 def test_parity_failures_rejects_an_unusable_examples_file(examples):
     from fightcard.score.parity import parity_failures
     assert parity_failures(load_bundle(MODEL_DIR), examples)
+
+
+@pytest.mark.parametrize("value", ["0.5", None, [0.5], {"p": 0.5}, True])
+def test_parity_failures_holds_on_a_malformed_p_finish(value):
+    from fightcard.score.parity import parity_failures
+    examples = json.loads((MODEL_DIR / "examples.json").read_text())
+    examples[1]["p_finish"] = value
+    failures = parity_failures(load_bundle(MODEL_DIR), examples)
+    assert failures and all(isinstance(f, str) for f in failures)
+
+
+@pytest.mark.parametrize("tier", [None, ["low"], {"t": 1}, 3])
+def test_parity_failures_holds_on_a_malformed_tier(tier):
+    from fightcard.score.parity import parity_failures
+    examples = json.loads((MODEL_DIR / "examples.json").read_text())
+    examples[1]["tier"] = tier
+    assert parity_failures(load_bundle(MODEL_DIR), examples)
+
+
+@pytest.mark.parametrize("field,value", [("context", "nope"), ("context", None), ("context", {"x": object}),
+                                         ("date", 5), ("date", None), ("red", None), ("red", ["a"])])
+def test_parity_failures_holds_on_a_malformed_bout(field, value):
+    from fightcard.score.parity import parity_failures
+    examples = json.loads((MODEL_DIR / "examples.json").read_text())
+    examples[1][field] = value
+    failures = parity_failures(load_bundle(MODEL_DIR), examples)
+    assert failures and all(isinstance(f, str) for f in failures)
+
+
+def test_parity_failures_holds_when_the_booster_cannot_score(monkeypatch):
+    import lightgbm as lgb
+
+    from fightcard.score.parity import parity_failures
+    bundle = load_bundle(MODEL_DIR)
+    examples = json.loads((MODEL_DIR / "examples.json").read_text())
+
+    def broken(self, rows):
+        raise lgb.basic.LightGBMError("the number of features in data is not the same as it was in training data")
+    monkeypatch.setattr(type(bundle), "predict", broken)
+    failures = parity_failures(bundle, examples)
+    assert failures and "LightGBMError" in failures[0]
