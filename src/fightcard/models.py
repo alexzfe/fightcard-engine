@@ -63,7 +63,7 @@ class Fighter(BaseModel):
     p4p_rank: int | None = None  # 1-15 men, 1-10 women; None = unranked
     elo_provisional: bool = False  # fewer than 3 UFC bouts
     elo_inactive: bool = False  # no bout in the last 365 days
-    best_win: BestWin | None = None  # data only, not displayed yet; None = no win / unknown
+    best_win: BestWin | None = None  # shown under Stats; None = no win / unknown
 
 
 class Result(BaseModel):
