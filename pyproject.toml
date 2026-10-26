@@ -30,5 +30,8 @@ packages = ["src/fightcard"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers -m 'not live'"
-markers = ["live: hits the network; run explicitly with -m live"]
+addopts = "--strict-markers -m 'not live and not docker'"
+markers = [
+    "live: hits the network; run explicitly with -m live",
+    "docker: starts a container; run explicitly with -m docker",
+]
