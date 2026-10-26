@@ -63,9 +63,19 @@ def _write(files: dict[str, bytes], staging: Path, live: Path | None) -> None:
         old = live / name if live else None
         if old is not None and old.is_file() and old.read_bytes() == files[name]:
             os.link(old, path)
-        else:
-            path.write_bytes(files[name])
-            path.chmod(0o644)
+            continue
+        path.write_bytes(files[name])
+        path.chmod(0o644)
+        if old is not None and old.is_file():
+            _later_than(path, old)
+
+
+def _later_than(path: Path, old: Path) -> None:
+    """nginx's ETag is "<mtime seconds>-<size>": a same-size rewrite in the same second as the file it replaces
+    (or after the clock stepped back) would repeat its ETag, and clients would revalidate stale content to 304."""
+    floor = int(old.stat().st_mtime) + 1
+    if int(path.stat().st_mtime) < floor:
+        os.utime(path, (floor, floor))
 
 
 def _prune(gens: Path, keep: int, live_id: str) -> None:
