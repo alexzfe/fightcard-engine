@@ -37,7 +37,8 @@ uv sync
 uv run pytest                            # full suite; tests that hit the network are excluded
 uv run pytest -m live                    # only the network tests
 uv run pytest -m docker                  # only the nginx container tests (needs docker)
-uv run fightcard --data data scrape      # then segments, images, score
+uv run fightcard history ingest --html-dir <ufcstats cache> --db history/history.sqlite  # once: seed the store
+uv run fightcard --data data scrape      # keeps the store current (--no-history to skip); then segments, images, score
 ```
 
 The data layout and what each field means are in [docs/CONTRACT.md](docs/CONTRACT.md).
