@@ -1,15 +1,17 @@
 """`fightcard scrape`: ufcstats → data/events/*.json, fighters.json, index.json.
 
-Everything is fetched and validated in memory first; nothing is written unless
-the whole run succeeds (non-zero exit = do not commit, do not deploy).
+Everything is fetched and validated in memory first; nothing is written unless every fetch and check
+succeeds (non-zero exit = do not commit, do not deploy).
 
 With a history store (`--history-db`, default `<--data>/../history/history.sqlite` as for `score`, seeded by
 `fightcard history ingest`; `--no-history` to go without)
-the run also keeps it current, in one transaction committed only after data/ is written: the full completed
+the run also keeps it current, in one transaction (write lock taken up front, waiting up to `BUSY_TIMEOUT_MS`)
+committed before data/ is written, so data/ is never ahead of the store: the full completed
 listing (refetched every run: it says which events are UFC events), every event page and every fighter page
 fetched, through the same parse + upsert path as `history ingest`. Completed events in data/ with no bout in
 the store are refetched so `score` finds them. A completed bout with a method but no W/L outcome fails the
-run with nothing written, as it fails `history ingest`.
+run with nothing written, as it fails `history ingest`. If writing data/ fails after the commit, the run exits 1
+saying so; the store being ahead of data/ is harmless, and the next run rewrites data/.
 """
 
 from __future__ import annotations
@@ -49,10 +51,19 @@ BASE_URL = "http://ufcstats.com"
 UPCOMING_URL = f"{BASE_URL}/statistics/events/upcoming"
 COMPLETED_URL = LISTING_URL  # ?page=all: the whole listing, as `history ingest` reads it
 FIGHTER_MAX_AGE = timedelta(days=30)
+BUSY_TIMEOUT_MS = 30_000  # how long to wait for another writer to release the history store
 
 
 class ValidationError(Exception):
     pass
+
+
+class DataWriteFailed(Exception):
+    """Writing data/ failed after the store (if any) was committed; the message says so."""
+
+    def __init__(self, exc: OSError, store_updated: bool):
+        store = "store updated, " if store_updated else ""
+        super().__init__(f"{store}data/ may be partially written; the next run rewrites it: {exc}")
 
 
 def utcnow() -> datetime:
@@ -244,11 +255,20 @@ class _Run:
             })
 
     def write(self) -> dict[str, int]:
-        if self.history is None:
+        """The store first, committed, then data/: data/ never gets ahead of the store (`score`'s staleness check)."""
+        if self.history is not None:
+            self.history.execute(f"PRAGMA busy_timeout = {int(BUSY_TIMEOUT_MS)}")
+            self.history.execute("BEGIN IMMEDIATE")  # the write lock, before any upsert
+            try:
+                self._write_history()
+                self.history.commit()
+            except BaseException:
+                self.history.rollback()
+                raise
+        try:
             return self._write_data()
-        with self.history:  # rolled back if anything below fails
-            self._write_history()
-            return self._write_data()
+        except OSError as exc:
+            raise DataWriteFailed(exc, store_updated=self.history is not None) from exc
 
     def _write_history(self) -> None:
         """The run's pages in the order `history ingest` reads them: listing, event pages by id, fighter pages."""
@@ -300,6 +320,9 @@ def scrape(store: Store, client, now: datetime, recent: int = 1, history: sqlite
         counts = run_.write()
     except (Halt, HttpError, ValidationError, MissingOutcome, sqlite3.Error) as exc:
         print(f"scrape failed, nothing written: {exc}", file=sys.stderr)
+        return 1
+    except DataWriteFailed as exc:
+        print(f"scrape failed: {exc}", file=sys.stderr)
         return 1
     print("scrape ok: " + ", ".join(f"{k}={v}" for k, v in counts.items()), file=sys.stderr)
     return 0
