@@ -157,6 +157,12 @@ def test_fighter_pages_fill_bio_and_name(seeded):
     assert name == "Cristiane Justino" and record_w > 20 and height and stance  # the card says "Cris Cyborg"
 
 
+def test_fighter_page_dobs_with_abbreviated_months_are_kept(seeded):
+    # the pages say "Jul 09, 1985" and "Oct 17, 1981"
+    assert dict(seeded.execute("SELECT fighter_id, dob FROM fighters WHERE fetched_at IS NOT NULL")) == {
+        CYBORG: "1985-07-09", "634e2fb70bde3fd5": "1981-10-17"}
+
+
 def test_pages_record_url_path_hash_and_fetch_time(seeded):
     url, sha, fetched = seeded.execute(
         "SELECT url, sha256, fetched_at FROM pages WHERE path = ?", (f"event-details/{UFC219}.html",)).fetchone()
