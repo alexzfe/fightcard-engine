@@ -37,21 +37,31 @@ they were expected to win clearly.
 - **Peak:** the highest rating reached after ≥5 UFC bouts. Shown under Stats with the best win, and in the Elo's tooltip.
 - `null` / hidden when the rating is unknown, as today.
 
-## Where it is computed (interim)
+## Where it is computed
 
-1. **The research repo** (`fight-auto-research`) computes the rating over full history and exports
-   `model/fighter_rating.parquet`: `fighter_id, rating, peak, n_bouts, n_ufc_bouts, last_bout_date` as of
-   `manifest.as_of`. The old `elo` column in `fighter_snapshot.parquet` stays, because the finish model uses it.
-2. **The site's `score` stage** rolls it forward over `recent_fights` dated after `as_of`, using this formula:
-   - decay up to each bout date, n-based K, and split/majority credit from `PastFight.method` (`S-DEC`, `M-DEC`);
-   - re-anchoring, P4P rank, tags and peak are computed there too.
-   - The existing "record change not covered → null" rule stays.
-3. **Contract changes** (`models.py`, `docs/CONTRACT.md`) go through the orchestrator: `Fighter.elo` keeps its
-   meaning as the displayed rating, and new fields are added for `elo_peak`, `p4p_rank` and the tags.
+One implementation, in this repo, over the full bout history (since 2026-10-26, `docs/tdd/history-rating.tdd.md`):
+
+1. **History store** (`src/fightcard/history/store.py`): a SQLite file with every ufcstats event, bout, fighter
+   and the raw page each came from. `fightcard history ingest --html-dir <cache> --db <path>` fills it from a
+   ufcstats HTML cache with the same parsers `scrape` uses; it was seeded from fight-auto-research's cache
+   (`data/raw_html/ufcstats/`) and agrees with research's parsed CSVs on all 11,600 bouts.
+2. **Rating pass** (`src/fightcard/history/rating.py`, ported from research `export/rating.py`): `rate` over
+   `store.rating_bouts`, in date order, gives each fighter's raw rating, n, n_ufc, last bout, peak, gender and
+   best win. Over the bouts research had, it reproduces research's last `fighter_rating.parquet` (4,146 fighters,
+   as of 2026-10-14) exactly.
+3. **Display** (`src/fightcard/history/display.py`): decay to now, anchor, P4P rank, tags, best win on the
+   display scale. `score --history-db <path>` runs 2 and 3 over the bouts up to `--now` and writes the `Fighter`
+   fields. Without a store, every fighter is unrated and tiers still score.
+
+There's no roll-forward and no `null` for "too many unseen bouts": every bout in the store counts. The ratings
+are as fresh as the store, so the store has to be ingested before `score`. `model/fighter_rating.parquet` isn't
+read any more. The finish model's own `elo` column in `fighter_snapshot.parquet` is separate and unchanged.
 
 ## Contract (pinned for the build)
 
-Exact semantics. Both repos implement them, and `model/rating_cases.json` holds golden cases that both test against.
+Exact semantics. `src/fightcard/history/rating.py` implements them. `tests/score/fixtures/rating_cases.json` holds the
+golden cases: it's the generator's own output (`uv run python -m fightcard.history.rating <path>`), byte for byte,
+and research's copy is identical.
 
 - **n** = all prior bouts in scope, **including** NC and draws. K for a bout = `275 / (n + 5)^0.4`, with n taken
   before the bout.
@@ -64,18 +74,23 @@ Exact semantics. Both repos implement them, and `model/rating_cases.json` holds 
   `result_details` = Split/Majority). `U-DEC`, KO/TKO, SUB and DQ give W 1. Overturned and CNC count as NC.
 - **Peak (raw)** = the highest post-bout rating at any bout (UFC or not) once the fighter has ≥5 UFC bouts,
   counting that bout. Undecayed. `null` until then.
-- **UFC bout** = an event whose name does not start with `DWCS` or `Road to UFC`, **case-insensitive** (ufcstats
-  writes "Road To UFC 5.1"). This agrees with the research build's `is_ufc` on every event.
+- **UFC bout** = a bout on an event in ufcstats' completed-events listing (which also holds the TUF finales,
+  "Noche UFC" and "Ortiz vs Shamrock 3"), or on an unlisted event whose name matches `^UFC\b(?! BJJ)` (UFC 1 and
+  the other early cards). This is research's `event_source.csv` rule, and it agrees with its `is_ufc` on all
+  1,280 events. The earlier name-prefix rule (not `DWCS` / `Road to UFC`) only worked on recent UFC-listing
+  events: it called 368 PRIDE, Strikeforce, WEC, ... events UFC.
+- **Scope** = every bout with a result on a UFC event, or on another card with ≥4 bouts with a result.
 - **Anchor:** `shift = 1500 − mean(decayed-to-now raw rating)` over fighters with n ≥ 3 and a bout in the last
   730 days. Every displayed value (current and peak) = raw + shift, rounded.
 - **Eligibility for P4P rank:** ≥5 UFC bouts and a bout within 365 days of now. Men rank 1–15 and women 1–10 by
-  displayed rating. Gender comes from the export.
+  displayed rating. Gender comes from the history pass.
 - **Tags:** `elo_provisional` = fewer than 3 UFC bouts; `elo_inactive` = no bout within 365 days of now.
 - **Best win** = among the fighter's wins in scope (split and majority wins included; draws, NC, CNC and
   Overturned excluded), the opponent with the highest **pre-bout** rating (decayed to that day). On a tie, the
   most recent bout. Raw value stored; displayed = raw + shift, like everything else.
 
-**Research export** `model/fighter_rating.parquet` (one row per fighter with ≥1 bout in scope), as of `as_of`:
+**Rating rows** (`rating.rate` / `history_ratings`; the shape of research's former export
+`model/fighter_rating.parquet`), one per fighter with ≥1 bout in scope:
 
 | column | type | meaning |
 |---|---|---|
@@ -91,7 +106,7 @@ Exact semantics. Both repos implement them, and `model/rating_cases.json` holds 
 | `best_win_rating` | float or null | opponent's raw pre-bout rating |
 | `best_win_date` | str `YYYY-MM-DD` or null | |
 
-`manifest.json` gains `"rating": {"format_version": 1, "params": {...}}`.
+`rating.PARAMS` (also in `rating_cases.json`) holds the constants, including the display ones.
 
 **Site `Fighter` fields** (written by `score`):
 - `elo: int | null`: displayed current rating.
@@ -104,11 +119,8 @@ Exact semantics. Both repos implement them, and `model/rating_cases.json` holds 
   Shown under Stats since 2026-10-26. The user chose to keep the number a pure Elo and handle "untested" through
   display, not the formula.
 
-Roll-forward: start every fighter in the export from their row. Apply card fighters' `recent_fights` after
-`as_of` with the rules above (an opponent missing from the export starts as a debutant: 1500, n=0). Decay
-everyone to now, then anchor and rank over the whole export population. Keep the existing null rule (unseen
-bouts → `elo` null, and that fighter is left out of the ranking).
-Known limitation: fighters off our cards who fought after `as_of` stay stale until the next re-export.
+Every rated fighter is decayed to now, then anchored and ranked together. A fighter with no bout in scope is
+unrated (`elo` null) and left out of the ranking.
 
 ## Validation (backtest, 2015-10 → 2026-10, 5,432 decided UFC bouts)
 
@@ -145,10 +157,10 @@ Exact numbers have to be re-derived from the research implementation at 0.6/0.8 
 
 ## Future
 
-- **A permanent, cleaner home for the rating** (user requirement). The interim split, with the research export
-  plus the site's roll-forward over at most 3 recent fights, means the formula lives in two repos, and fighters
-  go `null` when there are too many unseen bouts. Target: a single implementation that owns the full bout history,
-  e.g. a shared package or a site-side history store fed by the scraper, so there's no roll-forward.
+- **Feed the store from the daily scrape.** Today `history ingest` reads an HTML cache directory. The next step
+  is for `scrape` (or a step after it) to upsert the event pages it fetches, so the ratings update with each
+  refresh without a separate crawl. Then research's `export/rating.py` and its copy of the golden cases can go,
+  and research can train from this history.
 - **Rank tiers** (chess or video-game style, e.g. "GM" for very high ratings), as a separate discussion.
   FIDE-style "title kept once earned" fits the peak.
 - Revisit pre-UFC history (Sherdog/Tapology) if a source becomes practical.
