@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import sys
 
 from fightcard.service import runner, serve
@@ -21,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "serve":
         return serve.main()
+    signal.signal(signal.SIGTERM, runner.terminate)
     return runner.run_once(Config.from_env(os.environ), event=args.event, cron=args.cron)
 
 

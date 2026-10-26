@@ -5,6 +5,7 @@ from __future__ import annotations
 import fcntl
 import itertools
 import re
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -285,7 +286,12 @@ def test_cli_run_uses_the_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "run_once", fake_run_once)
     monkeypatch.setenv("FIGHTCARD_ROOT", str(tmp_path))
     monkeypatch.setenv("FIGHTCARD_FETCH", "off")
-    assert cli.main(["run", "--event", "schedule", "--cron", "0 6 * * *"]) == 0
+    previous = signal.getsignal(signal.SIGTERM)
+    try:
+        assert cli.main(["run", "--event", "schedule", "--cron", "0 6 * * *"]) == 0
+        assert signal.getsignal(signal.SIGTERM) is runner.terminate  # so a TERM ends the stage first
+    finally:
+        signal.signal(signal.SIGTERM, previous)
     assert seen["cfg"].root == tmp_path and seen["cfg"].fetch is False
     assert (seen["event"], seen["cron"]) == ("schedule", "0 6 * * *")
 

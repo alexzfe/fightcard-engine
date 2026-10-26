@@ -36,6 +36,23 @@ def _stop(proc, sig: int) -> None:
         proc.wait()
 
 
+def reap(own: list) -> None:
+    """Reap every exited orphan. serve is PID 1 and compose gives it no init, so it inherits whatever a killed run
+    or stage leaves behind. Its own children (nginx, the run) are left to their Popen, which keeps their exit codes."""
+    while True:
+        try:
+            info = os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        except ChildProcessError:
+            return
+        if info is None:
+            return
+        mine = next((p for p in own if p is not None and p.pid == info.si_pid), None)
+        if mine is not None:
+            mine.poll()
+        else:
+            os.waitpid(info.si_pid, 0)
+
+
 def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], datetime] = lambda: datetime.now(UTC),
           sleep: Callable[[float], None] = time.sleep, out: Callable[[str], None] = lambda line: print(line, flush=True),
           stop: threading.Event | None = None) -> int:
@@ -49,6 +66,7 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
     fire, cron = next_fire(now())
     _log(out, status="ready", next=fire.isoformat(), cron=cron)
     while not stop.is_set():
+        reap([nginx, run])
         if (code := nginx.poll()) is not None:
             _log(out, status="failed", reason=f"nginx exited {code}")
             _stop(run, signal.SIGTERM)
@@ -66,6 +84,7 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
     _log(out, status="stopping")
     _stop(run, signal.SIGTERM)
     _stop(nginx, signal.SIGQUIT)  # nginx's graceful shutdown
+    reap([])
     return 0
 
 
