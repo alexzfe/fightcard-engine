@@ -254,6 +254,8 @@ def pull(root: Path, *, url: str | None, pin: str | None, seed_dir: Path, keep: 
     root.mkdir(parents=True, exist_ok=True)
     for leftover in root.glob(f"{_STAGING}*"):
         shutil.rmtree(leftover, ignore_errors=True)
+    for leftover in root.glob(f"{_LINK}*"):  # a switch killed between symlink() and os.replace()
+        leftover.unlink(missing_ok=True)
     if not _seed(root, seed_dir, log):
         return
     was = _kept_current(root)
