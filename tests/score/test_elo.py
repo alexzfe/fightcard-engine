@@ -73,6 +73,7 @@ def test_k_shrinks_with_prior_bouts_and_has_no_floor():
     ("loss", "U-DEC", 0.0), ("loss", "S-DEC", 0.4), ("loss", "M-DEC", 0.2),
     ("draw", "M-DEC", 0.5), ("draw", "S-DEC", 0.5),
     ("nc", "Overturned", None), ("nc", "CNC", None),
+    ("win", "Overturned", None), ("loss", "Overturned", None), ("draw", "CNC", None),  # NC whatever the outcome
 ])
 def test_credit_by_result_and_method(result, method, w):
     assert credit(result, method) == (pytest.approx(w) if w is not None else None)
@@ -157,6 +158,8 @@ def test_peak_counts_from_the_fifth_ufc_bout_and_only_rises():
     assert states["a"].peak == pytest.approx(top)
     roll_forward(states, [Bout("2026-04-01", "a", "b", "loss")])
     assert states["a"].peak == pytest.approx(top)
+    roll_forward(states, [Bout("2026-05-01", "a", "b", "win", ufc=False)])  # any bout counts from then on
+    assert states["a"].peak == pytest.approx(states["a"].rating) and states["a"].peak > top
 
 
 # --- fighter_ratings: export + card fighters' newer results -> Fighter fields -----------------------------------
@@ -250,10 +253,11 @@ def test_newer_ufc_bouts_count_toward_tags_and_peak():
     assert out["a"]["p4p_rank"] == 1
 
 
-def test_contender_series_and_road_to_ufc_are_not_ufc_bouts():
+@pytest.mark.parametrize("event", ["DWCS 10.6", "Road to UFC 5.1", "Road To UFC 5.2", "ROAD TO UFC 5.3", "dwcs 10.7"])
+def test_contender_series_and_road_to_ufc_are_not_ufc_bouts_in_any_case(event):
     ratings = export(row("a", 1500, n=10, ufc=2, last="2026-10-24"), row("b", 1500, last="2026-10-24"))
-    fights = [past("b", "win", "2026-10-31", event="DWCS 10.6"), past("b", "win", "2026-10-28", event="Road to UFC 5.1")]
-    out = rate({"a": fighter("a", w=6, fights=fights)}, ratings, {"a": (4, 0, 0, 0)})
+    fights = [past("b", "win", "2026-10-31", event=event)]
+    out = rate({"a": fighter("a", w=5, fights=fights)}, ratings, {"a": (4, 0, 0, 0)})
     assert out["a"]["elo_provisional"] is True
 
 

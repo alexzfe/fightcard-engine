@@ -1,0 +1,1645 @@
+{
+  "cases": [
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "Two debutants at 1500 with K = 275 / 5^0.4; a KO win moves each by K/2.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1572.2295146211036
+          },
+          {
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          }
+        ]
+      },
+      "id": "debut",
+      "rules": [
+        "debut_k"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2023-01-01",
+          "fight_id": "f2",
+          "fighter_a": "A",
+          "fighter_b": "C",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "A wins, then fights again 1096 days later: pre-rating decayed 0.9^(1096/365.25) toward 1500, K from n = 1.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2023-01-01",
+            "delta_a": 57.05055932192387,
+            "delta_b": -61.366648469731864,
+            "e_a": 0.5751968652174625,
+            "fight_id": "f2",
+            "fighter_a": "A",
+            "fighter_b": "C",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1609.7020783614564,
+            "post_b": 1438.633351530268,
+            "pre_a": 1552.6515190395326,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2023-01-01",
+            "n_bouts": 2,
+            "n_ufc_bouts": 2,
+            "peak": null,
+            "rating": 1609.7020783614564
+          },
+          {
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "C",
+            "gender": "M",
+            "last_bout_date": "2023-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1438.633351530268
+          }
+        ]
+      },
+      "id": "decay_gap",
+      "rules": [
+        "decay_gap"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-01-01",
+          "fight_id": "f2",
+          "fighter_a": "C",
+          "fighter_b": "D",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-01-01",
+          "fight_id": "f3",
+          "fighter_a": "A",
+          "fighter_b": "C",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-02-01",
+          "fight_id": "f4",
+          "fighter_a": "A",
+          "fighter_b": "E",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "Tournament day: A beats B, C beats D, then A beats C, all from pre-day ratings and pre-day K; n advances by 2 after the day, so A's next bout uses n = 2.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1644.4590292422072,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f2",
+            "fighter_a": "C",
+            "fighter_b": "D",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1500.0,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f3",
+            "fighter_a": "A",
+            "fighter_b": "C",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1644.4590292422072,
+            "post_b": 1500.0,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-02-01",
+            "delta_a": 38.496503001490325,
+            "delta_b": -44.042553902219424,
+            "e_a": 0.6951207956106676,
+            "fight_id": "f4",
+            "fighter_a": "A",
+            "fighter_b": "E",
+            "k_a": 126.26805123884436,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1681.669494545294,
+            "post_b": 1455.9574460977806,
+            "pre_a": 1643.1729915438036,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 3,
+            "n_ufc_bouts": 3,
+            "peak": null,
+            "rating": 1681.669494545294
+          },
+          {
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "C",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 2,
+            "n_ufc_bouts": 2,
+            "peak": null,
+            "rating": 1500.0
+          },
+          {
+            "fighter_id": "D",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "E",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1455.9574460977806
+          }
+        ]
+      },
+      "id": "same_day",
+      "rules": [
+        "same_day"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "S-DEC",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-01-01",
+          "fight_id": "f2",
+          "fighter_a": "C",
+          "fighter_b": "D",
+          "method": "M-DEC",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-01-01",
+          "fight_id": "f3",
+          "fighter_a": "E",
+          "fighter_b": "F",
+          "method": "S-DEC",
+          "result": "loss",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "S-DEC win scores 0.6, M-DEC win 0.8, an S-DEC loss 0.4 for the loser's side.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 14.445902924220714,
+            "delta_b": -14.445902924220714,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1514.4459029242207,
+            "post_b": 1485.5540970757793,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 0.6
+          },
+          {
+            "date": "2020-01-01",
+            "delta_a": 43.33770877266216,
+            "delta_b": -43.33770877266216,
+            "e_a": 0.5,
+            "fight_id": "f2",
+            "fighter_a": "C",
+            "fighter_b": "D",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1543.3377087726622,
+            "post_b": 1456.6622912273378,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 0.8
+          },
+          {
+            "date": "2020-01-01",
+            "delta_a": -14.445902924220714,
+            "delta_b": 14.445902924220714,
+            "e_a": 0.5,
+            "fight_id": "f3",
+            "fighter_a": "E",
+            "fighter_b": "F",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1485.5540970757793,
+            "post_b": 1514.4459029242207,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 0.4
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1514.4459029242207
+          },
+          {
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1485.5540970757793
+          },
+          {
+            "fighter_id": "C",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1543.3377087726622
+          },
+          {
+            "fighter_id": "D",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1456.6622912273378
+          },
+          {
+            "fighter_id": "E",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1485.5540970757793
+          },
+          {
+            "fighter_id": "F",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1514.4459029242207
+          }
+        ]
+      },
+      "id": "split_majority",
+      "rules": [
+        "split_credit",
+        "majority_credit"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-01-15",
+          "fight_id": "f2",
+          "fighter_a": "A",
+          "fighter_b": "C",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-02-01",
+          "fight_id": "f3",
+          "fighter_a": "A",
+          "fighter_b": "D",
+          "method": "S-DEC",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "After two KO wins A expects > 0.6 against a debutant, so an S-DEC win (0.6) costs A points.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-01-15",
+            "delta_a": 53.44110591517882,
+            "delta_b": -57.48412635229349,
+            "e_a": 0.6020731507484192,
+            "fight_id": "f2",
+            "fighter_a": "A",
+            "fighter_b": "C",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1625.3795127981628,
+            "post_b": 1442.5158736477065,
+            "pre_a": 1571.9384068829838,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-02-01",
+            "delta_a": -9.118211402526821,
+            "delta_b": 10.431838891238316,
+            "e_a": 0.6722131316122011,
+            "fight_id": "f3",
+            "fighter_a": "A",
+            "fighter_b": "D",
+            "k_a": 126.26805123884436,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1615.647964993462,
+            "post_b": 1510.4318388912384,
+            "pre_a": 1624.7661763959889,
+            "pre_b": 1500.0,
+            "w_a": 0.6
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 3,
+            "n_ufc_bouts": 3,
+            "peak": null,
+            "rating": 1615.647964993462
+          },
+          {
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "C",
+            "gender": "M",
+            "last_bout_date": "2020-01-15",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1442.5158736477065
+          },
+          {
+            "fighter_id": "D",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1510.4318388912384
+          }
+        ]
+      },
+      "id": "favourite_split_win",
+      "rules": [
+        "favourite_split_win"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-02-01",
+          "fight_id": "f2",
+          "fighter_a": "A",
+          "fighter_b": "C",
+          "method": "U-DEC",
+          "result": "draw",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-02-01",
+          "fight_id": "f3",
+          "fighter_a": "G",
+          "fighter_b": "H",
+          "method": "S-DEC",
+          "result": "draw",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "A favourite who draws loses points; a split draw between equals changes nothing.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-02-01",
+            "delta_a": -13.643110289564738,
+            "delta_b": 14.675262839215714,
+            "e_a": 0.6015877160202319,
+            "fight_id": "f2",
+            "fighter_a": "A",
+            "fighter_b": "C",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1557.9433854823371,
+            "post_b": 1514.6752628392157,
+            "pre_a": 1571.5864957719018,
+            "pre_b": 1500.0,
+            "w_a": 0.5
+          },
+          {
+            "date": "2020-02-01",
+            "delta_a": 0.0,
+            "delta_b": 0.0,
+            "e_a": 0.5,
+            "fight_id": "f3",
+            "fighter_a": "G",
+            "fighter_b": "H",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1500.0,
+            "post_b": 1500.0,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 0.5
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 2,
+            "n_ufc_bouts": 2,
+            "peak": null,
+            "rating": 1557.9433854823371
+          },
+          {
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "C",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1514.6752628392157
+          },
+          {
+            "fighter_id": "G",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1500.0
+          },
+          {
+            "fighter_id": "H",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1500.0
+          }
+        ]
+      },
+      "id": "draw",
+      "rules": [
+        "draw"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-07-01",
+          "fight_id": "f2",
+          "fighter_a": "A",
+          "fighter_b": "C",
+          "method": "KO/TKO",
+          "result": "nc",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2021-07-01",
+          "fight_id": "f3",
+          "fighter_a": "A",
+          "fighter_b": "D",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "An NC gives no update but counts toward n (next K uses n = 2) and restarts the decay clock (the stored rating is decayed to the NC day).",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-07-01",
+            "delta_a": 0.0,
+            "delta_b": 0.0,
+            "e_a": 0.597370523611922,
+            "fight_id": "f2",
+            "fighter_a": "A",
+            "fighter_b": "C",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1568.5352891482282,
+            "post_b": 1500.0,
+            "pre_a": 1568.5352891482282,
+            "pre_b": 1500.0,
+            "w_a": null
+          },
+          {
+            "date": "2021-07-01",
+            "delta_a": 52.04107419749225,
+            "delta_b": -59.53844211209837,
+            "e_a": 0.5878524006119876,
+            "fight_id": "f3",
+            "fighter_a": "A",
+            "fighter_b": "D",
+            "k_a": 126.26805123884436,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1613.7272827925697,
+            "post_b": 1440.4615578879016,
+            "pre_a": 1561.6862085950775,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2021-07-01",
+            "n_bouts": 3,
+            "n_ufc_bouts": 3,
+            "peak": null,
+            "rating": 1613.7272827925697
+          },
+          {
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "C",
+            "gender": "M",
+            "last_bout_date": "2020-07-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1500.0
+          },
+          {
+            "fighter_id": "D",
+            "gender": "M",
+            "last_bout_date": "2021-07-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1440.4615578879016
+          }
+        ]
+      },
+      "id": "nc_counts_n",
+      "rules": [
+        "nc_counts_n"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-01-01",
+          "fight_id": "f2",
+          "fighter_a": "E",
+          "fighter_b": "F",
+          "method": "DQ",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-03-01",
+          "fight_id": "f3",
+          "fighter_a": "A",
+          "fighter_b": "C",
+          "method": "CNC",
+          "result": "draw",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-05-01",
+          "fight_id": "f4",
+          "fighter_a": "D",
+          "fighter_b": "A",
+          "method": "Overturned",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-08-01",
+          "fight_id": "f5",
+          "fighter_a": "A",
+          "fighter_b": "E",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "A CNC recorded as a draw and an Overturned recorded as a win give no update but count toward n; a DQ win scores 1.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f2",
+            "fighter_a": "E",
+            "fighter_b": "F",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-03-01",
+            "delta_a": 0.0,
+            "delta_b": 0.0,
+            "e_a": 0.6007646400102719,
+            "fight_id": "f3",
+            "fighter_a": "A",
+            "fighter_b": "C",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1570.9901453761759,
+            "post_b": 1500.0,
+            "pre_a": 1570.9901453761759,
+            "pre_b": 1500.0,
+            "w_a": null
+          },
+          {
+            "date": "2020-05-01",
+            "delta_a": 0.0,
+            "delta_b": 0.0,
+            "e_a": 0.4009461608805144,
+            "fight_id": "f4",
+            "fighter_a": "D",
+            "fighter_b": "A",
+            "k_a": 144.45902924220718,
+            "k_b": 126.26805123884436,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1500.0,
+            "post_b": 1569.7519185401445,
+            "pre_a": 1500.0,
+            "pre_b": 1569.7519185401445,
+            "w_a": null
+          },
+          {
+            "date": "2020-08-01",
+            "delta_a": 59.85035122660853,
+            "delta_b": -67.1494095154557,
+            "e_a": 0.5,
+            "fight_id": "f5",
+            "fighter_a": "A",
+            "fighter_b": "E",
+            "k_a": 119.70070245321706,
+            "k_b": 134.2988190309114,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1627.7755091426254,
+            "post_b": 1500.775748400561,
+            "pre_a": 1567.9251579160168,
+            "pre_b": 1567.9251579160168,
+            "w_a": 1.0
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2020-08-01",
+            "n_bouts": 4,
+            "n_ufc_bouts": 4,
+            "peak": null,
+            "rating": 1627.7755091426254
+          },
+          {
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "C",
+            "gender": "M",
+            "last_bout_date": "2020-03-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1500.0
+          },
+          {
+            "fighter_id": "D",
+            "gender": "M",
+            "last_bout_date": "2020-05-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1500.0
+          },
+          {
+            "fighter_id": "E",
+            "gender": "M",
+            "last_bout_date": "2020-08-01",
+            "n_bouts": 2,
+            "n_ufc_bouts": 2,
+            "peak": null,
+            "rating": 1500.775748400561
+          },
+          {
+            "fighter_id": "F",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          }
+        ]
+      },
+      "id": "cnc_overturned",
+      "rules": [
+        "cnc_draw_no_update",
+        "overturned_no_update",
+        "dq_win"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "p1",
+          "fighter_a": "P",
+          "fighter_b": "O1",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-03-01",
+          "fight_id": "p2",
+          "fighter_a": "P",
+          "fighter_b": "O2",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-05-01",
+          "fight_id": "p3",
+          "fighter_a": "P",
+          "fighter_b": "O3",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": false,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-07-01",
+          "fight_id": "p4",
+          "fighter_a": "P",
+          "fighter_b": "O4",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-09-01",
+          "fight_id": "p5",
+          "fighter_a": "P",
+          "fighter_b": "O5",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-11-01",
+          "fight_id": "p6",
+          "fighter_a": "P",
+          "fighter_b": "O6",
+          "method": "KO/TKO",
+          "result": "loss",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2021-01-01",
+          "fight_id": "p7",
+          "fighter_a": "P",
+          "fighter_b": "O7",
+          "method": "S-DEC",
+          "result": "win",
+          "ufc": false,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "P's 3rd bout is non-UFC: it counts toward n but not n_ufc_bouts. The peak is null until P's 5th UFC bout (a loss, 6th bout overall), so the higher rating before it is not the peak; a later non-UFC split win (a points loss for the favourite) still counts toward the peak.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "p1",
+            "fighter_a": "P",
+            "fighter_b": "O1",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-03-01",
+            "delta_a": 53.61683736200127,
+            "delta_b": -57.67315254327925,
+            "e_a": 0.6007646400102719,
+            "fight_id": "p2",
+            "fighter_a": "P",
+            "fighter_b": "O2",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1624.606982738177,
+            "post_b": 1442.3268474567208,
+            "pre_a": 1570.9901453761759,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-05-01",
+            "delta_a": 41.763455986690694,
+            "delta_b": -47.78016489875939,
+            "e_a": 0.6692476396290273,
+            "fight_id": "p3",
+            "fighter_a": "P",
+            "fighter_b": "O3",
+            "k_a": 126.26805123884436,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1664.1970143831409,
+            "post_b": 1452.2198351012405,
+            "pre_a": 1622.4335583964503,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-07-01",
+            "delta_a": 33.89767901154495,
+            "delta_b": -40.90891451105364,
+            "e_a": 0.7168130318634239,
+            "fight_id": "p4",
+            "fighter_a": "P",
+            "fighter_b": "O4",
+            "k_a": 119.70070245321706,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1695.230730396328,
+            "post_b": 1459.0910854889464,
+            "pre_a": 1661.333051384783,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-09-01",
+            "delta_a": 28.434557571450966,
+            "delta_b": -35.971245648142684,
+            "e_a": 0.7509934419687155,
+            "fight_id": "p5",
+            "fighter_a": "P",
+            "fighter_b": "O5",
+            "k_a": 114.19200279808908,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1720.2047013274241,
+            "post_b": 1464.0287543518573,
+            "pre_a": 1691.770143755973,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-11-01",
+            "delta_a": -85.01280767110767,
+            "delta_b": 112.17507223904114,
+            "e_a": 0.7765182476130505,
+            "fight_id": "p6",
+            "fighter_a": "P",
+            "fighter_b": "O6",
+            "k_a": 109.47947190221174,
+            "k_b": 144.45902924220718,
+            "peak_a": 1631.3510313907298,
+            "peak_b": null,
+            "post_a": 1631.3510313907298,
+            "post_b": 1612.1750722390411,
+            "pre_a": 1716.3638390618373,
+            "pre_b": 1500.0,
+            "w_a": 0.0
+          },
+          {
+            "date": "2021-01-01",
+            "delta_a": -8.181610226468882,
+            "delta_b": 11.215221572654075,
+            "e_a": 0.6776360026194699,
+            "fight_id": "p7",
+            "fighter_a": "P",
+            "fighter_b": "O7",
+            "k_a": 105.38422832729749,
+            "k_b": 144.45902924220718,
+            "peak_a": 1631.3510313907298,
+            "peak_b": null,
+            "post_a": 1620.878365537504,
+            "post_b": 1511.2152215726542,
+            "pre_a": 1629.0599757639727,
+            "pre_b": 1500.0,
+            "w_a": 0.6
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "O1",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "O2",
+            "gender": "M",
+            "last_bout_date": "2020-03-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1442.3268474567208
+          },
+          {
+            "fighter_id": "O3",
+            "gender": "M",
+            "last_bout_date": "2020-05-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 0,
+            "peak": null,
+            "rating": 1452.2198351012405
+          },
+          {
+            "fighter_id": "O4",
+            "gender": "M",
+            "last_bout_date": "2020-07-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1459.0910854889464
+          },
+          {
+            "fighter_id": "O5",
+            "gender": "M",
+            "last_bout_date": "2020-09-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1464.0287543518573
+          },
+          {
+            "fighter_id": "O6",
+            "gender": "M",
+            "last_bout_date": "2020-11-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1612.1750722390411
+          },
+          {
+            "fighter_id": "O7",
+            "gender": "M",
+            "last_bout_date": "2021-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 0,
+            "peak": null,
+            "rating": 1511.2152215726542
+          },
+          {
+            "fighter_id": "P",
+            "gender": "M",
+            "last_bout_date": "2021-01-01",
+            "n_bouts": 7,
+            "n_ufc_bouts": 5,
+            "peak": 1631.3510313907298,
+            "rating": 1620.878365537504
+          }
+        ]
+      },
+      "id": "peak_fifth_ufc",
+      "rules": [
+        "peak_fifth_ufc",
+        "non_ufc_counts_n"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "g1",
+          "fighter_a": "W1",
+          "fighter_b": "W2",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Women's Flyweight"
+        },
+        {
+          "date": "2020-02-01",
+          "fight_id": "g2",
+          "fighter_a": "W1",
+          "fighter_b": "X",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Catch Weight"
+        },
+        {
+          "date": "2020-03-01",
+          "fight_id": "g3",
+          "fighter_a": "X",
+          "fighter_b": "Y",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Catch Weight"
+        },
+        {
+          "date": "2020-04-01",
+          "fight_id": "g4",
+          "fighter_a": "M1",
+          "fighter_b": "Y",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-05-01",
+          "fight_id": "g5",
+          "fighter_a": "Z",
+          "fighter_b": "Q",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": null
+        }
+      ],
+      "description": "Any Women's division -> F; catch/open weight or a missing class alone -> null; any other division -> M.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "g1",
+            "fighter_a": "W1",
+            "fighter_b": "W2",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-02-01",
+            "delta_a": 53.50629922589096,
+            "delta_b": -57.55425178188788,
+            "e_a": 0.6015877160202319,
+            "fight_id": "g2",
+            "fighter_a": "W1",
+            "fighter_b": "X",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1625.0927949977927,
+            "post_b": 1442.4457482181122,
+            "pre_a": 1571.5864957719018,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-03-01",
+            "delta_a": 78.0821754335946,
+            "delta_b": -83.98938535461404,
+            "e_a": 0.41859373003404804,
+            "fight_id": "g3",
+            "fighter_a": "X",
+            "fighter_b": "Y",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1521.0073786167213,
+            "post_b": 1416.0106146453859,
+            "pre_a": 1442.9252031831268,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-04-01",
+            "delta_a": 55.247827282989796,
+            "delta_b": -51.362092055104625,
+            "e_a": 0.6175536581354251,
+            "fight_id": "g4",
+            "fighter_a": "M1",
+            "fighter_b": "Y",
+            "k_a": 144.45902924220718,
+            "k_b": 134.2988190309114,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1555.2478272829899,
+            "post_b": 1365.3962329715457,
+            "pre_a": 1500.0,
+            "pre_b": 1416.7583250266503,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-05-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "g5",
+            "fighter_a": "Z",
+            "fighter_b": "Q",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          }
+        ],
+        "fighters": [
+          {
+            "fighter_id": "M1",
+            "gender": "M",
+            "last_bout_date": "2020-04-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1555.2478272829899
+          },
+          {
+            "fighter_id": "Q",
+            "gender": null,
+            "last_bout_date": "2020-05-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "W1",
+            "gender": "F",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 2,
+            "n_ufc_bouts": 2,
+            "peak": null,
+            "rating": 1625.0927949977927
+          },
+          {
+            "fighter_id": "W2",
+            "gender": "F",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "fighter_id": "X",
+            "gender": null,
+            "last_bout_date": "2020-03-01",
+            "n_bouts": 2,
+            "n_ufc_bouts": 2,
+            "peak": null,
+            "rating": 1521.0073786167213
+          },
+          {
+            "fighter_id": "Y",
+            "gender": "M",
+            "last_bout_date": "2020-04-01",
+            "n_bouts": 2,
+            "n_ufc_bouts": 2,
+            "peak": null,
+            "rating": 1365.3962329715457
+          },
+          {
+            "fighter_id": "Z",
+            "gender": null,
+            "last_bout_date": "2020-05-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1572.2295146211036
+          }
+        ]
+      },
+      "id": "gender",
+      "rules": [
+        "gender"
+      ]
+    }
+  ],
+  "format_version": 1,
+  "params": {
+    "days_per_year": 365.25,
+    "decay_per_year": 0.9,
+    "display": {
+      "active_days": 365,
+      "anchor_active_days": 730,
+      "anchor_min_bouts": 3,
+      "p4p_men": 15,
+      "p4p_min_ufc_bouts": 5,
+      "p4p_women": 10,
+      "provisional_below_ufc_bouts": 3
+    },
+    "k_exponent": 0.4,
+    "k_numerator": 275.0,
+    "k_offset": 5,
+    "no_update_methods": [
+      "CNC",
+      "Overturned"
+    ],
+    "peak_min_ufc_bouts": 5,
+    "scope": [
+      "ufc",
+      "full_card"
+    ],
+    "start": 1500.0,
+    "w_majority": 0.8,
+    "w_split": 0.6
+  }
+}
