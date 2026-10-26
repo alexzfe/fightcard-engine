@@ -254,12 +254,12 @@ def assert_kept_out(root: Path, version: str = NEW, keeping: str = BAKED_VERSION
     assert left == sorted(["current", *kept(root)])  # no staging left behind (a .held-<version> marker may be)
 
 
-def held(root: Path, bucket, capsys, reason: str, version: str = NEW) -> None:
+def held(root: Path, bucket, capsys, reason: str, version: str = NEW, keeping: str = BAKED_VERSION) -> None:
     capsys.readouterr()
     assert pull(root, url=bucket.url) == 0
     err = capsys.readouterr().err
     assert f"held {version}" in err and reason in err, err
-    assert_kept_out(root, version)
+    assert_kept_out(root, version, keeping)
 
 
 @pytest.mark.parametrize("name", ["model.txt", "examples.json", "fighter_snapshot.parquet", "thresholds.json"])
@@ -360,37 +360,48 @@ def test_a_held_version_is_not_downloaded_again_but_is_logged_every_run(root, bu
 
 @pytest.mark.usefixtures("seeded")
 def test_the_marker_records_the_digests_the_running_version_and_why(root, bucket, capsys):
-    doc = bucket.publish(NEW, corrupt="model.txt")
-    held(root, bucket, capsys, "model.txt: sha256")
+    doc = bucket.publish(NEW, edit=edit_examples(p_finish=0.123456))
+    held(root, bucket, capsys, "example 3")
     m = marker(root)
     assert (m["version"], m["files"], m["running"]) == (NEW, doc["files"], BAKED_VERSION)
-    assert "model.txt: sha256" in m["reason"]
+    assert "example 3" in m["reason"]
 
 
 @pytest.mark.usefixtures("seeded")
 def test_a_version_published_again_with_other_digests_is_tried_again(root, bucket, capsys):
-    bucket.publish(NEW, corrupt="model.txt")
-    held(root, bucket, capsys, "sha256")
+    bucket.publish(NEW, edit=edit_examples(p_finish=0.123456))
+    held(root, bucket, capsys, "example 3")
     shutil.rmtree(bucket.root / NEW)
     bucket.publish(NEW)  # research fixed the files: latest.json's digests differ
     bucket.requests.clear()
     pull(root, url=bucket.url)
-    assert any("model.txt" in r for r in bucket.requests)
+    assert any("examples.json" in r for r in bucket.requests)
     assert current(root) == NEW and not (root / f".held-{NEW}").exists()
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_checksum_mismatch_is_no_verdict_and_is_fetched_again(root, bucket, capsys):
+    bucket.publish(NEW, corrupt="model.txt")  # the transfer, or the bucket, may be what broke: only a fetch can tell
+    held(root, bucket, capsys, "model.txt: sha256")
+    assert not list(root.glob(".held-*"))
+    bucket.requests.clear()
+    pull(root, url=bucket.url)
+    assert any("model.txt" in r for r in bucket.requests)
 
 
 def test_a_changed_running_version_makes_a_held_version_be_tried_again(root, bucket, capsys):
     bucket.publish("2026-10-21+aaaaaaaa", as_of="2026-10-21")
     pull(root, url=bucket.url)
     pull(root, url=bucket.url)
-    bucket.publish("2026-10-28+bbbbbbbb", as_of="2026-10-28", corrupt="model.txt")
-    held(root, bucket, capsys, "sha256", "2026-10-28+bbbbbbbb")
-    assert marker(root, "2026-10-28+bbbbbbbb")["running"] == "2026-10-21+aaaaaaaa"
+    later = "2026-10-28+bbbbbbbb"
+    bucket.publish(later, as_of="2026-10-28", edit=edit_examples(p_finish=0.123456))
+    held(root, bucket, capsys, "example 3", later, keeping="2026-10-21+aaaaaaaa")
+    assert marker(root, later)["running"] == "2026-10-21+aaaaaaaa"
     pull(root, "--pin", BAKED_VERSION, url=bucket.url)  # the running model changes ...
     bucket.requests.clear()
     pull(root, url=bucket.url)  # ... and the pin is lifted
-    assert any("model.txt" in r for r in bucket.requests)
-    assert marker(root, "2026-10-28+bbbbbbbb")["running"] == BAKED_VERSION
+    assert any("examples.json" in r for r in bucket.requests)
+    assert marker(root, later)["running"] == BAKED_VERSION  # judged again, against the model that now runs
 
 
 @pytest.mark.usefixtures("seeded")
