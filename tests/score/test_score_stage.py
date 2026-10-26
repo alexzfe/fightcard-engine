@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from fightcard.cli import main
-from fightcard.models import BestWin, Event, Fight, Fighter, Index, Record, Result
+from fightcard.history.display import fighter_ratings
+from fightcard.history.rating import history_ratings
+from fightcard.history.store import connect, upsert_event
+from fightcard.models import Event, Fight, Fighter, Index, Record, Result
 from fightcard.store import Store
 
 NOW = "2026-11-01T06:00:00Z"
@@ -174,35 +178,57 @@ def test_unchanged_run_rewrites_identical_files(data, model_dir):
     assert (root / "events" / "future.json").read_text() == before
 
 
-def write_ratings(model_dir: Path, veterans: list[dict]) -> list[float]:
-    """fighter_rating.parquet for the veterans: ratings symmetric around 1500, all last fought 2026-10-01."""
-    ratings = [1500 + 50 * (i - 2.5) for i in range(len(veterans))]
-    pd.DataFrame([{"fighter_id": v["fighter_id"], "rating": r, "peak": r + 10, "n_bouts": 12, "n_ufc_bouts": 8,
-                   "last_bout_date": "2026-10-01", "gender": "M",
-                   "best_win_opponent_id": "opp", "best_win_opponent": "Opp Onent", "best_win_rating": r - 20,
-                   "best_win_date": "2025-06-07"} for v, r in zip(veterans, ratings)]
-                 ).to_parquet(model_dir / "fighter_rating.parquet")
-    return ratings
+def history(tmp_path: Path, veterans: list[dict], extra: list[tuple[str, str, str, str]] = ()) -> Path:
+    """A history store where v0 beats v1, v2 beats v3 and v4 beats v5 at UFC events on 2026-09-01 and 2026-10-01,
+    plus `extra` bouts (date, fight_id, winner, loser), each on its own UFC event."""
+    db = tmp_path / "history" / "history.sqlite"
+    conn = connect(db)
+    ids = [v["fighter_id"] for v in veterans]
+    bouts = [(day, f"{day}-{i}", ids[i], ids[i + 1]) for day in ("2026-09-01", "2026-10-01") for i in (0, 2, 4)]
+    with conn:
+        for day, fid, winner, loser in [*bouts, *extra]:
+            fight = Fight(id=fid, red=winner, blue=loser, weight_class="Lightweight",
+                          result=Result(winner=winner, outcome="win", method="U-DEC", round=3, time="5:00"))
+            upsert_event(conn, Event(id=f"e-{fid}", slug="x", name=f"UFC {fid}", date=day, status="completed",
+                                     fights=[fight]), is_ufc=True, source="listing")
+        for v in veterans:
+            conn.execute("INSERT OR REPLACE INTO fighters (fighter_id, name) VALUES (?, ?)", (v["fighter_id"], v["name"]))
+    conn.close()
+    return db
 
 
-def test_writes_rating_fields_into_fighters_json(data, model_dir, veterans, capsys):
+def expected_fields(db: Path, ids, now: str) -> dict:
+    conn = connect(db)
+    try:
+        return fighter_ratings(ids, history_ratings(conn, as_of=now[:10]), date.fromisoformat(now[:10]))
+    finally:
+        conn.close()
+
+
+def fields(f: Fighter) -> dict:
+    return {"elo": f.elo, "elo_peak": f.elo_peak, "p4p_rank": f.p4p_rank, "elo_provisional": f.elo_provisional,
+            "elo_inactive": f.elo_inactive, "best_win": None if f.best_win is None else f.best_win.model_dump()}
+
+
+def score_with(root: Path, model_dir: Path, db: Path, now: str = NOW) -> int:
+    return main(["--data", str(root), "score", "--model-dir", str(model_dir), "--history-db", str(db), "--now", now])
+
+
+def test_writes_rating_fields_from_the_history_store(data, model_dir, veterans, tmp_path, capsys):
     root, store = data
-    ratings = write_ratings(model_dir, veterans)
-    assert score(root, model_dir) == 0
+    db = history(tmp_path, veterans)
+    assert score_with(root, model_dir, db) == 0
     fighters = store.load_fighters()
-    for i, (v, r) in enumerate(zip(veterans, ratings)):
-        f = fighters[v["fighter_id"]]
-        # mean of the decayed ratings is exactly 1500, so there is no anchor shift
-        assert f.elo == round(1500 + (r - 1500) * 0.9 ** (31 / 365.25))
-        assert f.elo_peak == round(r + 10)
-        assert f.p4p_rank == len(veterans) - i
-        assert (f.elo_provisional, f.elo_inactive) == (False, False)
-        assert f.best_win == BestWin(opponent_id="opp", opponent="Opp Onent", elo=round(r - 20), date="2025-06-07")
-    for fid in ("nobody", fighters_without_snapshot_history(fighters, veterans)):
-        assert (fighters[fid].elo, fighters[fid].elo_peak, fighters[fid].p4p_rank) == (None, None, None)
+    want = expected_fields(db, list(fighters), NOW)
+    assert {fid: fields(f) for fid, f in fighters.items()} == want
+    assert fighters[veterans[0]["fighter_id"]].elo > fighters[veterans[1]["fighter_id"]].elo
+    assert fighters[veterans[0]["fighter_id"]].best_win.opponent == veterans[1]["name"]
+    for fid in ("nobody", fighters_without_snapshot_history(fighters, veterans)):  # no bout in the store
+        assert fields(fighters[fid]) == {"elo": None, "elo_peak": None, "p4p_rank": None, "elo_provisional": False,
+                                         "elo_inactive": False, "best_win": None}
     assert "6 fighters with an Elo" in capsys.readouterr().err
     before = store.fighters_path.read_text()
-    score(root, model_dir)
+    score_with(root, model_dir, db)
     assert store.fighters_path.read_text() == before
 
 
@@ -212,32 +238,62 @@ def fighters_without_snapshot_history(fighters: dict, veterans: list[dict]) -> s
     return rookie
 
 
-def test_decay_follows_now(data, model_dir, veterans):
+def test_a_fighter_with_many_bouts_since_the_model_export_is_rated(data, model_dir, veterans, tmp_path):
+    """No roll-forward limit: four wins after the export's as_of (2026-10-14) are all in the rating."""
     root, store = data
-    ratings = write_ratings(model_dir, veterans)
-    score(root, model_dir, now="2027-11-01T06:00:00Z")  # 396 days after the last bout
-    f = store.load_fighters()[veterans[-1]["fighter_id"]]
-    assert f.elo == round(1500 + (ratings[-1] - 1500) * 0.9 ** (396 / 365.25))
-    assert (f.elo_inactive, f.p4p_rank) == (True, None)
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    later = [(f"2026-10-{d}", f"late{d}", v0, v1) for d in (17, 20, 24, 28)]
+    db = history(tmp_path, veterans, later)
+    fighters = store.load_fighters()
+    fighters[v0] = fighters[v0].model_copy(update={"record": Record(w=fighters[v0].record.w + 6)})
+    store.save_fighters(fighters)
+    assert score_with(root, model_dir, db) == 0
+    f = store.load_fighters()[v0]
+    assert f.elo is not None
+    assert fields(f) == expected_fields(db, [v0], NOW)[v0]
+    before_export = expected_fields(history(tmp_path / "b", veterans), [v0], NOW)[v0]
+    assert f.elo > before_export["elo"]
 
 
-def test_without_a_rating_export_fighters_are_unrated_and_tiers_still_score(data, model_dir, capsys):
+def test_decay_and_the_bouts_counted_follow_now(data, model_dir, veterans, tmp_path):
     root, store = data
-    (model_dir / "fighter_rating.parquet").unlink(missing_ok=True)
+    db = history(tmp_path, veterans, [("2027-06-01", "future", veterans[1]["fighter_id"], veterans[0]["fighter_id"])])
+    score_with(root, model_dir, db, now="2026-11-01T06:00:00Z")
+    early = store.load_fighters()[veterans[0]["fighter_id"]]
+    score_with(root, model_dir, db, now="2027-11-01T06:00:00Z")
+    late = store.load_fighters()[veterans[0]["fighter_id"]]
+    assert fields(early) == expected_fields(db, [veterans[0]["fighter_id"]], "2026-11-01")[veterans[0]["fighter_id"]]
+    assert fields(late) == expected_fields(db, [veterans[0]["fighter_id"]], "2027-11-01")[veterans[0]["fighter_id"]]
+    assert early.elo != late.elo
+
+
+def test_without_a_history_store_fighters_are_unrated_and_tiers_still_score(data, model_dir, tmp_path, capsys):
+    root, store = data
     set_thresholds(model_dir, -1.0, 2.0)
-    assert score(root, model_dir) == 0
+    db = tmp_path / "nope" / "history.sqlite"
+    assert score_with(root, model_dir, db) == 0
     for f in store.load_fighters().values():
         assert (f.elo, f.elo_peak, f.p4p_rank, f.elo_provisional, f.elo_inactive) == (None, None, None, False, False)
         assert f.best_win is None
     assert tiers(store, "future") == {"ok": "medium", "rookie": None, "unknown": None}
-    assert "0 fighters with an Elo" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "0 fighters with an Elo" in err and "no history store" in err
+    assert not db.exists()
 
 
-def test_best_win_is_written_as_a_json_object(data, model_dir, veterans):
+def test_the_model_exports_rating_file_is_not_read(data, model_dir, veterans, tmp_path):
     root, store = data
-    write_ratings(model_dir, veterans)
-    score(root, model_dir)
+    pd.DataFrame([{"fighter_id": v["fighter_id"], "rating": 2000.0, "peak": 2000.0, "n_bouts": 12, "n_ufc_bouts": 8,
+                   "last_bout_date": "2026-10-01", "gender": "M"} for v in veterans]
+                 ).to_parquet(model_dir / "fighter_rating.parquet")
+    score_with(root, model_dir, tmp_path / "nope.sqlite")
+    assert all(f.elo is None for f in store.load_fighters().values())
+
+
+def test_best_win_is_written_as_a_json_object(data, model_dir, veterans, tmp_path):
+    root, store = data
+    score_with(root, model_dir, history(tmp_path, veterans))
     raw = json.loads(store.fighters_path.read_text())
-    assert raw[veterans[0]["fighter_id"]]["best_win"] == {"date": "2025-06-07", "elo": 1355, "opponent": "Opp Onent",
-                                                          "opponent_id": "opp"}
+    assert raw[veterans[0]["fighter_id"]]["best_win"]["opponent_id"] == veterans[1]["fighter_id"]
+    assert set(raw[veterans[0]["fighter_id"]]["best_win"]) == {"date", "elo", "opponent", "opponent_id"}
     assert raw["nobody"]["best_win"] is None
