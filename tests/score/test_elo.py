@@ -8,12 +8,13 @@ import pandas as pd
 import pytest
 
 from fightcard.models import Fighter, PastFight, Record
-from fightcard.score.elo import Bout, State, credit, decay, fighter_ratings, k_factor, roll_forward
+from fightcard.score.elo import Bout, State, Win, credit, decay, fighter_ratings, k_factor, roll_forward
 
 AS_OF = "2026-10-14"
 NOW = date(2026, 11, 1)
 RECENT = "2026-10-01"  # 31 days before NOW
-NULL = {"elo": None, "elo_peak": None, "p4p_rank": None, "elo_provisional": False, "elo_inactive": False}
+NULL = {"elo": None, "elo_peak": None, "p4p_rank": None, "elo_provisional": False, "elo_inactive": False,
+        "best_win": None}
 
 
 def k(n: int) -> float:
@@ -33,9 +34,13 @@ def export(*rows: dict) -> pd.DataFrame:
 
 
 def row(fid: str, rating: float, last: str = RECENT, n: int = 10, ufc: int = 10, peak: float | None = None,
-        gender: str | None = "M") -> dict:
-    return {"fighter_id": fid, "rating": rating, "last_bout_date": last, "n_bouts": n, "n_ufc_bouts": ufc,
-            "peak": peak, "gender": gender}
+        gender: str | None = "M", best: tuple | None = None) -> dict:
+    """`best` = (opponent_id, opponent, rating, date) adds the best_win_* columns (absent from older exports)."""
+    out = {"fighter_id": fid, "rating": rating, "last_bout_date": last, "n_bouts": n, "n_ufc_bouts": ufc,
+           "peak": peak, "gender": gender}
+    if best is not None:
+        out |= dict(zip(("best_win_opponent_id", "best_win_opponent", "best_win_rating", "best_win_date"), best))
+    return out
 
 
 def snap(*rows: tuple) -> pd.DataFrame:
@@ -45,8 +50,8 @@ def snap(*rows: tuple) -> pd.DataFrame:
 
 
 def past(opponent_id: str | None, result: str, date: str, method: str | None = "U-DEC",
-         event: str = "UFC Fight Night") -> PastFight:
-    return PastFight(result=result, opponent="X", opponent_id=opponent_id, method=method, event=event, date=date)
+         event: str = "UFC Fight Night", opponent: str = "X") -> PastFight:
+    return PastFight(result=result, opponent=opponent, opponent_id=opponent_id, method=method, event=event, date=date)
 
 
 def fighter(fid: str, w=0, l=0, d=0, nc=0, fights: list[PastFight] | None = None) -> Fighter:
@@ -288,3 +293,58 @@ def test_debut_since_the_export_starts_at_1500():
     new, b = 1500 + k(0) * 0.5, 1500 - k(10) * 0.5
     assert out["new"]["elo"] == round(dec(new, 1) + 1500 - dec(b, 1))  # only b is established
     assert out["new"]["elo_provisional"] is True
+
+
+# --- best win: the beaten opponent with the highest pre-bout rating -----------------------------------------------
+
+def test_best_win_is_the_opponent_rated_highest_going_in_decayed_to_the_day():
+    states = {"a": State(rating=1500, n=10), "strong": State(rating=1800, n=10, last="2025-01-01"),
+              "weak": State(rating=1600, n=10, last="2026-01-01")}
+    roll_forward(states, [Bout("2026-01-01", "a", "weak", "win", name_a="A", name_b="Weak"),
+                          Bout("2026-01-01", "strong", "a", "loss", "S-DEC", name_a="Strong", name_b="A")])
+    assert states["a"].best_win == Win("strong", "Strong", pytest.approx(dec(1800, 365)), "2026-01-01")
+    assert states["strong"].best_win is None and states["weak"].best_win is None
+
+
+@pytest.mark.parametrize("result,method", [("draw", "U-DEC"), ("nc", "KO/TKO"), ("win", "Overturned"),
+                                           ("win", "CNC")])
+def test_draws_and_no_contests_are_not_wins(result, method):
+    states = {"a": State(rating=1500, n=10), "b": State(rating=1900, n=10)}
+    roll_forward(states, [Bout("2026-01-01", "a", "b", result, method, name_a="A", name_b="B")])
+    assert states["a"].best_win is None
+
+
+def test_best_win_tie_goes_to_the_most_recent_and_lower_never_replaces():
+    states = {"a": State(rating=1500, n=10), "b": State(rating=1500, n=0), "c": State(rating=1500, n=0),
+              "d": State(rating=1400, n=0)}
+    roll_forward(states, [Bout("2026-01-01", "a", "b", "win", name_b="B"), Bout("2026-02-01", "a", "c", "win", name_b="C"),
+                          Bout("2026-03-01", "a", "d", "win", name_b="D")])
+    assert states["a"].best_win == Win("c", "C", 1500, "2026-02-01")
+
+
+def test_best_win_from_the_export_is_shown_on_the_display_scale():
+    ratings = export(row("a", 1700, best=("z", "Zed", 1650.4, "2025-03-01")), row("b", 1500))
+    shift = 1500 - (dec(1700, 31) + 1500) / 2
+    out = rate({"a": fighter("a", w=10), "b": fighter("b", w=10)}, ratings)
+    assert out["a"]["best_win"] == {"opponent_id": "z", "opponent": "Zed", "elo": round(1650.4 + shift),
+                                    "date": "2025-03-01"}
+    assert out["b"]["best_win"] is None  # no win: columns null
+
+
+def test_older_export_without_best_win_columns_gives_null():
+    out = rate({"a": fighter("a", w=10)}, export(row("a", 1600), row("b", 1400)))
+    assert out["a"]["best_win"] is None and out["a"]["elo"] is not None
+
+
+def test_a_newer_win_over_a_stronger_opponent_becomes_the_best_win_named_from_the_past_fight():
+    ratings = export(row("a", 1600, last="2026-10-24", best=("old", "Old Foe", 1550.0, "2025-01-01")),
+                     row("b", 1400, last="2026-10-24", best=("a", "A", 1500.0, "2024-01-01")),
+                     row("champ", 1700, last="2026-10-31"))
+    fighters = {"a": fighter("a", w=11, fights=[past("champ", "win", "2026-10-31", "M-DEC", opponent="The Champ")])}
+    out = rate(fighters, ratings)
+    bw = out["a"]["best_win"]
+    assert (bw["opponent_id"], bw["opponent"], bw["date"]) == ("champ", "The Champ", "2026-10-31")
+    a = 1600 + k(10) * (0.8 - e(1600, 1700))
+    champ = 1700 + k(10) * (0.2 - e(1700, 1600))
+    shift = 1500 - (dec(a, 1) + dec(1400, 8) + dec(champ, 1)) / 3
+    assert bw["elo"] == round(1700 + shift)  # champ's rating going in, not after the loss

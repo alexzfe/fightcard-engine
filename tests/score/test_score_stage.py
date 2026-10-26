@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from fightcard.cli import main
-from fightcard.models import Event, Fight, Fighter, Index, Record, Result
+from fightcard.models import BestWin, Event, Fight, Fighter, Index, Record, Result
 from fightcard.store import Store
 
 NOW = "2026-11-01T06:00:00Z"
@@ -176,7 +176,9 @@ def write_ratings(model_dir: Path, veterans: list[dict]) -> list[float]:
     """fighter_rating.parquet for the veterans: ratings symmetric around 1500, all last fought 2026-10-01."""
     ratings = [1500 + 50 * (i - 2.5) for i in range(len(veterans))]
     pd.DataFrame([{"fighter_id": v["fighter_id"], "rating": r, "peak": r + 10, "n_bouts": 12, "n_ufc_bouts": 8,
-                   "last_bout_date": "2026-10-01", "gender": "M"} for v, r in zip(veterans, ratings)]
+                   "last_bout_date": "2026-10-01", "gender": "M",
+                   "best_win_opponent_id": "opp", "best_win_opponent": "Opp Onent", "best_win_rating": r - 20,
+                   "best_win_date": "2025-06-07"} for v, r in zip(veterans, ratings)]
                  ).to_parquet(model_dir / "fighter_rating.parquet")
     return ratings
 
@@ -193,6 +195,7 @@ def test_writes_rating_fields_into_fighters_json(data, model_dir, veterans, caps
         assert f.elo_peak == round(r + 10)
         assert f.p4p_rank == len(veterans) - i
         assert (f.elo_provisional, f.elo_inactive) == (False, False)
+        assert f.best_win == BestWin(opponent_id="opp", opponent="Opp Onent", elo=round(r - 20), date="2025-06-07")
     for fid in ("nobody", fighters_without_snapshot_history(fighters, veterans)):
         assert (fighters[fid].elo, fighters[fid].elo_peak, fighters[fid].p4p_rank) == (None, None, None)
     assert "6 fighters with an Elo" in capsys.readouterr().err
@@ -223,5 +226,16 @@ def test_without_a_rating_export_fighters_are_unrated_and_tiers_still_score(data
     assert score(root, model_dir) == 0
     for f in store.load_fighters().values():
         assert (f.elo, f.elo_peak, f.p4p_rank, f.elo_provisional, f.elo_inactive) == (None, None, None, False, False)
+        assert f.best_win is None
     assert tiers(store, "future") == {"ok": "medium", "rookie": None, "unknown": None}
     assert "0 fighters with an Elo" in capsys.readouterr().err
+
+
+def test_best_win_is_written_as_a_json_object(data, model_dir, veterans):
+    root, store = data
+    write_ratings(model_dir, veterans)
+    score(root, model_dir)
+    raw = json.loads(store.fighters_path.read_text())
+    assert raw[veterans[0]["fighter_id"]]["best_win"] == {"date": "2025-06-07", "elo": 1355, "opponent": "Opp Onent",
+                                                          "opponent_id": "opp"}
+    assert raw["nobody"]["best_win"] is None

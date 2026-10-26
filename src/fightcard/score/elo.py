@@ -253,3 +253,8 @@ def fighter_ratings(fighters: dict[str, Fighter], ratings: pd.DataFrame | None, 
                     "elo_provisional": s.n_ufc < PROVISIONAL_UFC_BOUTS,
                     "elo_inactive": not active(fid)}
     return out
+
+
+class Win:  # stub: best win (docs/ELO.md)
+    def __init__(self, *a, **kw):
+        raise NotImplementedError

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from fightcard.score import elo
-from fightcard.score.elo import Bout, roll_forward
+from fightcard.score.elo import Bout, Win, roll_forward
 
 CASES = json.loads((Path(__file__).parent / "fixtures" / "rating_cases.json").read_text())
 LOG_FLOATS = ("pre_a", "pre_b", "k_a", "k_b", "e_a", "w_a", "delta_a", "delta_b", "post_a", "post_b",
@@ -40,8 +40,10 @@ def test_format_and_params_match_ours():
 
 @pytest.mark.parametrize("case", CASES["cases"], ids=lambda c: c["id"])
 def test_golden_case(case):
+    names = case["names"]
     bouts = [Bout(b["date"], b["fighter_a"], b["fighter_b"], b["result"], b["method"], ufc=b["ufc"],
-                  weight_class=b["weight_class"]) for b in case["bouts"]]
+                  weight_class=b["weight_class"], name_a=names[b["fighter_a"]], name_b=names[b["fighter_b"]])
+             for b in case["bouts"]]
     states = {}
     steps = roll_forward(states, bouts)
 
@@ -57,3 +59,12 @@ def test_golden_case(case):
         s = states[r["fighter_id"]]
         assert (s.n, s.n_ufc, s.last, s.gender) == (r["n_bouts"], r["n_ufc_bouts"], r["last_bout_date"], r["gender"])
         assert close(s.rating, r["rating"]) and close(s.peak, r["peak"]), r["fighter_id"]
+        if r["best_win_opponent_id"] is None:
+            assert s.best_win is None and r["best_win_opponent"] is r["best_win_rating"] is r["best_win_date"] is None
+        else:
+            assert s.best_win == Win(r["best_win_opponent_id"], r["best_win_opponent"],
+                                     pytest.approx(r["best_win_rating"], abs=1e-9), r["best_win_date"])
+
+
+def test_best_win_cases_are_present():
+    assert {"best_win_split", "best_win_tie"} <= {c["id"] for c in CASES["cases"]}

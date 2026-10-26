@@ -36,6 +36,10 @@ class PastFight(BaseModel):
     date: str | None = None  # YYYY-MM-DD
 
 
+class BestWin(BaseModel):  # stub
+    pass
+
+
 class Fighter(BaseModel):
     id: str  # ufcstats fighter id (hex from fighter-details URL)
     name: str

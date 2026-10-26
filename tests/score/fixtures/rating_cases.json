@@ -37,6 +37,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": "2020-01-01",
+            "best_win_opponent": "Fighter B",
+            "best_win_opponent_id": "B",
+            "best_win_rating": 1500.0,
             "fighter_id": "A",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -46,6 +50,10 @@
             "rating": 1572.2295146211036
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "B",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -57,6 +65,10 @@
         ]
       },
       "id": "debut",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B"
+      },
       "rules": [
         "debut_k"
       ]
@@ -126,6 +138,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": "2023-01-01",
+            "best_win_opponent": "Fighter C",
+            "best_win_opponent_id": "C",
+            "best_win_rating": 1500.0,
             "fighter_id": "A",
             "gender": "M",
             "last_bout_date": "2023-01-01",
@@ -135,6 +151,10 @@
             "rating": 1609.7020783614564
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "B",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -144,6 +164,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "C",
             "gender": "M",
             "last_bout_date": "2023-01-01",
@@ -155,6 +179,11 @@
         ]
       },
       "id": "decay_gap",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B",
+        "C": "Fighter C"
+      },
       "rules": [
         "decay_gap"
       ]
@@ -280,6 +309,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": "2020-02-01",
+            "best_win_opponent": "Fighter E",
+            "best_win_opponent_id": "E",
+            "best_win_rating": 1500.0,
             "fighter_id": "A",
             "gender": "M",
             "last_bout_date": "2020-02-01",
@@ -289,6 +322,10 @@
             "rating": 1681.669494545294
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "B",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -298,6 +335,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": "2020-01-01",
+            "best_win_opponent": "Fighter D",
+            "best_win_opponent_id": "D",
+            "best_win_rating": 1500.0,
             "fighter_id": "C",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -307,6 +348,10 @@
             "rating": 1500.0
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "D",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -316,6 +361,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "E",
             "gender": "M",
             "last_bout_date": "2020-02-01",
@@ -327,6 +376,13 @@
         ]
       },
       "id": "same_day",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B",
+        "C": "Fighter C",
+        "D": "Fighter D",
+        "E": "Fighter E"
+      },
       "rules": [
         "same_day"
       ]
@@ -424,6 +480,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": "2020-01-01",
+            "best_win_opponent": "Fighter B",
+            "best_win_opponent_id": "B",
+            "best_win_rating": 1500.0,
             "fighter_id": "A",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -433,6 +493,10 @@
             "rating": 1514.4459029242207
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "B",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -442,6 +506,10 @@
             "rating": 1485.5540970757793
           },
           {
+            "best_win_date": "2020-01-01",
+            "best_win_opponent": "Fighter D",
+            "best_win_opponent_id": "D",
+            "best_win_rating": 1500.0,
             "fighter_id": "C",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -451,6 +519,10 @@
             "rating": 1543.3377087726622
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "D",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -460,6 +532,10 @@
             "rating": 1456.6622912273378
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "E",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -469,6 +545,10 @@
             "rating": 1485.5540970757793
           },
           {
+            "best_win_date": "2020-01-01",
+            "best_win_opponent": "Fighter E",
+            "best_win_opponent_id": "E",
+            "best_win_rating": 1500.0,
             "fighter_id": "F",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -480,6 +560,14 @@
         ]
       },
       "id": "split_majority",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B",
+        "C": "Fighter C",
+        "D": "Fighter D",
+        "E": "Fighter E",
+        "F": "Fighter F"
+      },
       "rules": [
         "split_credit",
         "majority_credit"
@@ -578,6 +666,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": "2020-02-01",
+            "best_win_opponent": "Fighter D",
+            "best_win_opponent_id": "D",
+            "best_win_rating": 1500.0,
             "fighter_id": "A",
             "gender": "M",
             "last_bout_date": "2020-02-01",
@@ -587,6 +679,10 @@
             "rating": 1615.647964993462
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "B",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -596,6 +692,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "C",
             "gender": "M",
             "last_bout_date": "2020-01-15",
@@ -605,6 +705,10 @@
             "rating": 1442.5158736477065
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "D",
             "gender": "M",
             "last_bout_date": "2020-02-01",
@@ -616,6 +720,12 @@
         ]
       },
       "id": "favourite_split_win",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B",
+        "C": "Fighter C",
+        "D": "Fighter D"
+      },
       "rules": [
         "favourite_split_win"
       ]
@@ -713,6 +823,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": "2020-01-01",
+            "best_win_opponent": "Fighter B",
+            "best_win_opponent_id": "B",
+            "best_win_rating": 1500.0,
             "fighter_id": "A",
             "gender": "M",
             "last_bout_date": "2020-02-01",
@@ -722,6 +836,10 @@
             "rating": 1557.9433854823371
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "B",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -731,6 +849,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "C",
             "gender": "M",
             "last_bout_date": "2020-02-01",
@@ -740,6 +862,10 @@
             "rating": 1514.6752628392157
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "G",
             "gender": "M",
             "last_bout_date": "2020-02-01",
@@ -749,6 +875,10 @@
             "rating": 1500.0
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "H",
             "gender": "M",
             "last_bout_date": "2020-02-01",
@@ -760,6 +890,13 @@
         ]
       },
       "id": "draw",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B",
+        "C": "Fighter C",
+        "G": "Fighter G",
+        "H": "Fighter H"
+      },
       "rules": [
         "draw"
       ]
@@ -857,6 +994,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": "2021-07-01",
+            "best_win_opponent": "Fighter D",
+            "best_win_opponent_id": "D",
+            "best_win_rating": 1500.0,
             "fighter_id": "A",
             "gender": "M",
             "last_bout_date": "2021-07-01",
@@ -866,6 +1007,10 @@
             "rating": 1613.7272827925697
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "B",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -875,6 +1020,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "C",
             "gender": "M",
             "last_bout_date": "2020-07-01",
@@ -884,6 +1033,10 @@
             "rating": 1500.0
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "D",
             "gender": "M",
             "last_bout_date": "2021-07-01",
@@ -895,6 +1048,12 @@
         ]
       },
       "id": "nc_counts_n",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B",
+        "C": "Fighter C",
+        "D": "Fighter D"
+      },
       "rules": [
         "nc_counts_n"
       ]
@@ -1048,6 +1207,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": "2020-08-01",
+            "best_win_opponent": "Fighter E",
+            "best_win_opponent_id": "E",
+            "best_win_rating": 1567.9251579160168,
             "fighter_id": "A",
             "gender": "M",
             "last_bout_date": "2020-08-01",
@@ -1057,6 +1220,10 @@
             "rating": 1627.7755091426254
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "B",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -1066,6 +1233,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "C",
             "gender": "M",
             "last_bout_date": "2020-03-01",
@@ -1075,6 +1246,10 @@
             "rating": 1500.0
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "D",
             "gender": "M",
             "last_bout_date": "2020-05-01",
@@ -1084,6 +1259,10 @@
             "rating": 1500.0
           },
           {
+            "best_win_date": "2020-01-01",
+            "best_win_opponent": "Fighter F",
+            "best_win_opponent_id": "F",
+            "best_win_rating": 1500.0,
             "fighter_id": "E",
             "gender": "M",
             "last_bout_date": "2020-08-01",
@@ -1093,6 +1272,10 @@
             "rating": 1500.775748400561
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "F",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -1104,6 +1287,14 @@
         ]
       },
       "id": "cnc_overturned",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B",
+        "C": "Fighter C",
+        "D": "Fighter D",
+        "E": "Fighter E",
+        "F": "Fighter F"
+      },
       "rules": [
         "cnc_draw_no_update",
         "overturned_no_update",
@@ -1315,6 +1506,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "O1",
             "gender": "M",
             "last_bout_date": "2020-01-01",
@@ -1324,6 +1519,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "O2",
             "gender": "M",
             "last_bout_date": "2020-03-01",
@@ -1333,6 +1532,10 @@
             "rating": 1442.3268474567208
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "O3",
             "gender": "M",
             "last_bout_date": "2020-05-01",
@@ -1342,6 +1545,10 @@
             "rating": 1452.2198351012405
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "O4",
             "gender": "M",
             "last_bout_date": "2020-07-01",
@@ -1351,6 +1558,10 @@
             "rating": 1459.0910854889464
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "O5",
             "gender": "M",
             "last_bout_date": "2020-09-01",
@@ -1360,6 +1571,10 @@
             "rating": 1464.0287543518573
           },
           {
+            "best_win_date": "2020-11-01",
+            "best_win_opponent": "Fighter P",
+            "best_win_opponent_id": "P",
+            "best_win_rating": 1716.3638390618373,
             "fighter_id": "O6",
             "gender": "M",
             "last_bout_date": "2020-11-01",
@@ -1369,6 +1584,10 @@
             "rating": 1612.1750722390411
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "O7",
             "gender": "M",
             "last_bout_date": "2021-01-01",
@@ -1378,6 +1597,10 @@
             "rating": 1511.2152215726542
           },
           {
+            "best_win_date": "2021-01-01",
+            "best_win_opponent": "Fighter O7",
+            "best_win_opponent_id": "O7",
+            "best_win_rating": 1500.0,
             "fighter_id": "P",
             "gender": "M",
             "last_bout_date": "2021-01-01",
@@ -1389,6 +1612,16 @@
         ]
       },
       "id": "peak_fifth_ufc",
+      "names": {
+        "O1": "Fighter O1",
+        "O2": "Fighter O2",
+        "O3": "Fighter O3",
+        "O4": "Fighter O4",
+        "O5": "Fighter O5",
+        "O6": "Fighter O6",
+        "O7": "Fighter O7",
+        "P": "Fighter P"
+      },
       "rules": [
         "peak_fifth_ufc",
         "non_ufc_counts_n"
@@ -1543,6 +1776,10 @@
         ],
         "fighters": [
           {
+            "best_win_date": "2020-04-01",
+            "best_win_opponent": "Fighter Y",
+            "best_win_opponent_id": "Y",
+            "best_win_rating": 1416.7583250266503,
             "fighter_id": "M1",
             "gender": "M",
             "last_bout_date": "2020-04-01",
@@ -1552,6 +1789,10 @@
             "rating": 1555.2478272829899
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "Q",
             "gender": null,
             "last_bout_date": "2020-05-01",
@@ -1561,6 +1802,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": "2020-02-01",
+            "best_win_opponent": "Fighter X",
+            "best_win_opponent_id": "X",
+            "best_win_rating": 1500.0,
             "fighter_id": "W1",
             "gender": "F",
             "last_bout_date": "2020-02-01",
@@ -1570,6 +1815,10 @@
             "rating": 1625.0927949977927
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "W2",
             "gender": "F",
             "last_bout_date": "2020-01-01",
@@ -1579,6 +1828,10 @@
             "rating": 1427.7704853788964
           },
           {
+            "best_win_date": "2020-03-01",
+            "best_win_opponent": "Fighter Y",
+            "best_win_opponent_id": "Y",
+            "best_win_rating": 1500.0,
             "fighter_id": "X",
             "gender": null,
             "last_bout_date": "2020-03-01",
@@ -1588,6 +1841,10 @@
             "rating": 1521.0073786167213
           },
           {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
             "fighter_id": "Y",
             "gender": "M",
             "last_bout_date": "2020-04-01",
@@ -1597,6 +1854,10 @@
             "rating": 1365.3962329715457
           },
           {
+            "best_win_date": "2020-05-01",
+            "best_win_opponent": "Fighter Q",
+            "best_win_opponent_id": "Q",
+            "best_win_rating": 1500.0,
             "fighter_id": "Z",
             "gender": null,
             "last_bout_date": "2020-05-01",
@@ -1608,8 +1869,654 @@
         ]
       },
       "id": "gender",
+      "names": {
+        "M1": "Fighter M1",
+        "Q": "Fighter Q",
+        "W1": "Fighter W1",
+        "W2": "Fighter W2",
+        "X": "Fighter X",
+        "Y": "Fighter Y",
+        "Z": "Fighter Z"
+      },
       "rules": [
         "gender"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-01-01",
+          "fight_id": "f2",
+          "fighter_a": "D",
+          "fighter_b": "E",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-02-01",
+          "fight_id": "f3",
+          "fighter_a": "D",
+          "fighter_b": "F",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-01-01",
+          "fight_id": "f4",
+          "fighter_a": "G",
+          "fighter_b": "H",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-02-01",
+          "fight_id": "f5",
+          "fighter_a": "G",
+          "fighter_b": "I",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-03-01",
+          "fight_id": "f6",
+          "fighter_a": "G",
+          "fighter_b": "J",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2021-01-01",
+          "fight_id": "f7",
+          "fighter_a": "A",
+          "fighter_b": "D",
+          "method": "S-DEC",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2021-02-01",
+          "fight_id": "f8",
+          "fighter_a": "A",
+          "fighter_b": "G",
+          "method": "U-DEC",
+          "result": "draw",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2021-03-01",
+          "fight_id": "f9",
+          "fighter_a": "A",
+          "fighter_b": "G",
+          "method": "KO/TKO",
+          "result": "nc",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2021-04-01",
+          "fight_id": "f10",
+          "fighter_a": "A",
+          "fighter_b": "G",
+          "method": "CNC",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2021-05-01",
+          "fight_id": "f11",
+          "fighter_a": "A",
+          "fighter_b": "G",
+          "method": "Overturned",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2021-06-01",
+          "fight_id": "f12",
+          "fighter_a": "G",
+          "fighter_b": "A",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "D and G are built up. A's best win is D, beaten by split decision, at D's rating going in (decayed over 335 days). A's draw with the stronger G, the NC, the CNC win and the Overturned win over G don't count, and neither does A's loss to G (G's best win is then A).",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f2",
+            "fighter_a": "D",
+            "fighter_b": "E",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f4",
+            "fighter_a": "G",
+            "fighter_b": "H",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-02-01",
+            "delta_a": 53.50629922589096,
+            "delta_b": -57.55425178188788,
+            "e_a": 0.6015877160202319,
+            "fight_id": "f3",
+            "fighter_a": "D",
+            "fighter_b": "F",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1625.0927949977927,
+            "post_b": 1442.4457482181122,
+            "pre_a": 1571.5864957719018,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-02-01",
+            "delta_a": 53.50629922589096,
+            "delta_b": -57.55425178188788,
+            "e_a": 0.6015877160202319,
+            "fight_id": "f5",
+            "fighter_a": "G",
+            "fighter_b": "I",
+            "k_a": 134.2988190309114,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1625.0927949977927,
+            "post_b": 1442.4457482181122,
+            "pre_a": 1571.5864957719018,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-03-01",
+            "delta_a": 41.503677517442966,
+            "delta_b": -47.48296109211658,
+            "e_a": 0.6713049967094525,
+            "fight_id": "f6",
+            "fighter_a": "G",
+            "fighter_b": "J",
+            "k_a": 126.26805123884436,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1665.5543885719585,
+            "post_b": 1452.5170389078835,
+            "pre_a": 1624.0507110545154,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2021-01-01",
+            "delta_a": 22.757865684638862,
+            "delta_b": -21.396996422532254,
+            "e_a": 0.43054306918811613,
+            "fight_id": "f7",
+            "fighter_a": "A",
+            "fighter_b": "D",
+            "k_a": 134.2988190309114,
+            "k_b": 126.26805123884436,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1587.7503664531216,
+            "post_b": 1592.1732166094182,
+            "pre_a": 1564.9925007684828,
+            "pre_b": 1613.5702130319505,
+            "w_a": 0.6
+          },
+          {
+            "date": "2021-02-01",
+            "delta_a": 11.367935047955827,
+            "delta_b": -10.776675471999715,
+            "e_a": 0.4099698226398329,
+            "fight_id": "f8",
+            "fighter_a": "A",
+            "fighter_b": "G",
+            "k_a": 126.26805123884436,
+            "k_b": 119.70070245321706,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1598.3371092149364,
+            "post_b": 1639.4414324426386,
+            "pre_a": 1586.9691741669806,
+            "pre_b": 1650.2181079146383,
+            "w_a": 0.5
+          },
+          {
+            "date": "2021-03-01",
+            "delta_a": 0.0,
+            "delta_b": 0.0,
+            "e_a": 0.4415898845657225,
+            "fight_id": "f9",
+            "fighter_a": "A",
+            "fighter_b": "G",
+            "k_a": 119.70070245321706,
+            "k_b": 114.19200279808908,
+            "peak_a": null,
+            "peak_b": 1638.3197114963257,
+            "post_a": 1597.5460473814915,
+            "post_b": 1638.3197114963257,
+            "pre_a": 1597.5460473814915,
+            "pre_b": 1638.3197114963257,
+            "w_a": null
+          },
+          {
+            "date": "2021-04-01",
+            "delta_a": 0.0,
+            "delta_b": 0.0,
+            "e_a": 0.44210519589335273,
+            "fight_id": "f10",
+            "fighter_a": "A",
+            "fighter_b": "G",
+            "k_a": 114.19200279808908,
+            "k_b": 109.47947190221174,
+            "peak_a": 1596.6776496432476,
+            "peak_b": 1638.3197114963257,
+            "post_a": 1596.6776496432476,
+            "post_b": 1637.088328699766,
+            "pre_a": 1596.6776496432476,
+            "pre_b": 1637.088328699766,
+            "w_a": null
+          },
+          {
+            "date": "2021-05-01",
+            "delta_a": 0.0,
+            "delta_b": 0.0,
+            "e_a": 0.4425996331080064,
+            "fight_id": "f11",
+            "fighter_a": "A",
+            "fighter_b": "G",
+            "k_a": 109.47947190221174,
+            "k_b": 105.38422832729749,
+            "peak_a": 1596.6776496432476,
+            "peak_b": 1638.3197114963257,
+            "post_a": 1595.8446262479454,
+            "post_b": 1635.9071065098265,
+            "pre_a": 1595.8446262479454,
+            "pre_b": 1635.9071065098265,
+            "w_a": null
+          },
+          {
+            "date": "2021-06-01",
+            "delta_a": 45.099114682494125,
+            "delta_b": -46.69640434757049,
+            "e_a": 0.5568938057548521,
+            "fight_id": "f12",
+            "fighter_a": "G",
+            "fighter_b": "A",
+            "k_a": 101.77947243396716,
+            "k_b": 105.38422832729749,
+            "peak_a": 1679.7963164645273,
+            "peak_b": 1596.6776496432476,
+            "post_a": 1679.7963164645273,
+            "post_b": 1548.294970960016,
+            "pre_a": 1634.6972017820333,
+            "pre_b": 1594.9913753075864,
+            "w_a": 1.0
+          }
+        ],
+        "fighters": [
+          {
+            "best_win_date": "2021-01-01",
+            "best_win_opponent": "Fighter D",
+            "best_win_opponent_id": "D",
+            "best_win_rating": 1613.5702130319505,
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2021-06-01",
+            "n_bouts": 7,
+            "n_ufc_bouts": 7,
+            "peak": 1596.6776496432476,
+            "rating": 1548.294970960016
+          },
+          {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "best_win_date": "2020-02-01",
+            "best_win_opponent": "Fighter F",
+            "best_win_opponent_id": "F",
+            "best_win_rating": 1500.0,
+            "fighter_id": "D",
+            "gender": "M",
+            "last_bout_date": "2021-01-01",
+            "n_bouts": 3,
+            "n_ufc_bouts": 3,
+            "peak": null,
+            "rating": 1592.1732166094182
+          },
+          {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
+            "fighter_id": "E",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
+            "fighter_id": "F",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1442.4457482181122
+          },
+          {
+            "best_win_date": "2021-06-01",
+            "best_win_opponent": "Fighter A",
+            "best_win_opponent_id": "A",
+            "best_win_rating": 1594.9913753075864,
+            "fighter_id": "G",
+            "gender": "M",
+            "last_bout_date": "2021-06-01",
+            "n_bouts": 8,
+            "n_ufc_bouts": 8,
+            "peak": 1679.7963164645273,
+            "rating": 1679.7963164645273
+          },
+          {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
+            "fighter_id": "H",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
+            "fighter_id": "I",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1442.4457482181122
+          },
+          {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
+            "fighter_id": "J",
+            "gender": "M",
+            "last_bout_date": "2020-03-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1452.5170389078835
+          }
+        ]
+      },
+      "id": "best_win_split",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B",
+        "D": "Fighter D",
+        "E": "Fighter E",
+        "F": "Fighter F",
+        "G": "Fighter G",
+        "H": "Fighter H",
+        "I": "Fighter I",
+        "J": "Fighter J"
+      },
+      "rules": [
+        "best_win_split",
+        "best_win_excludes"
+      ]
+    },
+    {
+      "bouts": [
+        {
+          "date": "2020-01-01",
+          "fight_id": "f1",
+          "fighter_a": "A",
+          "fighter_b": "B",
+          "method": "KO/TKO",
+          "result": "win",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-02-01",
+          "fight_id": "f2",
+          "fighter_a": "C",
+          "fighter_b": "A",
+          "method": "KO/TKO",
+          "result": "loss",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        },
+        {
+          "date": "2020-03-01",
+          "fight_id": "f3",
+          "fighter_a": "D",
+          "fighter_b": "A",
+          "method": "S-DEC",
+          "result": "draw",
+          "ufc": true,
+          "weight_class": "Lightweight"
+        }
+      ],
+      "description": "A beats two debutants (both 1500 going in); the tie goes to the more recent win (C, where A is fighter_b). B, C and D have no win: best_win_* null.",
+      "expected": {
+        "bouts": [
+          {
+            "date": "2020-01-01",
+            "delta_a": 72.22951462110359,
+            "delta_b": -72.22951462110359,
+            "e_a": 0.5,
+            "fight_id": "f1",
+            "fighter_a": "A",
+            "fighter_b": "B",
+            "k_a": 144.45902924220718,
+            "k_b": 144.45902924220718,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1572.2295146211036,
+            "post_b": 1427.7704853788964,
+            "pre_a": 1500.0,
+            "pre_b": 1500.0,
+            "w_a": 1.0
+          },
+          {
+            "date": "2020-02-01",
+            "delta_a": -57.55425178188788,
+            "delta_b": 53.50629922589096,
+            "e_a": 0.39841228397976813,
+            "fight_id": "f2",
+            "fighter_a": "C",
+            "fighter_b": "A",
+            "k_a": 144.45902924220718,
+            "k_b": 134.2988190309114,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1442.4457482181122,
+            "post_b": 1625.0927949977927,
+            "pre_a": 1500.0,
+            "pre_b": 1571.5864957719018,
+            "w_a": 0.0
+          },
+          {
+            "date": "2020-03-01",
+            "delta_a": 24.746553528987,
+            "delta_b": -21.630348101979205,
+            "e_a": 0.3286950032905475,
+            "fight_id": "f3",
+            "fighter_a": "D",
+            "fighter_b": "A",
+            "k_a": 144.45902924220718,
+            "k_b": 126.26805123884436,
+            "peak_a": null,
+            "peak_b": null,
+            "post_a": 1524.746553528987,
+            "post_b": 1602.4203629525362,
+            "pre_a": 1500.0,
+            "pre_b": 1624.0507110545154,
+            "w_a": 0.5
+          }
+        ],
+        "fighters": [
+          {
+            "best_win_date": "2020-02-01",
+            "best_win_opponent": "Fighter C",
+            "best_win_opponent_id": "C",
+            "best_win_rating": 1500.0,
+            "fighter_id": "A",
+            "gender": "M",
+            "last_bout_date": "2020-03-01",
+            "n_bouts": 3,
+            "n_ufc_bouts": 3,
+            "peak": null,
+            "rating": 1602.4203629525362
+          },
+          {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
+            "fighter_id": "B",
+            "gender": "M",
+            "last_bout_date": "2020-01-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1427.7704853788964
+          },
+          {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
+            "fighter_id": "C",
+            "gender": "M",
+            "last_bout_date": "2020-02-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1442.4457482181122
+          },
+          {
+            "best_win_date": null,
+            "best_win_opponent": null,
+            "best_win_opponent_id": null,
+            "best_win_rating": null,
+            "fighter_id": "D",
+            "gender": "M",
+            "last_bout_date": "2020-03-01",
+            "n_bouts": 1,
+            "n_ufc_bouts": 1,
+            "peak": null,
+            "rating": 1524.746553528987
+          }
+        ]
+      },
+      "id": "best_win_tie",
+      "names": {
+        "A": "Fighter A",
+        "B": "Fighter B",
+        "C": "Fighter C",
+        "D": "Fighter D"
+      },
+      "rules": [
+        "best_win_tie"
       ]
     }
   ],
