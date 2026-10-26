@@ -122,11 +122,27 @@ def wait_for(predicate, what: str, timeout: float = 60):
     pytest.fail(f"timed out waiting for {what}")
 
 
-def data_tarball(tmp: Path) -> bytes:
+def history_store(db: Path) -> None:
+    """A store holding a bout for the fixture's completed event e2, so score's staleness check passes."""
+    from fightcard.history.store import connect, upsert_event
+    from fightcard.models import Event, Fight, Result
+    conn = connect(db)
+    fight = Fight(id="e2-1", red="f1", blue="f2", weight_class="Lightweight",
+                  result=Result(winner="f1", outcome="win", method="U-DEC", round=3, time="5:00"))
+    with conn:
+        upsert_event(conn, Event(id="e2", slug="ufc-0", name="UFC 0", date="2026-10-18", status="completed",
+                                 fights=[fight]), is_ufc=True, source="listing")
+    conn.close()
+
+
+def seed_tarball(tmp: Path) -> bytes:
+    """data/ and history/history.sqlite, as docs/SERVICE.md's seeding step streams them in."""
     make_data(tmp / "data", generated_at=GENERATED_AT)
+    history_store(tmp / "history" / "history.sqlite")
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         tar.add(tmp / "data", arcname="data")
+        tar.add(tmp / "history", arcname="history")
     return buf.getvalue()
 
 
@@ -171,7 +187,7 @@ def container(image, tmp_path_factory):
         assert run.returncode == 0, run.stderr
         port = int(docker("port", name, "8080").stdout.splitlines()[0].rsplit(":", 1)[1])
         c = Container(name, port)
-        c.tarball = data_tarball(tmp_path_factory.mktemp("seed"))
+        c.tarball = seed_tarball(tmp_path_factory.mktemp("seed"))
         yield c
     finally:
         print(Container(name, 0).logs()[-6000:])
@@ -211,6 +227,8 @@ def test_seeding_then_a_manual_run_publishes_the_api(container):
     out = run.stdout.decode()
     print(out, run.stderr.decode()[-2000:])
     assert run.returncode == 0
+    assert "step=history status=skipped reason=no-html-cache" in out
+    assert "score: history store /srv/fightcard/state/history/history.sqlite" in run.stderr.decode() + out
     for step in ("score", "publish"):
         assert re.search(rf"step={step} status=ok exit=0 duration_s=\d+\.\d\d", out), step
     status, body = get(container.port, "/v1/index.json")
