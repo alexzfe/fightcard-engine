@@ -36,7 +36,7 @@ Needs [uv](https://docs.astral.sh/uv/) and Python 3.12+.
 uv sync
 uv run pytest                            # full suite; tests that hit the network are excluded
 uv run pytest -m live                    # only the network tests
-uv run pytest -m docker                  # only the nginx container tests (needs docker)
+uv run pytest -m docker                  # only the container tests: nginx, the service image (needs docker)
 uv run fightcard history ingest --html-dir <ufcstats cache> --db history/history.sqlite  # once: seed the store
 uv run fightcard --data data scrape      # keeps the store current (--no-history to skip); then segments, images, score
 ```
