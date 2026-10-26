@@ -30,8 +30,9 @@ packages = ["src/fightcard"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers -m 'not live and not docker'"
+addopts = "--strict-markers -m 'not live and not docker and not seed'"
 markers = [
     "live: hits the network; run explicitly with -m live",
     "docker: starts a container; run explicitly with -m docker",
+    "seed: reads the research repo's full ufcstats cache (skips when absent); run explicitly with -m seed",
 ]

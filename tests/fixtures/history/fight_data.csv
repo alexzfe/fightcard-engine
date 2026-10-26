@@ -1,0 +1,46 @@
+fight_id,event_id,referee,fighter_1,fighter_2,winner,num_rounds,title_fight,weight_class,gender,result,result_details,finish_round,finish_time,time_format,scores_1,scores_2
+0be6540982a5b0cd,04076783ca83d6ae,Chris Tognoni,7acbb0972e75281a,16690d100f995f8f,Draw,3,F,Middleweight,M,Decision,Majority,3,5:00,3 Rnd (5-5-5),85,84
+147d2ab0230af48d,04076783ca83d6ae,John McCarthy,08e908ed6d18d6a0,814ff3018127e8fc,08e908ed6d18d6a0,3,F,Featherweight,M,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),90,81
+279b4190d9ef1379,04076783ca83d6ae,Herb Dean,634bb0de2eb043b4,634e2fb70bde3fd5,634bb0de2eb043b4,5,T,Women's Featherweight,F,Decision,Unanimous,5,5:00,5 Rnd (5-5-5-5-5),145,140
+3d76ed7e224e9c99,04076783ca83d6ae,Herb Dean,193b9d1858bc4df3,32c355b04fc57f3a,193b9d1858bc4df3,3,F,Lightweight,M,Submission,Guillotine Choke After Drop to Ground,3,0:42,3 Rnd (5-5-5),,
+7e9ed49a1831056f,04076783ca83d6ae,John McCarthy,d2bc285ead803db0,1a31ef98efce7a79,1a31ef98efce7a79,3,F,Flyweight,M,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),77,90
+8f40ac90544d0003,04076783ca83d6ae,Chris Tognoni,c96d9178c9ed9e62,f57dd0bfa8c17813,c96d9178c9ed9e62,3,F,Bantamweight,M,Submission,Anaconda Choke On Ground,2,1:41,3 Rnd (5-5-5),,
+a88a4c126d585320,04076783ca83d6ae,John McCarthy,032cc3922d871c7f,64a50dad704d1d49,032cc3922d871c7f,3,F,Lightweight,M,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),90,74
+c381ad2c0bf34dd9,04076783ca83d6ae,John McCarthy,f9f07bb5a43535ed,84b3e7d38f2d2ec5,84b3e7d38f2d2ec5,3,F,Welterweight,M,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),82,89
+e3a2bf2d9ee83318,04076783ca83d6ae,Herb Dean,749f572d1d3161fb,0d65c432720accb9,NC,3,F,Light Heavyweight,M,Overturned,Failed Drug Test by Oleksiejczuk,3,5:00,3 Rnd (5-5-5),90,81
+f77e3c681fe1b04e,04076783ca83d6ae,Chris Tognoni,98215d037be5bcb7,d910665038efc639,d910665038efc639,3,F,Women's Strawweight,F,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),84,87
+19646a0c8baee966,31ceaf0e670c1578,Herb Dean,cb139171ed1b69fe,ce47f49e5c386a9c,cb139171ed1b69fe,3,F,Welterweight,M,Submission,Rear Naked Choke,2,0:37,3 Rnd (5-5-5),,
+2eb9b36c09c00d69,31ceaf0e670c1578,John McCarthy,82e7929bf6c2b689,f57a8a52ca401ed9,82e7929bf6c2b689,3,F,Welterweight,M,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),90,81
+39c4f4a1aff68189,31ceaf0e670c1578,Jon Schorle,b9d0fd83bb8a147a,030f08370fd1c2bb,b9d0fd83bb8a147a,3,F,Heavyweight,M,KO/TKO,Kicks to Leg At Distance,2,3:28,3 Rnd (5-5-5),,
+c22f4a7540cffdda,31ceaf0e670c1578,Herb Dean,ee779c43a8926d52,4908c5ee68a50ee5,ee779c43a8926d52,3,T,Heavyweight,M,Decision,Split,3,5:00,3 Rnd (5-5-5),86,85
+e050c299ffa1f2d3,31ceaf0e670c1578,Jon Schorle,6da99156486ed6c2,2067a177a2842fbf,6da99156486ed6c2,3,F,Welterweight,M,KO/TKO,Slam to   On Ground,1,0:21,3 Rnd (5-5-5),,
+e364cd5772cfd27c,31ceaf0e670c1578,John McCarthy,79899ecf62020f6d,93ce4ac89e3d7652,79899ecf62020f6d,3,T,Welterweight,M,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),88,83
+f846fd001397db45,31ceaf0e670c1578,John McCarthy,ccd1299e0345e0ce,b7d524c77c27389b,ccd1299e0345e0ce,3,F,Welterweight,M,TKO - Doctor's Stoppage,Facial Cuts,2,2:55,3 Rnd (5-5-5),,
+00b0796724ec1c09,6420efac0578988b,Joao Alberto Barreto,6ceff86fae4f6b3b,02fc8f50f56eb307,6ceff86fae4f6b3b,,F,Open Weight,M,Submission,Rear Naked Choke,1,0:52,No Time Limit,,
+2d2bbc86e941e05c,6420efac0578988b,Joao Alberto Barreto,598a58db87b890ee,d3711d3784b76255,598a58db87b890ee,,F,Open Weight,M,KO/TKO,"to    
+      Corner Stoppage",1,4:20,No Time Limit,,
+46acd54cc0c905fb,6420efac0578988b,Joao Alberto Barreto,63b65af1c5cb02cb,46c8ec317aff28ac,63b65af1c5cb02cb,,F,Open Weight,M,Submission,Heel Hook From Guard,1,1:49,No Time Limit,,
+567a09fd200cfa05,6420efac0578988b,Joao Alberto Barreto,279093302a6f44b3,96eff1a628adcc7f,279093302a6f44b3,,F,Open Weight,M,KO/TKO,Kick to Head On Ground,1,0:26,No Time Limit,,
+64139d1d505e46c5,6420efac0578988b,Joao Alberto Barreto,429e7d3725852ce9,279093302a6f44b3,429e7d3725852ce9,,T,,M,Submission,Rear Naked Choke,1,1:44,No Time Limit,,
+ac7ca2ec38b96c1a,6420efac0578988b,Joao Alberto Barreto,279093302a6f44b3,598a58db87b890ee,279093302a6f44b3,,F,Open Weight,M,KO/TKO,"to    
+      Corner Stoppage",1,0:59,No Time Limit,,
+cecdc0da584274b9,6420efac0578988b,Joao Alberto Barreto,429e7d3725852ce9,a5c53b3ddb31cc7d,429e7d3725852ce9,,F,Open Weight,M,Submission,"Other  
+      Position - Mount",1,2:18,No Time Limit,,
+ffd16691c4c4aafc,6420efac0578988b,Joao Alberto Barreto,429e7d3725852ce9,63b65af1c5cb02cb,429e7d3725852ce9,,F,Open Weight,M,Submission,Rear Naked Choke,1,0:57,No Time Limit,,
+281eee31b9538056,7d96bc577e5178b2,,2924886ee9c4c527,744f50016c39c26c,2924886ee9c4c527,3,F,,M,KO/TKO,"to    
+      Arm Injury",1,0:58,3 Rnd (5-5-5),,
+11318a7807cee8ca,8fa2b06572365321,Chris Tognoni,971dba22c622af12,b6203e0492a9336c,971dba22c622af12,3,F,Women's Strawweight,F,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),90,76
+2e1435c160bfe8b2,8fa2b06572365321,Jason Herzog,4148802ae4a50768,de45aaae23dfa392,4148802ae4a50768,3,F,Lightweight,M,Submission,Anaconda Choke On Ground,2,3:26,3 Rnd (5-5-5),,
+58b2fdad7af9be02,8fa2b06572365321,Mark Smith,dc07493a87dc0a6e,b39f7a6c2be17ee8,b39f7a6c2be17ee8,3,F,Lightweight,M,KO/TKO,Punches to Head At Distance,1,3:38,3 Rnd (5-5-5),,
+5d3e046b6bcd49f5,8fa2b06572365321,Chris Tognoni,5ef94841c4bc3f86,31bb0772f21cabd8,NC,3,F,Flyweight,M,Overturned,Guillotine win for Chairez overturned on replay,1,3:47,3 Rnd (5-5-5),,
+697efaf0d162e877,8fa2b06572365321,Jason Herzog,3a46b268013afede,6b453bc35a823c3f,6b453bc35a823c3f,3,F,Welterweight,M,Decision,Split,3,5:00,3 Rnd (5-5-5),85,86
+79f03eca3fe5cdb3,8fa2b06572365321,Herb Dean,8e5d953bdb9ae5e7,ac7c765882f2c68c,8e5d953bdb9ae5e7,3,F,Women's Strawweight,F,Submission,Rear Naked Choke,2,3:38,3 Rnd (5-5-5),,
+7a0813ec0fadc84e,8fa2b06572365321,Mark Smith,9d83f6da776ff7d6,ca43de99b07b6b40,9d83f6da776ff7d6,3,F,Middleweight,M,KO/TKO,Punch to Body At Distance,2,4:44,3 Rnd (5-5-5),,
+a5d76e93a5052e3f,8fa2b06572365321,Chris Tognoni,d2f43cfaf8ca3560,31f8081c7600da93,31f8081c7600da93,3,F,Featherweight,M,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),83,88
+b395c89e19a3fec4,8fa2b06572365321,Herb Dean,e8b731feff72294b,132deb59abae64b1,Draw,5,T,Women's Flyweight,F,Decision,Split,5,5:00,5 Rnd (5-5-5-5-5),142,142
+bcec26b425194e40,8fa2b06572365321,Jason Herzog,68d4a891e5cf2029,a9e260472d321361,68d4a891e5cf2029,3,F,Women's Flyweight,F,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),89,82
+c0ca4c201d086ea8,8fa2b06572365321,Mark Smith,fe2babf95de24fb1,f3ca6908f78efebe,fe2babf95de24fb1,3,F,Bantamweight,M,KO/TKO,Punches to Head From Back Control,1,0:54,3 Rnd (5-5-5),,
+245a3d53baa5e268,e78f601035d677f2,Jacob Montalvo,b07f14fc0e53f8bd,6b56e94a59b7b134,6b56e94a59b7b134,3,F,Welterweight,M,Decision,Majority,3,5:00,3 Rnd (5-5-5),84,86
+991d084feb15a112,e78f601035d677f2,Jacob Montalvo,e530df53922f413e,fa9746fa5d23c202,e530df53922f413e,3,F,Featherweight,M,KO/TKO,Knee to Body From Half Guard,1,3:43,3 Rnd (5-5-5),,
+a9642fcd89aaed14,e78f601035d677f2,Mark Smith,a90c200c3fbb22c4,23dec7c47cb418f8,23dec7c47cb418f8,3,F,Middleweight,M,Submission,Armbar From Bottom Guard,1,1:14,3 Rnd (5-5-5),,
+da3e3327bc416aa0,e78f601035d677f2,Mark Smith,d6f58b8cd1a6ff52,971dba22c622af12,971dba22c622af12,3,F,Women's Strawweight,F,Decision,Unanimous,3,5:00,3 Rnd (5-5-5),81,90
