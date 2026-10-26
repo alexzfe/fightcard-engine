@@ -11,8 +11,8 @@ scores each upcoming bout's chance of ending early, and writes the JSON the site
 2. **Rate.** Each fighter gets an Elo-style rating.
 3. **Score.** A gradient-boosted model gives every upcoming bout a finish chance and a Low / Medium / High tier
    (`fightcard score`).
-4. **Publish.** The results are written as static JSON. Today that's the `data/` folder the site builds from. A
-   public versioned API at `https://ufc-data.xlobax.com/v1/` is coming (not live yet).
+4. **Publish.** The results are written as static JSON in `data/`, and `fightcard publish` turns that into the
+   public versioned API served at `https://ufc-data.xlobax.com/v1/` (not live yet). See [docs/API.md](docs/API.md).
 
 ## The rating
 
@@ -36,6 +36,7 @@ Needs [uv](https://docs.astral.sh/uv/) and Python 3.12+.
 uv sync
 uv run pytest                            # full suite; tests that hit the network are excluded
 uv run pytest -m live                    # only the network tests
+uv run pytest -m docker                  # only the nginx container tests (needs docker)
 uv run fightcard --data data scrape      # then segments, images, score
 ```
 
