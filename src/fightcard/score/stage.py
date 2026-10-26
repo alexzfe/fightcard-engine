@@ -12,8 +12,11 @@
 - Each fighter's rating fields (`elo`, `elo_peak`, `p4p_rank`, the tags, the
   best win) come from the full-history pass over the bout-history store
   (`--history-db`, filled by `fightcard history ingest`), counting bouts up to
-  `--now` and decayed to it (`fightcard.history.rating` / `.display`). Without
-  the store every fighter is unrated; tiers still score.
+  `--now` and decayed to it (`fightcard.history.rating` / `.display`). The
+  default store is `<--data>/../history/history.sqlite` (beside data/, not the
+  cwd). A missing, empty, non-SQLite or never-ingested store is an error: exit
+  1 before writing anything, so the last good generation stays live.
+  `--no-history` scores tiers only and leaves the rating fields as they are.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ import pandas as pd
 
 from fightcard.history.display import fighter_ratings
 from fightcard.history.rating import history_ratings
+from fightcard.history.store import TABLES
 from fightcard.models import BestWin, Event, Fight, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
 from fightcard.score.features import bout_context, bout_row
@@ -39,8 +43,11 @@ from fightcard.store import Store, write_json
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--model-dir", type=Path, default=Path("model"), help="vendored model export")
     parser.add_argument("--now", default=None, help="ISO 8601 UTC time to act as (default: now)")
-    parser.add_argument("--history-db", type=Path, default=Path("history/history.sqlite"),
-                        help="bout-history store (fightcard history ingest); without it every fighter is unrated")
+    ratings = parser.add_mutually_exclusive_group()
+    ratings.add_argument("--history-db", type=Path, default=None,
+                         help="bout-history store (fightcard history ingest; default <--data>/../history/history.sqlite)")
+    ratings.add_argument("--no-history", action="store_true",
+                         help="tiers only: leave every fighter's rating fields as they are")
 
 
 def _record(row) -> tuple[int, int, int, int]:
@@ -98,13 +105,25 @@ def _now(arg: str | None) -> datetime:
     return datetime.fromisoformat(arg.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
-def _history_ratings(db: Path, as_of: str) -> pd.DataFrame | None:
-    """The full-history pass up to `as_of`, or None when there's no store (read-only: score never writes it)."""
+class HistoryUnavailable(Exception):
+    """The history store can't be read; the message is the one line `score` prints."""
+
+
+def _history_ratings(db: Path, as_of: str) -> pd.DataFrame:
+    """The full-history pass up to `as_of` (read-only: score never writes the store)."""
     if not db.is_file():
-        print(f"score: no history store at {db}; every fighter is unrated", file=sys.stderr)
-        return None
+        raise HistoryUnavailable(f"no history store at {db}; run `fightcard history ingest`, "
+                                 f"or pass --no-history for tiers only")
+    unusable = HistoryUnavailable(f"history store {db} is unusable (not an ingested history store); "
+                                  f"run `fightcard history ingest`")
     with closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as conn:
-        return history_ratings(conn, as_of)
+        try:
+            tables = {name for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            if not set(TABLES) <= tables or conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0:
+                raise unusable
+            return history_ratings(conn, as_of)
+        except sqlite3.DatabaseError as e:
+            raise unusable from e
 
 
 def _rating_fields(r: dict) -> dict:
@@ -121,9 +140,18 @@ def run(args: argparse.Namespace) -> int:
     store = Store(args.data)
     now = _now(args.now)
     fighters = store.load_fighters()
-    rating = fighter_ratings(fighters, _history_ratings(args.history_db, now.date().isoformat()), now.date())
-    fighters = {fid: f.model_copy(update=_rating_fields(rating[fid])) for fid, f in fighters.items()}
-    store.save_fighters(fighters)
+    rated = "ratings left as they are (--no-history)"
+    if not args.no_history:
+        db = args.history_db or args.data.resolve().parent / "history" / "history.sqlite"
+        try:
+            history = _history_ratings(db, now.date().isoformat())
+        except HistoryUnavailable as e:
+            print(f"score: {e}", file=sys.stderr)
+            return 1
+        rating = fighter_ratings(fighters, history, now.date())
+        fighters = {fid: f.model_copy(update=_rating_fields(rating[fid])) for fid, f in fighters.items()}
+        store.save_fighters(fighters)
+        rated = f"{sum(r['elo'] is not None for r in rating.values())} fighters with an Elo"
     events, stale = score_events(list(store.load_events().values()), fighters, bundle, now)
     for ev in events:
         store.save_event(ev)
@@ -137,7 +165,6 @@ def run(args: argparse.Namespace) -> int:
         index.model = ModelInfo(**model_summary(bundle))
         store.save_index(index)
     scored = sum(f.finish_tier is not None for ev in events for f in ev.fights)
-    rated = sum(r["elo"] is not None for r in rating.values())
-    print(f"score: {scored} bouts with a tier, {len(stale)} stale fighter entries, {rated} fighters with an Elo "
+    print(f"score: {scored} bouts with a tier, {len(stale)} stale fighter entries, {rated} "
           f"(model {bundle.manifest['version']})", file=sys.stderr)
     return 0
