@@ -93,6 +93,14 @@ def test_service_doc_covers_the_supervision(term):
     assert term in service_doc(), term
 
 
+def test_service_doc_says_to_seed_the_store_fully_before_the_first_run():
+    # PR #3: scrape backfills at most BACKFILL_PER_RUN old events a run; score stays strict on the rest until then.
+    from fightcard.ufcstats.stage import BACKFILL_PER_RUN
+    seeding = service_doc().split("## Seeding a new volume")[1].split("\n## ")[0]
+    for term in ("before the first run", "fightcard history ingest", f"at most {BACKFILL_PER_RUN}", "backfill_skips"):
+        assert term in seeding, term
+
+
 def test_service_doc_states_the_stage_timeouts():
     from fightcard.service.runner import TIMEOUTS
     doc = service_doc()
