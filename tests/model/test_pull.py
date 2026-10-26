@@ -162,13 +162,31 @@ def test_a_repeat_after_adopting_downloads_nothing_either(root, bucket):
     assert bucket.requests == ["/latest.json"]
 
 
-def test_a_latest_that_points_back_at_an_older_version_rolls_back(root, bucket):
-    bucket.publish(NEW)
+def test_a_latest_that_points_back_at_an_older_version_is_held_not_a_silent_downgrade(root, bucket, capsys):
+    bucket.publish(NEW, as_of="2026-10-28")
     pull(root, url=bucket.url)
     assert current(root) == NEW
-    bucket.publish(BAKED_VERSION)  # research re-pointed latest.json at the previous version
+    bucket.publish(BAKED_VERSION, as_of="2026-10-14")  # research re-pointed latest.json at the previous version
+    capsys.readouterr()
+    bucket.requests.clear()
     assert pull(root, url=bucket.url) == 0
-    assert current(root) == BAKED_VERSION
+    err = capsys.readouterr().err
+    assert current(root) == NEW and bucket.requests == ["/latest.json"]  # held before any file is fetched
+    assert f"held {BAKED_VERSION}" in err and "older" in err and "FIGHTCARD_MODEL_PIN" in err, err
+
+
+def test_a_version_with_the_same_as_of_is_adopted(root, bucket):
+    bucket.publish("2026-10-21+aaaaaaaa", as_of="2026-10-21")
+    pull(root, url=bucket.url)
+    bucket.publish("2026-10-21+bbbbbbbb", as_of="2026-10-21")  # a re-export the same day
+    pull(root, url=bucket.url)
+    assert current(root) == "2026-10-21+bbbbbbbb"
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_manifest_older_than_the_running_model_is_held_whatever_latest_says(root, bucket, capsys):
+    bucket.publish(NEW, as_of="2026-10-21", edit=edit_json("manifest.json", as_of="2026-10-01"))
+    held(root, bucket, capsys, "older")
 
 
 def test_only_the_last_three_versions_are_kept(root, bucket):
@@ -335,6 +353,9 @@ def bad_latest(bucket, **changes) -> dict:
     ({"version": 5}, "version"),
     ({"files": []}, "files"),
     ({"files": None}, "files"),
+    ({"as_of": None}, "as_of"),
+    ({"as_of": "yesterday"}, "as_of"),
+    ({"as_of": 20261021}, "as_of"),
 ])
 @pytest.mark.usefixtures("seeded")
 def test_a_latest_that_is_not_the_published_shape_is_held(root, bucket, capsys, changes, reason):
