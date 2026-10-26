@@ -44,7 +44,7 @@ started another way (`fightcard-service run` by hand, or the first start on an e
 `fightcard-service run` (`src/fightcard/service/runner.py`):
 
 ```
-gate → scrape → segments → images → score → publish
+gate → scrape → segments → images → model pull → score → publish
 ```
 
 - Each stage is `fightcard --data /srv/fightcard/state/data <stage> …` in its own process, so a stage's memory is
@@ -70,7 +70,8 @@ gate → scrape → segments → images → score → publish
   transaction as data/ (`feat/scrape-history`), and score reads it (`--history-db`). Both default to
   `<--data>/../history/history.sqlite`, and both exit 1 when it's missing, so a fresh volume needs the seed below.
   There is no separate history step.
-- It stops at the first stage that exits non-zero. Every stage writes nothing on failure, and only publish switches
+- It stops at the first stage that exits non-zero, except the model pull, which is logged and skipped past ([The
+  model](#the-model)). Every stage writes nothing on failure, and only publish switches
   what nginx serves, atomically (`current` symlink). So a failed run, at any stage, leaves the
   last good generation live; the next run starts from whatever data/ the successful stages left.
 - A `flock` on `state/run.lock` means two runs never overlap: a run that can't take the lock logs `status=locked`
@@ -79,6 +80,67 @@ gate → scrape → segments → images → score → publish
   a run writes `state/run.json` (its pid and start time) for the health check.
 - Logs go to **stdout** (`docker logs`), one line per stage:
   `fightcard-run run=<id> step=score status=ok exit=0 duration_s=4.12`, plus a start and an end line per run.
+
+## The model
+
+The finish model in `model/` ([model/README.md](../model/README.md)) is baked into the image, and the image is
+the fallback. With `FIGHTCARD_MODEL_URL` set the service also pulls the model research publishes, so a new export
+reaches the box without a release. `fightcard model pull` (`src/fightcard/model/`) is the `model` step of every
+run, right before score. It runs where fetching is off too (staging), since it isn't a ufcstats fetch.
+
+**The bucket.** `FIGHTCARD_MODEL_URL` is a public-read bucket (Cloudflare R2, `https://models.xlobax.com/`), so
+there is no credential on the VPS. It holds `<version>/<file>` for each bundle (the files `python -m export` writes;
+a version's prefix is immutable, and a `+` in it is fetched as `%2B`), and `latest.json`, written last, after every
+file of its version is up:
+
+```json
+{"format_version": 1, "version": "2026-10-14+5006318a", "as_of": "2026-10-14", "files": {"model.txt": "<sha256>", "...": "..."}}
+```
+
+**A pull.**
+
+1. Fetch `latest.json`. If its `version` is the one `current` points at, that's all: `up to date`.
+2. Otherwise download each file into a staging dir under `state/model/`. `latest.json` is checked before anything is
+   fetched: `format_version` 1, a plain version name, only the bundle's file names (an unknown or path-like name is
+   rejected), a sha256 for each, and every required file listed.
+3. The candidate then has to pass every gate, in this order: the **sha256** of each file; `manifest.json` names the
+   same version; `load_bundle` loads it; `thresholds.json`'s `low_max` and `medium_max` **equal the running model's**;
+   and `examples.json` re-scores to its own `p_finish` and tier (the parity check of `tests/score/test_score_parity.py`).
+   A new cut point changes what Low, Medium and High mean, so it needs a person: ship it by hand ([model/README.md](../model/README.md)).
+4. It's renamed to `state/model/<version>/` and `state/model/current` (a relative symlink, like publish's) is
+   switched to it by an atomic rename, so score sees the old model or the new one. The previous version stays kept,
+   and only the last 3 versions are (oldest pruned first; never the one `current` names).
+
+**Held, or unreachable: the current model stays.** A version that fails a gate is *held*: the log says
+`model pull: held <version>: <reason>; keeping <current>`, and the next run tries it again (a fresh `latest.json`
+may have moved on). A bucket that is down, answers 404, returns something unreadable, cuts off or sends a file over
+256 MiB is *unreachable*: `model pull: failed, keeping <current>`, no verdict on any model. Either way the pull
+ends with exit 0, and the runner goes on even if the pull crashes or hangs (its 5 min timeout), so a pull does not fail the
+run: score runs on the model it had. Look for `step=model` in the run's lines and `model pull:` in the output.
+
+**No-op, and the first boot.** With `FIGHTCARD_MODEL_URL` unset (and no pin) the pull is a no-op that logs one
+line and creates nothing: `state/model` doesn't exist, and score reads `FIGHTCARD_MODEL_DIR` (`/app/model`, the
+baked model). The first boot with a url or a pin copies the baked model to `state/model/<its version>/` and points
+`current` at it, so there is always a model to compare a new one with and to roll back to. From then on score reads
+`state/model/current`. A `current` that no longer loads is seeded again from the baked model.
+
+**Which model scored.** score logs `(model <version>)`, and `/v1/index.json` carries `model.version`, `model.as_of`
+and `model.stale_fighters` (the number of fighters whose record moved since the export, whose bouts get no tier).
+Research's export gate reads them: it exports when the box already runs the newest published version and
+`model.stale_fighters` is above 0 ([CONTRACT.md](CONTRACT.md)).
+
+**Pin and rollback.** `FIGHTCARD_MODEL_PIN=<version>` makes the pull switch `current` to that kept version, without
+fetching anything, and keep it there: newer versions in the bucket wait until the pin is removed. A pin can only
+name a kept version (the last 3) that still loads; anything else is held and the current model stays. To roll back:
+
+```sh
+docker compose exec app ls /srv/fightcard/state/model     # the kept versions, oldest first
+docker compose exec -e FIGHTCARD_MODEL_PIN=<version> app fightcard-service run     # this run; scores with it
+```
+
+For it to last, set `FIGHTCARD_MODEL_PIN: <version>` in the app's `env` in infra's `sites.yml` and deploy; remove it
+to resume pulling. Or have research point `latest.json` back at the older version: a version that differs from
+`current`, older or not, is pulled and gated like any other.
 
 ## Volume
 
@@ -91,6 +153,7 @@ infra gives one volume, `ufc-data-<env>-data`, mounted at `/srv/fightcard`, whic
 | `state/data/` | The working data/ the stages read and write |
 | `state/cache/` | `XDG_CACHE_HOME`: the ufcstats `_fmc` cookie |
 | `state/history/history.sqlite` | The SQLite history store: scrape upserts it, score reads it |
+| `state/model/` | The pulled model: `<version>/` for the last 3 versions and `current` -> the one score reads ([The model](#the-model)); absent until `FIGHTCARD_MODEL_URL` is set |
 | `state/run.lock`, `state/run.json` | The run lock, and the running run's pid and start time |
 
 nginx maps only `/v1/<documented resource>` to `current/`, so nothing under `state/` or `generations/` is reachable.
@@ -126,8 +189,8 @@ restore, stream the archive into `state/` the way the seed goes in (below).
 
 ## Staging
 
-Staging runs the same image with fetching off: no scrape, segments or images, only score and publish over the
-data on its own volume, at :47 (above). Prod and staging share the box's one IP, so a second scraper would double the load on
+Staging runs the same image with fetching off: no scrape, segments or images, only the model pull, score and
+publish over the data on its own volume, at :47 (above). Prod and staging share the box's one IP, so a second scraper would double the load on
 ufcstats and risk getting prod's IP blocked; the scrapers are covered by the fixture tests and `-m live`.
 `sites.yml`'s `env` is the same for both envs, so it passes `FIGHTCARD_HOST: "{host}"` and
 `FIGHTCARD_FETCH_HOST: ufc-data.xlobax.com`; fetching is on only where the two match. `FIGHTCARD_FETCH=off` turns

@@ -26,7 +26,8 @@ The finish model is trained in a separate research repo, and the exported bundle
 looks at each fighter's recent form, how their fights tend to end, striking and grappling rates, physical attributes
 and experience. The tier cut-offs split past out-of-sample predictions into thirds. Historically those tiers ended
 early 37%, 48% and 62% of the time. [model/README.md](model/README.md) covers the bundle, the tiers and how a new
-export is brought in.
+export is brought in. The service also pulls newer exports at runtime (`fightcard model pull`, see
+[docs/SERVICE.md](docs/SERVICE.md)).
 
 ## Running it
 

@@ -1,7 +1,8 @@
 # model/ — vendored finish-tier model
 
 Exported from `~/Projects/fight-auto-research` by `python -m export` (branch `feat/export`), then copied here by hand.
-`fightcard score` (`src/fightcard/score/`) reads it. The only runtime dependencies are lightgbm, pandas and pyarrow, and it never needs the research repo.
+This copy is baked into the image as the fallback and the first-boot seed; the service pulls newer exports at runtime (Re-exporting, below).
+`fightcard score` (`src/fightcard/score/`) reads the model it's pointed at: this one, or the pulled one in `state/model/current`. The only runtime dependencies are lightgbm, pandas and pyarrow, and it never needs the research repo.
 
 Current export: **as of 2026-10-14** (build data through the 2026-10-10 card), version `2026-10-14+5006318a`, research sha `d179cf2`.
 
@@ -90,8 +91,16 @@ Bout context on the site (`fightcard.score.features.bout_context`):
 
 ## Re-exporting
 
-By hand for now. The automated flow from the site repo (an export workflow pushing to this repo) is scrapped. A
-later phase stops vendoring the bundle and has the engine pull the current model at runtime instead.
+A routine re-export is automated. Research's CI runs `python -m export` (on a manual dispatch, on Mondays, or when
+the engine reports stale fighters) and uploads the bundle to the public model bucket (Cloudflare R2): each file
+at `<version>/<file>`, then `latest.json` last. The service's `fightcard model pull` adopts it when it passes
+its gates, with nothing copied here, committed or released: the engine's `FIGHTCARD_MODEL_URL` points at the
+bucket, and `docs/SERVICE.md` ("The model") has the gates, the hold, pin and rollback.
+
+This `model/` is then the image's baked fallback and the seed of a volume's first boot. A pull never adopts a model
+whose tier cut points (`low_max`, `medium_max`) differ from the running one's, since that changes what Low, Medium
+and High mean, so a new set of cut points, or a refresh of the baked model, is a hand export. Exporting by hand still works,
+exactly as before:
 
 1. Refresh the research data: `cd ~/Projects/fight-auto-research`, scrape, then `uv run python -m build`.
 2. Export from the research checkout or a worktree that has `export/`:
@@ -105,10 +114,11 @@ later phase stops vendoring the bundle and has the engine pull the current model
    - snapshot rows don't reproduce the build's rows on 200 historical bouts
    - the tier finish rates aren't strictly increasing
 3. `cp /tmp/finish-model/* model/`
-4. Update the numbers in this README, run `uv run pytest tests/score`, then commit `model/`.
+4. Update the numbers in this README, run `uv run pytest tests/score`, then commit `model/` and release.
 5. Nothing to update on the site: `score` writes the numbers the how-it-works page quotes into `index.model`
    (`src/fightcard/score/summary.py`, importance by theme from the booster's gain). A model with a new
    feature fails `score` and the pipeline tests until the feature is given a theme in `summary.GROUPS`; a new
-   theme also needs a label in fight-card-website's `site/src/lib/finish-model.ts`.
+   theme also needs a label in fight-card-website's `site/src/lib/finish-model.ts`. This holds for a pulled model
+   too: it's gated by `load_bundle` and the parity check, but `score` would still fail on a feature with no theme.
 
 The next refresh re-scores every unfrozen bout. Tiers already frozen (past events) never change.
