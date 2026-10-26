@@ -3,11 +3,13 @@
 Everything is fetched and validated in memory first; nothing is written unless
 the whole run succeeds (non-zero exit = do not commit, do not deploy).
 
-With a history store (`--history-db`, seeded by `fightcard history ingest`; `--no-history` to go without)
+With a history store (`--history-db`, default `<--data>/../history/history.sqlite` as for `score`, seeded by
+`fightcard history ingest`; `--no-history` to go without)
 the run also keeps it current, in one transaction committed only after data/ is written: the full completed
 listing (refetched every run: it says which events are UFC events), every event page and every fighter page
 fetched, through the same parse + upsert path as `history ingest`. Completed events in data/ with no bout in
-the store are refetched so `score` finds them.
+the store are refetched so `score` finds them. A completed bout with a method but no W/L outcome fails the
+run with nothing written, as it fails `history ingest`.
 """
 
 from __future__ import annotations
@@ -21,11 +23,13 @@ from pathlib import Path
 
 from fightcard.history.ingest import (
     LISTING_URL,
+    MissingOutcome,
     listed_ids,
     page_path,
     record_page,
     upsert_card,
     upsert_fighter_page,
+    without_outcome,
 )
 from fightcard.history.store import connect
 from fightcard.models import Event, Fighter, Index
@@ -76,21 +80,23 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help="also scrape results for the N most recent completed events")
     parser.add_argument("--cookie-file", type=Path, default=None,
                         help="where to cache the ufcstats _fmc cookie (default ~/.cache/fightcard/)")
-    parser.add_argument("--history-db", type=Path, default=Path("history/history.sqlite"),
-                        help="bout-history store to keep current (seed it with fightcard history ingest)")
-    parser.add_argument("--no-history", action="store_true",
-                        help="scrape without a history store (score then rates nobody)")
+    history = parser.add_mutually_exclusive_group()
+    history.add_argument("--history-db", type=Path, default=None,
+                         help="bout-history store to keep current (seed it with fightcard history ingest); "
+                              "default <--data>/../history/history.sqlite, as for score")
+    history.add_argument("--no-history", action="store_true", help="scrape without a history store")
 
 
 def run(args: argparse.Namespace) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     if args.no_history:
         return scrape(Store(args.data), make_client(args.cookie_file), now=utcnow(), recent=args.recent)
-    if not args.history_db.is_file():
-        print(f"scrape: no history store at {args.history_db}; seed it with `fightcard history ingest` "
+    db = args.history_db or args.data.resolve().parent / "history" / "history.sqlite"
+    if not db.is_file():
+        print(f"scrape: no history store at {db}; seed it with `fightcard history ingest` "
               "or pass --no-history", file=sys.stderr)
         return 1
-    history = connect(args.history_db)
+    history = connect(db)
     try:
         return scrape(Store(args.data), make_client(args.cookie_file), now=utcnow(), recent=args.recent,
                       history=history)
@@ -246,6 +252,9 @@ class _Run:
 
     def _write_history(self) -> None:
         """The run's pages in the order `history ingest` reads them: listing, event pages by id, fighter pages."""
+        no_outcome = [fid for parsed in self.parsed.values() for fid in without_outcome(parsed)]
+        if no_outcome:
+            raise MissingOutcome(no_outcome)  # like `history ingest`: the rating would drop these silently
         stamp = iso(self.now)
         for url, html in self.pages.items():
             if "/fighter-details/" not in url or url.endswith(tuple(self.fighter_pages)):
@@ -289,7 +298,7 @@ def scrape(store: Store, client, now: datetime, recent: int = 1, history: sqlite
         run_.results()
         run_.fighter_details()
         counts = run_.write()
-    except (Halt, HttpError, ValidationError, sqlite3.Error) as exc:
+    except (Halt, HttpError, ValidationError, MissingOutcome, sqlite3.Error) as exc:
         print(f"scrape failed, nothing written: {exc}", file=sys.stderr)
         return 1
     print("scrape ok: " + ", ".join(f"{k}={v}" for k, v in counts.items()), file=sys.stderr)
