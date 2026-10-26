@@ -13,6 +13,7 @@ STAGES = {
     "images": "fightcard.images.stage",
     "score": "fightcard.score.stage",
     "segments": "fightcard.segments.stage",
+    "publish": "fightcard.publish.stage",
 }
 
 
