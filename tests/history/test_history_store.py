@@ -115,7 +115,18 @@ def test_fighter_upsert_keeps_bio_a_card_name_doesnt_know(db):
         upsert_fighter(db, "a", "Alex Card")
     row = db.execute("SELECT name, nickname, height_in, stance, dob, record_w, record_l, fetched_at FROM fighters"
                      ).fetchone()
-    assert row == ("Alex Card", "Nick", 70.0, "Orthodox", "1990-01-02", 3, 1, "2026-10-26T00:00:00Z")
+    assert row == ("Alex A", "Nick", 70.0, "Orthodox", "1990-01-02", 3, 1, "2026-10-26T00:00:00Z")
+
+
+def test_a_card_name_fills_in_until_a_fighter_page_names_the_fighter(db):
+    with db:
+        upsert_fighter(db, "a", "Card One")
+        upsert_fighter(db, "a", "Card Two")
+    assert db.execute("SELECT name FROM fighters").fetchone() == ("Card Two",)
+    with db:
+        upsert_fighter(db, "a", "Page Name", Fighter(id="a", name="Page Name", record=Record(w=1)))
+        upsert_fighter(db, "a", "Card Three")
+    assert db.execute("SELECT name FROM fighters").fetchone() == ("Page Name",)
 
 
 # --- ingest ---------------------------------------------------------------------------------------------------

@@ -114,12 +114,14 @@ def upsert_event(conn: sqlite3.Connection, event: Event, is_ufc: bool, source: s
 
 def upsert_fighter(conn: sqlite3.Connection, fighter_id: str, name: str | None, page: Fighter | None = None,
                    fetched_at: str | None = None) -> None:
-    """A name seen on a card (`page` None), or a fighter page. Fields a card doesn't know are kept."""
+    """A name seen on a card (`page` None), or a fighter page. Fields a card doesn't know are kept, and so is a
+    name from a fighter page (rows with a record): the page's spelling wins whichever order they come in."""
     rec = page.record if page else None
     conn.execute(
         "INSERT INTO fighters (fighter_id, name, nickname, dob, height_in, reach_in, stance, record_w, record_l, "
         "record_d, record_nc, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT (fighter_id) DO UPDATE SET name = COALESCE(excluded.name, name), "
+        "ON CONFLICT (fighter_id) DO UPDATE SET name = CASE WHEN excluded.record_w IS NULL AND record_w IS NOT NULL "
+        "THEN name ELSE COALESCE(excluded.name, name) END, "
         "nickname = COALESCE(excluded.nickname, nickname), dob = COALESCE(excluded.dob, dob), "
         "height_in = COALESCE(excluded.height_in, height_in), reach_in = COALESCE(excluded.reach_in, reach_in), "
         "stance = COALESCE(excluded.stance, stance), record_w = COALESCE(excluded.record_w, record_w), "

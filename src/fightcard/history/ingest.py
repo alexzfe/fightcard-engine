@@ -18,11 +18,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fightcard.history.store import is_ufc_event, upsert_event, upsert_fighter, upsert_page
-from fightcard.ufcstats.parsers import parse_event_detail, parse_event_list, parse_fighter
+from fightcard.models import Fighter
+from fightcard.ufcstats.parsers import ParsedEvent, parse_event_detail, parse_event_list, parse_fighter
 
 LISTING = Path("listings") / "events_completed.html"
 BASE_URL = "http://ufcstats.com"
-_LISTING_URL = f"{BASE_URL}/statistics/events/completed?page=all"
+LISTING_URL = f"{BASE_URL}/statistics/events/completed?page=all"
 
 
 class MissingOutcome(ValueError):
@@ -46,6 +47,43 @@ def _fetch_log(html_dir: Path) -> dict[str, tuple[str, str]]:
     return out
 
 
+# --- one row per parsed page; `fightcard scrape --history-db` uses these too --------------------------------------
+
+
+def page_path(url: str) -> str:
+    """Where a ufcstats page sits in the cache: listings/events_completed.html, event-details/<id>.html, ..."""
+    if url == LISTING_URL:
+        return LISTING.as_posix()
+    kind, page_id = url.rstrip("/").rsplit("/", 2)[-2:]
+    return f"{kind}/{page_id}.html"
+
+
+def record_page(conn: sqlite3.Connection, url: str, rel: str, data: bytes, fetched_at: str | None) -> None:
+    upsert_page(conn, url, rel, hashlib.sha256(data).hexdigest(), fetched_at)
+
+
+def listed_ids(listing_html: str) -> set[str]:
+    """The event ids in ufcstats' completed-events listing (`store.is_ufc_event`)."""
+    return {stub.id for stub in parse_event_list(listing_html)}
+
+
+def upsert_card(conn: sqlite3.Connection, parsed: ParsedEvent, listed: set[str]) -> None:
+    """An event page: the event, its card, and the fighters' names as the card spells them."""
+    ev = parsed.event
+    upsert_event(conn, ev, is_ufc_event(ev.name, ev.id in listed), "listing" if ev.id in listed else "history")
+    for fid, name in parsed.fighters.items():
+        upsert_fighter(conn, fid, name)
+
+
+def without_outcome(parsed: ParsedEvent) -> list[str]:
+    """Fight ids on the page with a method but no W/L outcome (`MissingOutcome`)."""
+    return [f.id for f in parsed.event.fights if f.result is not None and f.result.outcome is None]
+
+
+def upsert_fighter_page(conn: sqlite3.Connection, fighter: Fighter, fetched_at: str | None) -> None:
+    upsert_fighter(conn, fighter.id, fighter.name, fighter, fetched_at)
+
+
 class _Pages:
     def __init__(self, conn: sqlite3.Connection, html_dir: Path):
         self.conn, self.html_dir, self.log, self.count = conn, html_dir, _fetch_log(html_dir), 0
@@ -55,7 +93,7 @@ class _Pages:
         data = path.read_bytes()
         rel = path.relative_to(self.html_dir).as_posix()
         url, fetched_at = self.log.get(rel, (default_url, None))
-        upsert_page(self.conn, url, rel, hashlib.sha256(data).hexdigest(), fetched_at)
+        record_page(self.conn, url, rel, data, fetched_at)
         self.count += 1
         return data.decode("utf-8", errors="replace"), fetched_at
 
@@ -68,27 +106,24 @@ def ingest(conn: sqlite3.Connection, html_dir: Path) -> dict[str, int]:
     counts = {"events": 0, "fights": 0, "fighters": 0}
     with conn:
         pages = _Pages(conn, html_dir)
-        listing, _ = pages.read(html_dir / LISTING, _LISTING_URL)
-        listed = {stub.id for stub in parse_event_list(listing)}
+        listing, _ = pages.read(html_dir / LISTING, LISTING_URL)
+        listed = listed_ids(listing)
         seen: set[str] = set()
         no_outcome: list[str] = []
         for path in sorted((html_dir / "event-details").glob("*.html")):
             html, _ = pages.read(path, f"{BASE_URL}/event-details/{path.stem}")
             parsed = parse_event_detail(html, path.stem)
-            ev = parsed.event
-            upsert_event(conn, ev, is_ufc_event(ev.name, ev.id in listed), "listing" if ev.id in listed else "history")
-            for fid, name in parsed.fighters.items():
-                upsert_fighter(conn, fid, name)
+            upsert_card(conn, parsed, listed)
             seen |= parsed.fighters.keys()
             counts["events"] += 1
-            counts["fights"] += len(ev.fights)
-            no_outcome += [f.id for f in ev.fights if f.result is not None and f.result.outcome is None]
+            counts["fights"] += len(parsed.event.fights)
+            no_outcome += without_outcome(parsed)
         if no_outcome:
             raise MissingOutcome(no_outcome)
         for path in sorted((html_dir / "fighter-details").glob("*.html")):
             html, fetched_at = pages.read(path, f"{BASE_URL}/fighter-details/{path.stem}")
             fighter = parse_fighter(html, path.stem)
-            upsert_fighter(conn, fighter.id, fighter.name, fighter, fetched_at)
+            upsert_fighter_page(conn, fighter, fetched_at)
             seen.add(fighter.id)
         counts["fighters"], counts["pages"] = len(seen), pages.count
     return counts
