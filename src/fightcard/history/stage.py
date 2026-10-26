@@ -1,5 +1,6 @@
 """`fightcard history ingest --html-dir <dir> --db <path> [--dump <dir>]`: load a ufcstats HTML cache (layout in
-`fightcard.history.ingest`) into the history store. Non-zero exit = the store is unchanged; don't publish."""
+`fightcard.history.ingest`) into the history store. Non-zero exit = the store is unchanged; don't publish. It exits 1
+when a completed bout has a method but no W/L outcome, naming the fights."""
 
 from __future__ import annotations
 
@@ -7,7 +8,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from fightcard.history.ingest import LISTING, ingest
+from fightcard.history.ingest import LISTING, MissingOutcome, ingest
 from fightcard.history.store import connect, dump
 
 
@@ -30,6 +31,9 @@ def run(args: argparse.Namespace) -> int:
         counts = ingest(conn, args.html_dir)
         if args.dump is not None:
             dump(conn, args.dump)
+    except MissingOutcome as e:
+        print(f"history: {e}; the store is unchanged", file=sys.stderr)
+        return 1
     finally:
         conn.close()
     print(f"history: {counts['events']} events, {counts['fights']} fights, {counts['fighters']} fighters, "

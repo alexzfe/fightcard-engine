@@ -5,7 +5,8 @@ The cache layout is fight-auto-research's `data/raw_html/ufcstats/`:
   event-details/<event_id>.html    events and their cards, results included
   fighter-details/<fighter_id>.html  optional: bio and record
   _fetch_log.jsonl                 optional: {"url", "path", "fetched_at" (epoch s), ...} per fetch; the last wins
-Everything goes in one transaction: a page that fails to parse leaves the store as it was.
+Everything goes in one transaction: a page that fails to parse leaves the store as it was, and so does a completed
+bout with a method but no W/L outcome (`MissingOutcome`; it would drop out of the rating silently).
 """
 
 from __future__ import annotations
@@ -22,6 +23,12 @@ from fightcard.ufcstats.parsers import parse_event_detail, parse_event_list, par
 LISTING = Path("listings") / "events_completed.html"
 BASE_URL = "http://ufcstats.com"
 _LISTING_URL = f"{BASE_URL}/statistics/events/completed?page=all"
+
+
+class MissingOutcome(ValueError):
+    def __init__(self, fight_ids: list[str]):
+        self.fight_ids = sorted(fight_ids)
+        super().__init__(f"completed bouts with a method but no W/L outcome: {', '.join(self.fight_ids)}")
 
 
 def _fetch_log(html_dir: Path) -> dict[str, tuple[str, str]]:
@@ -64,6 +71,7 @@ def ingest(conn: sqlite3.Connection, html_dir: Path) -> dict[str, int]:
         listing, _ = pages.read(html_dir / LISTING, _LISTING_URL)
         listed = {stub.id for stub in parse_event_list(listing)}
         seen: set[str] = set()
+        no_outcome: list[str] = []
         for path in sorted((html_dir / "event-details").glob("*.html")):
             html, _ = pages.read(path, f"{BASE_URL}/event-details/{path.stem}")
             parsed = parse_event_detail(html, path.stem)
@@ -74,6 +82,9 @@ def ingest(conn: sqlite3.Connection, html_dir: Path) -> dict[str, int]:
             seen |= parsed.fighters.keys()
             counts["events"] += 1
             counts["fights"] += len(ev.fights)
+            no_outcome += [f.id for f in ev.fights if f.result is not None and f.result.outcome is None]
+        if no_outcome:
+            raise MissingOutcome(no_outcome)
         for path in sorted((html_dir / "fighter-details").glob("*.html")):
             html, fetched_at = pages.read(path, f"{BASE_URL}/fighter-details/{path.stem}")
             fighter = parse_fighter(html, path.stem)
