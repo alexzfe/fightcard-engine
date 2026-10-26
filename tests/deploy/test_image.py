@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import http.client
 import io
+import json
 import re
 import shutil
 import subprocess
@@ -22,6 +23,8 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tests" / "publish"))
+sys.path.insert(0, str(REPO / "tests" / "model"))
+from model_bucket import publish_version  # noqa: E402
 from publish_helpers import make_data  # noqa: E402
 
 DOCKERFILE = REPO / "Dockerfile"
@@ -156,8 +159,10 @@ class Container:
         result = docker("logs", self.name, check=False)
         return result.stdout + result.stderr
 
-    def exec(self, *args: str, input: bytes | None = None) -> subprocess.CompletedProcess:
-        return subprocess.run(["docker", "exec", "-i", self.name, *args], input=input, capture_output=True)
+    def exec(self, *args: str, input: bytes | None = None, env: dict[str, str] | None = None
+             ) -> subprocess.CompletedProcess:
+        flags = [f"--env={k}={v}" for k, v in (env or {}).items()]
+        return subprocess.run(["docker", "exec", "-i", *flags, self.name, *args], input=input, capture_output=True)
 
     def run_lines(self) -> list[str]:
         return [line for line in self.logs().splitlines() if line.startswith("fightcard-run ")]
@@ -237,6 +242,47 @@ def test_seeding_then_a_manual_run_publishes_the_api(container):
     assert status == 200 and GENERATED_AT.encode() in body
     assert get(container.port, "/v1/events/e1.json")[0] == 200
     assert get(container.port, "/v1/snapshot.tar.gz")[0] == 200
+
+
+NEW_MODEL = "2026-10-21+aaaaaaaa"
+BUCKET_PORT = 9099
+
+
+@pytest.mark.docker
+def test_a_run_pulls_a_model_from_a_local_bucket_and_scores_with_it(container, tmp_path):
+    """docs/SERVICE.md's model pull, end to end in the image: a bucket served by `python -m http.server` inside the
+    container (nothing leaves it), FIGHTCARD_MODEL_URL on the run, then the seed, the swap, score and the API."""
+    publish_version(tmp_path / "bucket", NEW_MODEL)
+    assert docker("cp", str(tmp_path / "bucket"), f"{container.name}:/tmp/bucket", check=False).returncode == 0
+    serve = subprocess.run(["docker", "exec", "-d", container.name, "python", "-m", "http.server", str(BUCKET_PORT),
+                            "--bind", "127.0.0.1", "--directory", "/tmp/bucket"], capture_output=True)
+    assert serve.returncode == 0, serve.stderr
+    url = f"http://127.0.0.1:{BUCKET_PORT}"
+    wait_for(lambda: container.exec("python", "-c", f"import urllib.request; urllib.request.urlopen('{url}/latest.json')"
+                                    ).returncode == 0, "the bucket server")
+    run = container.exec("fightcard-service", "run", env={"FIGHTCARD_MODEL_URL": url})
+    out, err = run.stdout.decode(), run.stderr.decode()
+    print(out, err[-2000:])
+    assert run.returncode == 0
+    assert re.search(r"step=model status=ok exit=0 duration_s=\d+\.\d\d", out)
+    assert out.index("step=model") < out.index("step=score")
+    assert "model pull: seeded current" in err and f"model pull: adopted {NEW_MODEL}" in err
+    link = container.exec("readlink", "/srv/fightcard/state/model/current")
+    assert link.stdout.decode().strip() == NEW_MODEL
+    assert f"(model {NEW_MODEL})" in err  # score ran on the pulled model
+    model = json.loads(get(container.port, "/v1/index.json")[1])["model"]
+    assert (model["version"], model["as_of"], model["stale_fighters"]) == (NEW_MODEL, "2026-10-21", 0)
+
+
+@pytest.mark.docker
+def test_an_unreachable_bucket_keeps_the_run_and_the_model(container):
+    run = container.exec("fightcard-service", "run", env={"FIGHTCARD_MODEL_URL": "http://127.0.0.1:9"})
+    out, err = run.stdout.decode(), run.stderr.decode()
+    print(out, err[-2000:])
+    assert run.returncode == 0
+    assert "step=model status=ok exit=0" in out and "model pull: failed, keeping" in err
+    assert container.exec("readlink", "/srv/fightcard/state/model/current").stdout.decode().strip() == NEW_MODEL
+    assert re.search(r"step=publish status=ok", out)
 
 
 # infra's sites.yml `backup:` for ufc-data; backup.j2 runs it as `docker compose exec -T app <command>`.

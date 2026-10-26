@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-STAGES = ("scrape", "segments", "images", "score", "publish")
+STAGES = ("scrape", "segments", "images", "model", "score", "publish")
 
 
 def main() -> int:
