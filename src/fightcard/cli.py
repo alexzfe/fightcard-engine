@@ -14,6 +14,7 @@ STAGES = {
     "score": "fightcard.score.stage",
     "segments": "fightcard.segments.stage",
     "publish": "fightcard.publish.stage",
+    "history": "fightcard.history.stage",
 }
 
 

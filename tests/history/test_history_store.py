@@ -123,8 +123,7 @@ def test_fighter_upsert_keeps_bio_a_card_name_doesnt_know(db):
 def test_ingest_loads_every_page_of_the_fixture(seeded):
     assert count(seeded, "events") == 7
     assert count(seeded, "fights", "outcome IS NOT NULL") == 41  # research's CSV has 41 bouts for these events
-    assert count(seeded, "fights", "event_id = ?", UPCOMING) > 0 == count(
-        seeded, "fights", "event_id = ? AND outcome IS NOT NULL", UPCOMING)
+    assert seeded.execute("SELECT status FROM events WHERE event_id = ?", (UPCOMING,)).fetchone() == ("upcoming",)
     assert count(seeded, "pages") == 7 + 2 + 1
     assert count(seeded, "fighters") == len({f for r in seeded.execute("SELECT red, blue FROM fights") for f in r})
 
@@ -153,9 +152,9 @@ def test_ingest_keeps_draws_and_no_contests_apart(seeded):
 
 
 def test_fighter_pages_fill_bio_and_name(seeded):
-    name, record_w, dob = seeded.execute(
-        "SELECT name, record_w, dob FROM fighters WHERE fighter_id = ?", (CYBORG,)).fetchone()
-    assert name == "Cris Cyborg" and record_w > 20 and dob
+    name, record_w, height, stance = seeded.execute(
+        "SELECT name, record_w, height_in, stance FROM fighters WHERE fighter_id = ?", (CYBORG,)).fetchone()
+    assert name == "Cristiane Justino" and record_w > 20 and height and stance  # the card says "Cris Cyborg"
 
 
 def test_pages_record_url_path_hash_and_fetch_time(seeded):
@@ -254,4 +253,4 @@ def test_rating_bouts_stop_at_as_of(db):
 
 
 def test_names_prefer_the_fighter_page(seeded):
-    assert names(seeded)[CYBORG] == "Cris Cyborg"
+    assert names(seeded)[CYBORG] == "Cristiane Justino"

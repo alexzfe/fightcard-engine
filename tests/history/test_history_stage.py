@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 
 from history_helpers import FIXTURES
 
@@ -14,7 +15,7 @@ HTML = FIXTURES / "html"
 def test_ingest_writes_the_store_and_reports_counts(tmp_path, capsys):
     db = tmp_path / "h" / "history.sqlite"
     assert main(["history", "ingest", "--html-dir", str(HTML), "--db", str(db)]) == 0
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 7
     err = capsys.readouterr().err
     assert "7 events" in err and "10 pages" in err
