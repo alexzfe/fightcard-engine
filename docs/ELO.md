@@ -45,11 +45,12 @@ One implementation, in this repo, over the full bout history (since 2026-10-26, 
    and the raw page each came from. `fightcard history ingest --html-dir <cache> --db <path>` fills it from a
    ufcstats HTML cache with the same parsers `scrape` uses; it was seeded from fight-auto-research's cache
    (`data/raw_html/ufcstats/`) and agrees with research's parsed CSVs on all 11,600 bouts. After that, each
-   `fightcard scrape` keeps it current (`--history-db`, the same default path as `score`): the full completed
+   `fightcard scrape` keeps it current (`--history-db`, default `<--data>/../history/history.sqlite`, as for `score`): the full completed
    listing, every event page and every fighter page the run fetched go in through the same parse + upsert
    functions as `history ingest`, in one transaction committed with the data/ write. A failed run leaves the
    store as it was, and re-running on the same pages changes nothing. Completed events in data/ with no bout in
-   the store are refetched. Without the store, `scrape` exits 1 unless `--no-history`.
+   the store are refetched. Without the store, `scrape` exits 1 unless `--no-history`; like `history ingest`, it
+   exits 1 on a completed bout with a method but no outcome.
 2. **Rating pass** (`src/fightcard/history/rating.py`, ported from research `export/rating.py`): `rate` over
    `store.rating_bouts`, in date order, gives each fighter's raw rating, n, n_ufc, last bout, peak, gender and
    best win. Over the bouts research had, it reproduces research's last `fighter_rating.parquet` (4,146 fighters,

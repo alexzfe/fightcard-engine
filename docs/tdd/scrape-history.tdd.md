@@ -1,7 +1,7 @@
 # TDD evidence: the scrape keeps the history store current; DOB parse fix
 
 - **Source plan:** the orchestrator's Phase 2b brief (`p2b-scrape-history.md`), following open questions 2 and 4 of the Phase 2 report (`docs/tdd/history-rating.tdd.md`).
-- **Base:** `feat/history-rating` at `a1cb6ba`. The orchestrator's note that the PR #2 fixes make `score` exit non-zero without a usable store (opt out with `--no-history`), and fail when a completed event in data/ has no bouts in the store, is reflected in the design below.
+- **Base:** built on `feat/history-rating` at `a1cb6ba`, then rebased onto `origin/main` at `ff716bc` (PR #2 merged with its review fixes). Those fixes make `score` exit 1 on a missing, unusable or stale store, with `--no-history` to opt out, and make `history ingest` reject a bout with a method but no outcome. The design follows both (see "Rebase onto main").
 - Journeys were derived during this run.
 
 ## User journeys
@@ -19,7 +19,8 @@
 | All-or-nothing | One `with conn:` around the store upserts *and* the data/ write. A fetch error, parse error or store error leaves both unchanged (scrape already fetches and validates everything before writing). | Two commits. If `scrape` succeeds and `update` fails, data/ has the new results but the store doesn't, and `score` then fails on the completed event with no bouts. |
 | New surface | Two flags (`--history-db`, `--no-history`), mirroring `score`. | A new subcommand, an on-disk page cache, and its retention. |
 
-- **Missing store:** `scrape` exits 1 before fetching (it never creates a store: a store holding only recent events would rate fighters from a handful of bouts). `--no-history` scrapes without one. The default path `history/history.sqlite` is `score`'s.
+- **Missing store:** `scrape` exits 1 before fetching (it never creates a store: a store holding only recent events would rate fighters from a handful of bouts). `--no-history` (exclusive with `--history-db`) scrapes without one. The default path is `score`'s: `<--data>/../history/history.sqlite`, whatever the cwd.
+- **A result without an outcome:** a completed bout with a method but no W/L flag raises `history.ingest.MissingOutcome` (the shared `without_outcome` helper `history ingest` also uses) before any upsert. The run exits 1, naming the fights, and nothing is written.
 - **Listing:** `COMPLETED_URL` is now `/statistics/events/completed?page=all`, the page `history ingest` reads. It is fetched every run when there's a store, even with `--recent 0`, and recorded under the same `pages` key and path. It's still one request; the full page is about 630 KB.
 - **Completed events the store lacks:** completed events in data/ with no bout with a result in the store are refetched (date order) and upserted. This is the precondition the updated `score` checks. After the seed it's usually empty; it covers events data/ already had before the store existed.
 - **What goes in:** every event page (upcoming and completed), every fighter page fetched this run, and the listing. They're applied in `history ingest` order: event pages sorted by id, then fighter pages, all stamped with the run's time.
@@ -31,12 +32,15 @@
 |---|---|---|
 | Baseline (`a1cb6ba`) | `uv run pytest -q` | 466 passed, 1 skipped, 49 deselected |
 | DOB baseline | ingest of the full research cache, then `SELECT COUNT(*) FROM fighters WHERE dob IS NOT NULL` | **357** of 4,628 |
-| RED 1 (`fbea58d`) | `uv run pytest -q tests/ufcstats/test_parsers.py tests/history/test_history_store.py`; `-m seed tests/history/test_history_seed.py` | `3 failed, 71 passed`: `parse_date("Jul 09, 1985")` / `(" Sep 3, 1990 ")` returned `None`; store DOBs `{'634bb0de2eb043b4': None} != {... '1985-07-09'}`. Seed: `1 failed, 3 passed` (DOBs vs research `fighter_data.csv`) |
-| GREEN 1 (`c0ceb72`) | `uv run pytest -q`; `-m seed` | `472 passed, 1 skipped, 50 deselected`; seed `5 passed` |
+| RED 1 (`c27a047`) | `uv run pytest -q tests/ufcstats/test_parsers.py tests/history/test_history_store.py`; `-m seed tests/history/test_history_seed.py` | `3 failed, 71 passed`: `parse_date("Jul 09, 1985")` / `(" Sep 3, 1990 ")` returned `None`; store DOBs `{'634bb0de2eb043b4': None} != {... '1985-07-09'}`. Seed: `1 failed, 3 passed` (DOBs vs research `fighter_data.csv`) |
+| GREEN 1 (`7fd16e6`) | `uv run pytest -q`; `-m seed` | `472 passed, 1 skipped, 50 deselected`; seed `5 passed` |
 | DOB after | same ingest | **4,124** of 4,628 (+3,767). Every one equals research's `fighter_dob`, and all 4,628 equal `model/fighter_snapshot.parquet` `dob` |
-| RED 2 (`cb94ea2`) | `uv run pytest -q tests/ufcstats` | `15 failed, 120 passed`: 10 × `TypeError: scrape() got an unexpected keyword argument 'history'`, CLI tests `SystemExit: 2` (unknown `--no-history`), 1 × `AttributeError: 'Namespace' object has no attribute 'history_db'` |
-| GREEN 2 (`072ee6b`) | `uv run pytest -q`; `-m seed`; `-m docker` | `488 passed, 1 skipped, 50 deselected`; seed `5 passed`; docker `44 passed` |
-| Coverage | `uv run pytest -q --cov=fightcard --cov-report=term-missing` | `history/ingest.py` 100%, `history/store.py` 100%, `ufcstats/stage.py` 99% (lines 55, 191: `utcnow`, and the all-upcoming-empty branch, both uncovered before this work), `ufcstats/parsers.py` 98%. Total 99% |
+| RED 2 (`91a6f7e`) | `uv run pytest -q tests/ufcstats` | `15 failed, 120 passed`: 10 × `TypeError: scrape() got an unexpected keyword argument 'history'`, CLI tests `SystemExit: 2` (unknown `--no-history`), 1 × `AttributeError: 'Namespace' object has no attribute 'history_db'` |
+| GREEN 2 (`27294a9`) | `uv run pytest -q`; `-m seed`; `-m docker` | `488 passed, 1 skipped, 50 deselected`; seed `5 passed`; docker `44 passed` |
+| Rebase onto `origin/main` (`ff716bc`) | `git fetch origin && git rebase origin/main` | Two conflicts. (1) `history/ingest.py`: main's `MissingOutcome` check sat in the loop this branch had moved into `upsert_card`; kept it as `no_outcome += without_outcome(parsed)`, a new shared helper. (2) `docs/CONTRACT.md`: kept main's `history ingest` / `score` bullets and added the `scrape` bullet. After the rebase, `uv run pytest -q` gave `1 failed, 504 passed`: `test_cli_history_db_defaults_to_score_s_default`, because score's default is now `None` (resolved from `--data`) |
+| RED 3 (`72f1ebc`) | `uv run pytest -q tests/ufcstats/test_scrape_history.py` | `4 failed, 14 passed`: default `history/history.sqlite` ≠ `None`; `DID NOT RAISE SystemExit` (flags not exclusive); default store beside data/ not found from another cwd (exit 1); a bout with a method but no outcome exited 0 |
+| GREEN 3 (`6efd8ca`) | `uv run pytest -q`; `-m seed`; `-m docker` | `508 passed, 1 skipped, 51 deselected`; seed `6 passed`; docker `44 passed` |
+| Coverage | `uv run pytest -q --cov=fightcard --cov-report=term-missing` | `history/ingest.py` 100%, `history/store.py` 100%, `ufcstats/stage.py` 99% (lines 59, 197: `utcnow`, and the all-upcoming-empty branch, both uncovered before this work), `ufcstats/parsers.py` 98%. Total 99% |
 
 ## Test specification
 
@@ -54,7 +58,8 @@
 | 10 | The full listing (`?page=all`) is fetched and recorded even with `--recent 0`; without a store `--recent 0` still skips it | `…::test_the_full_completed_listing_is_refreshed_even_with_recent_zero`, `…::test_without_a_store_recent_zero_still_skips_the_listing` | integration | PASS |
 | 11 | A listed event is `is_ufc = 1`, `source = listing` | `…::test_a_listed_event_is_marked_ufc_from_the_listing` | integration | PASS |
 | 12 | A completed event in data/ that the store lacks is fetched into it; one it has is not refetched | `…::test_a_completed_event_in_data_the_store_lacks_is_fetched_into_it`, `…::test_a_completed_event_the_store_already_has_is_not_refetched` | integration | PASS |
-| 13 | CLI: `--history-db` updates that store; a missing store exits 1 before any request and creates nothing; `--no-history` scrapes without one; the default path is `score`'s | `…::test_cli_*` (4 tests) | integration | PASS |
+| 13 | CLI: `--history-db` updates that store; a missing store exits 1 before any request and creates nothing; `--no-history` scrapes without one and is exclusive with `--history-db`; the default store is `<--data>/../history/history.sqlite` from any cwd, as for `score` | `…::test_cli_*` (6 tests) | integration | PASS |
+| 15 | A completed bout with a method but no W/L outcome fails the run (exit 1), names the fight, and writes neither the store nor data/ | `…::test_a_completed_bout_with_a_method_but_no_outcome_fails_and_writes_nothing` | integration | PASS |
 | 14 | A card name fills in until a fighter page names the fighter, then the page name stays | `tests/history/test_history_store.py::test_a_card_name_fills_in_until_a_fighter_page_names_the_fighter` | unit | PASS (written in GREEN after #5 exposed the bug; see Design) |
 
 ## Age features
@@ -65,3 +70,7 @@
 
 - The scrape records each page's sha256 but doesn't keep the HTML. Rebuilding the store offline after a parser fix needs the seed cache plus a re-fetch of what the scrape added (ELO.md "Future").
 - Existing tests changed on purpose: `test_scrape_stage.py::test_run_builds_client_and_scrapes` and `::test_cli_dispatches_scrape` now pass `--no-history` / `no_history=True`. `test_history_store.py::test_fighter_upsert_keeps_bio_a_card_name_doesnt_know` now expects the page name.
+
+## Rebase onto main
+
+The branch was rebased onto `origin/main` at `ff716bc`, after PR #2 merged. The RED/GREEN SHAs above are the rebased ones; the commit messages of the first four still quote the pre-rebase SHAs (`fbea58d`, `c0ceb72`, `cb94ea2`, `072ee6b`) and the pre-rebase counts. Final counts are in GREEN 3's row.
