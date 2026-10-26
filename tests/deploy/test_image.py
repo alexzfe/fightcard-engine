@@ -227,7 +227,7 @@ def test_seeding_then_a_manual_run_publishes_the_api(container):
     out = run.stdout.decode()
     print(out, run.stderr.decode()[-2000:])
     assert run.returncode == 0
-    assert "step=history status=skipped reason=no-html-cache" in out
+    assert "step=history" not in out  # scrape upserts the store; there is no separate step
     assert "score: history store /srv/fightcard/state/history/history.sqlite" in run.stderr.decode() + out
     for step in ("score", "publish"):
         assert re.search(rf"step={step} status=ok exit=0 duration_s=\d+\.\d\d", out), step
