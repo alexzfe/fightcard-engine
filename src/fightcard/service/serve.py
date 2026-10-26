@@ -1,7 +1,8 @@
 """`fightcard-service serve`, the container's PID 1: nginx in the foreground, and a run at every schedule slot.
 
-Runs are child processes (`python -m fightcard.service run`), never two at once. If nginx exits, serve exits
-non-zero and Docker restarts the container. SIGTERM/SIGINT end a running run and stop nginx gracefully.
+Runs are child processes (`python -m fightcard.service run`), each leading its own process group, never two at once,
+and none longer than RUN_TIMEOUT. If nginx exits, serve exits non-zero and Docker restarts the container.
+SIGTERM/SIGINT stop nginx gracefully and end a running run, together, within STOP_GRACE.
 """
 
 from __future__ import annotations
@@ -14,26 +15,46 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from fightcard.service import runner
 from fightcard.service.runner import Config, logfmt
 from fightcard.service.schedule import next_fire
 
 NGINX = ["nginx", "-g", "daemon off;"]
-STOP_TIMEOUT = 20  # seconds; Docker's default stop grace period is 10s, compose's too
+# Docker (and compose) SIGKILL a container 10 s after SIGTERM. serve signals nginx and the run at once and gives
+# them STOP_GRACE together, which covers the run's own KILL_GRACE for its stage; then whatever is left gets SIGKILL.
+STOP_GRACE = 5
+# A backstop above the run's own per-stage limits (a hung gate, a wedged run): every stage at its limit, plus a
+# KILL_GRACE each, plus slack. Under the health check's 2 h busy limit.
+RUN_TIMEOUT = sum(runner.TIMEOUTS.values()) + len(runner.TIMEOUTS) * runner.KILL_GRACE + 10 * 60
 
 
 def _log(out: Callable[[str], None], **fields: object) -> None:
     out(logfmt("fightcard-serve", **fields))
 
 
-def _stop(proc, sig: int) -> None:
-    if proc is None or proc.poll() is not None:
-        return
-    proc.send_signal(sig)
+def _send(proc, sig: int, group: bool) -> None:
     try:
-        proc.wait(timeout=STOP_TIMEOUT)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
+        if group:
+            os.killpg(proc.pid, sig)
+        else:
+            proc.send_signal(sig)
+    except ProcessLookupError:
+        pass
+
+
+def _stop(*targets: tuple[object, int, bool]) -> None:
+    """Send each (proc, signal, whole process group?) its signal at once, wait for them together for STOP_GRACE,
+    then SIGKILL whatever is left."""
+    live = [(proc, sig, group) for proc, sig, group in targets if proc is not None and proc.poll() is None]
+    for proc, sig, group in live:
+        _send(proc, sig, group)
+    deadline = time.monotonic() + STOP_GRACE
+    for proc, _, group in live:
+        try:
+            proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            _send(proc, signal.SIGKILL, group)
+            proc.wait()
 
 
 def reap(own: list) -> None:
@@ -59,31 +80,39 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
     stop = stop or threading.Event()
     run_cmd = [cfg.python, "-m", "fightcard.service", "run"]
     nginx = spawn(NGINX)
-    run = None
+    run = run_started = None
+
+    def start(*args: str):
+        nonlocal run_started
+        run_started = now()
+        return spawn([*run_cmd, *args], start_new_session=True)
+
     if not (cfg.root / "current").exists():
         _log(out, event="startup", status="started", reason="nothing published yet")
-        run = spawn([*run_cmd, "--event", "startup"])
+        run = start("--event", "startup")
     fire, cron = next_fire(now())
     _log(out, status="ready", next=fire.isoformat(), cron=cron)
     while not stop.is_set():
         reap([nginx, run])
         if (code := nginx.poll()) is not None:
             _log(out, status="failed", reason=f"nginx exited {code}")
-            _stop(run, signal.SIGTERM)
+            _stop((run, signal.SIGTERM, True))
             return code or 1
+        if run is not None and run.poll() is None and (now() - run_started).total_seconds() > RUN_TIMEOUT:
+            _log(out, status="timeout", timeout_s=f"{RUN_TIMEOUT:g}", reason="run took too long; stopping it")
+            _stop((run, signal.SIGTERM, True))
         if run is not None and run.poll() is not None:
             run = None
         if now() >= fire:
             if run is None:
                 _log(out, event="schedule", cron=cron, status="started")
-                run = spawn([*run_cmd, "--event", "schedule", "--cron", cron])
+                run = start("--event", "schedule", "--cron", cron)
             else:
                 _log(out, event="schedule", cron=cron, status="busy", reason="previous run still going")
             fire, cron = next_fire(now())
         sleep(1)
     _log(out, status="stopping")
-    _stop(run, signal.SIGTERM)
-    _stop(nginx, signal.SIGQUIT)  # nginx's graceful shutdown
+    _stop((nginx, signal.SIGQUIT, False), (run, signal.SIGTERM, True))  # SIGQUIT: nginx's graceful shutdown
     reap([])
     return 0
 
