@@ -12,7 +12,7 @@ Current export: **as of 2026-10-14** (build data through the 2026-10-10 card), v
 | `fighter_snapshot.parquet` | One row per ufcstats fighter (4,628; 2,769 with UFC bouts). |
 | `feature_spec.json` | Ordered model columns, categorical levels, and how to build each feature from the snapshot. |
 | `manifest.json` | `as_of`, `version`, `research_sha`, training rows, build provenance, lightgbm version. With a rating export it also has `"rating": {"format_version": 1, "params": {...}}`. |
-| `fighter_rating.parquet` | **Optional.** The fighter rating as of `as_of` (below). Without it, `score` leaves every fighter unrated and still scores tiers. Not in the current export yet. |
+| `fighter_rating.parquet` | **Optional.** The fighter rating as of `as_of` (below). Without it, `score` leaves every fighter unrated and still scores tiers. |
 | `examples.json` | 12 bouts with the export's own `p_finish` and tier. `tests/score/test_score_parity.py` re-scores them, which keeps the scorer and the research code in lockstep. |
 
 ## Tiers
@@ -97,10 +97,8 @@ Bout context on the site (`fightcard.score.features.bout_context`):
 
 ## Re-exporting
 
-This is automated: fight-auto-research's **Export model** workflow (`.github/workflows/export.yml`) runs these
-steps daily when this repo's `data/stale_fighters.json` exists, and every Monday, then pushes branch
-`model-export` here with a deploy key. `release.yml` tests it, and `model-export.yml` opens the PR, merges it if
-the tests passed and the tier thresholds didn't move, and runs a refresh to re-score and deploy. By hand, when needed:
+By hand for now. The automated flow from the site repo (an export workflow pushing to this repo) is scrapped. A
+later phase stops vendoring the bundle and has the engine pull the current model at runtime instead.
 
 1. Refresh the research data: `cd ~/Projects/fight-auto-research`, scrape, then `uv run python -m build`.
 2. Export from the research checkout or a worktree that has `export/`:
