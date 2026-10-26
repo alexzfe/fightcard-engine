@@ -153,6 +153,10 @@ def build(data_dir: Path) -> dict[str, bytes]:
     missing = [eid for eid in index.upcoming + index.recent if eid not in events]
     if missing:
         raise DataError(f"index.json names events with no events/<id>.json: {', '.join(missing)}")
+    unknown = [f"{fight.id} ({fid})" for event in events.values() for fight in event.fights
+               for fid in (fight.red, fight.blue) if fid not in fighters]
+    if unknown:
+        raise DataError(f"fights name fighters missing from fighters.json: {', '.join(unknown)}")
 
     files = {"index.json": _json(index), "schema.json": dumps(schema()).encode("utf-8"),
              "fighters.json": dumps({fid: f.model_dump(mode="json") for fid, f in fighters.items()}).encode("utf-8")}
