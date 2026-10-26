@@ -175,13 +175,23 @@ def test_a_stage_holds_the_lock_even_if_its_run_is_killed(fake):
     assert wait_until(lambda: lock_is_free(fake))
 
 
-SUBREAPER = """
-import ctypes, sys
+SERVE = """
+import ctypes, os, sys
 ctypes.CDLL(None, use_errno=True).prctl(36, 1)  # PR_SET_CHILD_SUBREAPER: stand in for PID 1
 from fightcard.service import serve
-serve.NGINX = [sys.executable, "-c", "import time; time.sleep(300)"]
+NGINX = "import os, signal, time\\nif os.environ.get('FAKE_NGINX_IGNORE_QUIT'): signal.signal(signal.SIGQUIT, signal.SIG_IGN)\\ntime.sleep(300)"
+serve.NGINX = [sys.executable, "-c", NGINX]
+if "FAKE_RUN_TIMEOUT" in os.environ:
+    serve.RUN_TIMEOUT = float(os.environ["FAKE_RUN_TIMEOUT"])
 sys.exit(serve.main())
 """
+
+
+def start_serve(cfg: Config, **env: str) -> subprocess.Popen:
+    """`fightcard-service serve` as a real process, with a fake nginx; nothing is published, so it starts a run."""
+    return subprocess.Popen([sys.executable, "-c", SERVE], stdout=subprocess.PIPE, text=True,
+                            env={**os.environ, "FIGHTCARD_ROOT": str(cfg.root), "FIGHTCARD_BIN": cfg.fightcard,
+                                 "FIGHTCARD_FETCH": "on", **env})
 
 
 def children(pid: int) -> dict[int, str]:
@@ -201,10 +211,7 @@ def children(pid: int) -> dict[int, str]:
 @pytest.mark.skipif(not hasattr(ctypes.CDLL(None), "prctl"), reason="needs Linux prctl")
 def test_serve_reaps_the_orphans_of_a_killed_run(fake):
     # Nothing published, so serve starts a run at once; its scrape outlives the run, which is killed.
-    serve_proc = subprocess.Popen(
-        [sys.executable, "-c", SUBREAPER], stdout=subprocess.DEVNULL,
-        env={**os.environ, "FIGHTCARD_ROOT": str(fake.root), "FIGHTCARD_BIN": fake.fightcard, "FIGHTCARD_FETCH": "on",
-             "FAKE_SLEEP_SCRAPE": "1", "FAKE_EXIT_SCRAPE": "1"})
+    serve_proc = start_serve(fake, FAKE_SLEEP_SCRAPE="1", FAKE_EXIT_SCRAPE="1")
     try:
         started("scrape")
         stage = report(fake, "scrape")
@@ -219,3 +226,34 @@ def test_serve_reaps_the_orphans_of_a_killed_run(fake):
     finally:
         serve_proc.terminate()
         serve_proc.wait(timeout=15)
+
+
+def test_shutdown_with_a_stage_mid_run_fits_in_dockers_10s(fake):
+    # The worst case: nginx ignores its graceful SIGQUIT and the stage ignores SIGTERM, so both need SIGKILL.
+    serve_proc = start_serve(fake, FAKE_NGINX_IGNORE_QUIT="1", FAKE_SLEEP_SCRAPE="60", FAKE_CHILD_SCRAPE="300",
+                             FAKE_IGNORE_TERM_SCRAPE="1")
+    started("scrape")
+    stage = report(fake, "scrape")
+    t0 = time.monotonic()
+    serve_proc.send_signal(signal.SIGTERM)
+    out, _ = serve_proc.communicate(timeout=20)
+    elapsed = time.monotonic() - t0
+    print(out, f"stopped in {elapsed:.1f}s")
+    assert serve_proc.returncode == 0
+    assert elapsed < 8
+    assert wait_until(lambda: proc_state(stage["pid"]) is None, timeout=1), "the stage outlived serve"
+    assert wait_until(lambda: proc_state(stage["child"]) in (None, "Z"), timeout=1)
+
+
+@pytest.mark.skipif(not hasattr(ctypes.CDLL(None), "prctl"), reason="needs Linux prctl")
+def test_serve_stops_a_run_past_the_whole_run_cap(fake):
+    serve_proc = start_serve(fake, FAKE_RUN_TIMEOUT="2", FAKE_SLEEP_SCRAPE="60", FAKE_CHILD_SCRAPE="300")
+    try:
+        started("scrape")
+        stage = report(fake, "scrape")
+        assert wait_until(lambda: proc_state(stage["pid"]) in (None, "Z"), timeout=15), "the cap never fired"
+        assert wait_until(lambda: proc_state(stage["child"]) in (None, "Z"))
+    finally:
+        serve_proc.terminate()
+        out, _ = serve_proc.communicate(timeout=20)
+    assert "fightcard-serve status=timeout" in out

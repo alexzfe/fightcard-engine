@@ -2,21 +2,26 @@
 
 from __future__ import annotations
 
+import itertools
 import signal
 import sys
 import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest import mock
 
-from fightcard.service import serve
+from fightcard.service import runner, serve
 from fightcard.service.runner import Config
 
 REPO = Path(__file__).resolve().parents[2]
 
 
 class FakeProc:
-    def __init__(self, argv, lifetime: int | None):
-        self.argv, self.lifetime, self.code = argv, lifetime, None
+    pids = itertools.count(2**22 + 1)  # above Linux's pid_max, so never a real process
+
+    def __init__(self, argv, lifetime: int | None, **kwargs):
+        self.argv, self.lifetime, self.code, self.kwargs = argv, lifetime, None, kwargs
+        self.pid = next(self.pids)
         self.signals: list[int] = []
 
     def poll(self):
@@ -48,10 +53,13 @@ class World:
         self.lines: list[str] = []
         self.ticks = 0
 
-    def spawn(self, argv):
-        proc = FakeProc(argv, None if argv[0] == "nginx" else self.run_lifetime)
+    def spawn(self, argv, **kwargs):
+        proc = FakeProc(argv, None if argv[0] == "nginx" else self.run_lifetime, **kwargs)
         self.procs.append(proc)
         return proc
+
+    def killpg(self, pgid, sig):
+        next(p for p in self.procs if p.pid == pgid).send_signal(sig)
 
     def sleep(self, seconds):
         self.ticks += 1
@@ -70,8 +78,9 @@ class World:
         return [p.argv for p in self.procs[1:]]
 
     def serve(self, cfg: Config) -> int:
-        return serve.serve(cfg, spawn=self.spawn, now=lambda: self.now, sleep=self.sleep, out=self.lines.append,
-                           stop=self.stop)
+        with mock.patch.object(serve.os, "killpg", self.killpg):
+            return serve.serve(cfg, spawn=self.spawn, now=lambda: self.now, sleep=self.sleep, out=self.lines.append,
+                               stop=self.stop)
 
 
 def config(tmp_path: Path, published: bool = True) -> Config:
@@ -124,6 +133,32 @@ def test_nginx_exiting_ends_serve_with_an_error(tmp_path):
     assert world.serve(config(tmp_path)) == 1
     assert world.procs[1].signals == [signal.SIGTERM]
     assert any("nginx exited" in line for line in world.lines)
+
+
+# Finding 1: a cap on the whole run. Finding 3: a shutdown that fits Docker's 10 s.
+
+def test_runs_lead_their_own_process_group(tmp_path):
+    world = World("2026-10-26 05:59:40", steps=3)
+    world.serve(config(tmp_path))
+    assert world.procs[1].kwargs == {"start_new_session": True}
+
+
+def test_the_run_cap_covers_every_stage_and_stays_under_the_busy_health_limit():
+    assert serve.RUN_TIMEOUT >= sum(runner.TIMEOUTS.values()) + len(runner.TIMEOUTS) * runner.KILL_GRACE
+    assert serve.RUN_TIMEOUT < 2 * 3600
+
+
+def test_a_run_past_the_cap_is_stopped_and_the_schedule_goes_on(tmp_path):
+    world = World("2026-10-26 05:59:40", steps=2 * serve.RUN_TIMEOUT // 30 + 10, run_lifetime=None)
+    world.serve(config(tmp_path))
+    assert world.procs[1].signals[0] == signal.SIGTERM
+    assert any("status=timeout" in line and f"timeout_s={serve.RUN_TIMEOUT}" in line for line in world.lines)
+    assert len(world.runs) >= 2
+
+
+def test_the_shutdown_budget_fits_dockers_default_grace():
+    # The run needs KILL_GRACE to end its stage's group; Docker sends SIGKILL at 10 s.
+    assert runner.KILL_GRACE < serve.STOP_GRACE <= 7
 
 
 def test_main_installs_signal_handlers_that_stop_serve(monkeypatch):
