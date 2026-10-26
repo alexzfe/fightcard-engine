@@ -1,4 +1,4 @@
-"""`fightcard-service run`: one refresh, gate → scrape → history → segments → images → score → publish.
+"""`fightcard-service run`: one refresh, gate → scrape → history ingest → segments → images → score → publish.
 
 Each stage is a `fightcard` process over <root>/state/data. The run stops at the first stage that exits non-zero;
 stages write nothing on failure and only publish switches what nginx serves, so the last good generation stays
@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = "/srv/fightcard"  # the volume, and the publish root deploy/nginx/fightcard-engine.conf serves
 LOCKED = 75  # EX_TEMPFAIL: another run holds the lock
+HTML_LISTING = "listings/events_completed.html"  # fightcard.history.ingest.LISTING (a test checks it)
 _OFF = {"off", "0", "false", "no"}
 
 
@@ -49,8 +50,13 @@ class Config:
         return self.state / "run.lock"
 
     @property
+    def html(self) -> Path:
+        """The ufcstats HTML cache history ingest reads; scrape writes it once feat/scrape-history lands."""
+        return self.state / "html"
+
+    @property
     def history_db(self) -> Path:
-        return self.state / "history.db"
+        return self.state / "history" / "history.sqlite"  # score's default: <--data>/../history/history.sqlite
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Config:
@@ -71,20 +77,21 @@ class Config:
 @dataclass(frozen=True)
 class Step:
     name: str
-    args: tuple[str, ...] | None  # None: a seam, not wired yet
+    args: tuple[str, ...]
     fetches: bool = False
+    needs: Path | None = None  # skipped (reason=no-html-cache) while this file is missing
 
 
 def steps(cfg: Config) -> list[Step]:
     return [
         Step("scrape", ("scrape", "--cookie-file", str(cfg.cache / "fightcard" / "ufcstats_cookie.json")),
              fetches=True),
-        # The history store's update goes here once feat/history-rating and feat/scrape-history land; score then
-        # gets --history-db cfg.history_db.
-        Step("history", None),
+        # Local files only, so it also runs with fetching off.
+        Step("history", ("history", "ingest", "--html-dir", str(cfg.html), "--db", str(cfg.history_db)),
+             needs=cfg.html / HTML_LISTING),
         Step("segments", ("segments",), fetches=True),
         Step("images", ("images",), fetches=True),
-        Step("score", ("score", "--model-dir", str(cfg.model_dir))),
+        Step("score", ("score", "--model-dir", str(cfg.model_dir), "--history-db", str(cfg.history_db))),
         Step("publish", ("publish", "--out", str(cfg.root))),
     ]
 
@@ -135,6 +142,7 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
     log(status="start", event=event, cron=cron, fetch="on" if cfg.fetch else "off")
     cfg.data.mkdir(parents=True, exist_ok=True)
     cfg.cache.mkdir(parents=True, exist_ok=True)
+    cfg.history_db.parent.mkdir(parents=True, exist_ok=True)
     with open(cfg.lock, "w") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -152,8 +160,8 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
                 return end("skipped", 0)
 
         for step in steps(cfg):
-            if step.args is None:
-                log(step=step.name, status="skipped", reason="not-wired")
+            if step.needs is not None and not step.needs.is_file():
+                log(step=step.name, status="skipped", reason="no-html-cache")
                 continue
             if step.fetches and not cfg.fetch:
                 log(step=step.name, status="skipped", reason="fetch-off")

@@ -36,9 +36,12 @@ gate → scrape → history → segments → images → score → publish
 
 - Each stage is `fightcard --data /srv/fightcard/state/data <stage> …` in its own process, so a stage's memory is
   returned when it ends, and its output goes straight to stdout.
-- **history** is the seam for the SQLite history store (PR #2 `feat/history-rating`, then `feat/scrape-history`):
-  it logs `status=skipped reason=not-wired` until those land; then it becomes the "update history store" command,
-  and score gets `--history-db /srv/fightcard/state/history.db`.
+- **history** is `fightcard history ingest --html-dir state/html --db state/history/history.sqlite` (PR #2), and
+  score reads that store (`--history-db`, the same path as its default `<--data>/../history/history.sqlite`). Score
+  exits 1 when the store is missing, unusable or lacks a completed event, so a fresh volume needs the seed below.
+  Ingest reads the ufcstats HTML cache under `state/html/`, which scrape will write once `feat/scrape-history`
+  lands; until `state/html/listings/events_completed.html` exists the step logs
+  `status=skipped reason=no-html-cache`. It reads local files only, so it runs with fetching off too.
 - It stops at the first stage that exits non-zero. Every stage writes nothing on failure, and only publish switches
   what nginx serves, atomically (`current` symlink). So a failed run, at any stage, leaves the
   last good generation live; the next run starts from whatever data/ the successful stages left.
@@ -56,8 +59,9 @@ infra gives one volume, `ufc-data-<env>-data`, mounted at `/srv/fightcard`, whic
 |---|---|
 | `current`, `generations/` | What nginx serves: the live generation and the previous few (`fightcard publish`) |
 | `state/data/` | The working data/ the stages read and write |
-| `state/cache/` | `XDG_CACHE_HOME`: the ufcstats `_fmc` cookie, and its HTML cache once scrape-history lands |
-| `state/history.db` | The SQLite history store (PR #2) |
+| `state/cache/` | `XDG_CACHE_HOME`: the ufcstats `_fmc` cookie |
+| `state/html/` | The ufcstats HTML cache `history ingest` reads (written by scrape once scrape-history lands) |
+| `state/history/history.sqlite` | The SQLite history store (PR #2) |
 | `state/run.lock` | The run lock |
 
 nginx maps only `/v1/<documented resource>` to `current/`, so nothing under `state/` or `generations/` is reachable.
@@ -79,16 +83,16 @@ watch `docker stats` after the first real runs and lower the caps if there's roo
 
 ## Seeding a new volume (manual, once per env)
 
-A fresh volume has no data/ and no history. On the first start, with nothing published yet, the supervisor starts
-a run straight away: on prod that scrapes from scratch; on staging (no fetching) it publishes nothing until data
-is seeded. To seed, on the VPS (`/opt/apps/ufc-data-<env>`):
+A fresh volume has no data/ and no history store, and score refuses to run without the store. On the first
+start, with nothing published yet, the supervisor starts a run straight away; it fails at score (prod scrapes
+first) and nothing is published until the volume is seeded. To seed, on the VPS (`/opt/apps/ufc-data-<env>`), with
+a tarball holding a top-level `data/` and `history/history.sqlite` (e.g. a store built by `fightcard history
+ingest` from research's ufcstats cache, and prod's or the site repo's data/):
 
 ```sh
-# data/: e.g. prod's, for staging. Streamed in through exec so the files are owned by the container user.
-docker compose exec -T app sh -c 'mkdir -p /srv/fightcard/state && tar -xzf - -C /srv/fightcard/state' < data.tar.gz
-# history: once PR #2 is deployed, its one-time ingest (the exact command comes with that PR), e.g.
-docker compose exec app fightcard --data /srv/fightcard/state/data history ingest …
+# Streamed in through exec, so the files are owned by the container user.
+docker compose exec -T app sh -c 'mkdir -p /srv/fightcard/state && tar -xzf - -C /srv/fightcard/state' < seed.tar.gz
 docker compose exec app fightcard-service run     # publish now instead of waiting for the next slot
 ```
 
-The tarball holds a top-level `data/`. Nothing in the image or the release workflow does this; it's run by hand.
+The container test does exactly this. Nothing in the image or the release workflow seeds; it's run by hand.
