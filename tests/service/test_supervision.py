@@ -78,8 +78,8 @@ def run(cfg: Config, **kwargs) -> tuple[int, list[dict[str, str]]]:
 # Finding 1: a per-stage timeout, enforced on the stage's whole process group.
 
 def test_the_timeouts_are_per_stage_and_in_one_place():
-    assert runner.TIMEOUTS == {"scrape": 30 * 60, "segments": 15 * 60, "images": 15 * 60, "score": 10 * 60,
-                               "publish": 10 * 60}
+    assert runner.TIMEOUTS == {"scrape": 30 * 60, "segments": 15 * 60, "images": 15 * 60, "model": 5 * 60,
+                               "score": 10 * 60, "publish": 10 * 60}
     assert set(runner.TIMEOUTS) == {step.name for step in runner.steps(Config.from_env({}))}
 
 

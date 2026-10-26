@@ -1,4 +1,4 @@
-"""fightcard-service run: gate → scrape → history → segments → images → score → publish, with fake stages."""
+"""fightcard-service run: gate → scrape → segments → images → model pull → score → publish, with fake stages."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from fightcard.service import runner
 from fightcard.service.runner import Config
 
 REPO = Path(__file__).resolve().parents[2]
-ORDER = ["scrape", "segments", "images", "score", "publish"]
+ORDER = ["scrape", "segments", "images", "model", "score", "publish"]
 
 
 def config(tmp_path: Path, **overrides) -> Config:
@@ -90,6 +90,105 @@ def test_stages_share_the_state_data_dir_and_publish_to_the_root(tmp_path):
                                       str(cfg.root / "state" / "cache" / "fightcard" / "ufcstats_cookie.json")]
 
 
+# The model pull (docs/SERVICE.md): before score, over state/model, and never a reason to fail the run.
+
+def test_the_model_pull_runs_just_before_score_over_the_state_model_dir(tmp_path):
+    cfg = config(tmp_path)
+    rec = Recorder()
+    go(cfg, rec)
+    assert rec.stages.index("model") == rec.stages.index("score") - 1
+    pull = rec.calls[rec.stages.index("model")]
+    assert pull[3:] == ["model", "pull", "--root", str(cfg.root / "state" / "model"), "--seed-dir", "/app/model"]
+
+
+def test_the_url_and_the_pin_are_passed_to_the_pull_when_set(tmp_path):
+    rec = Recorder()
+    go(config(tmp_path, model_url="https://models.example/", model_pin="2026-10-14+5006318a"), rec)
+    pull = rec.calls[rec.stages.index("model")]
+    assert pull[pull.index("--url") + 1] == "https://models.example/"
+    assert pull[pull.index("--pin") + 1] == "2026-10-14+5006318a"
+
+
+def test_the_model_pull_runs_where_fetching_is_off(tmp_path):
+    rec = Recorder()
+    go(config(tmp_path, fetch=False), rec)  # staging pulls the model too: it is how a model is tried before prod
+    assert rec.stages == ["model", "score", "publish"]
+
+
+@pytest.mark.parametrize("env,url,pin", [
+    ({}, None, None),
+    ({"FIGHTCARD_MODEL_URL": "https://models.example"}, "https://models.example", None),
+    ({"FIGHTCARD_MODEL_URL": "", "FIGHTCARD_MODEL_PIN": ""}, None, None),
+    ({"FIGHTCARD_MODEL_PIN": "2026-10-14+5006318a"}, None, "2026-10-14+5006318a"),
+])
+def test_the_url_and_the_pin_come_from_the_environment(env, url, pin):
+    cfg = Config.from_env(env)
+    assert (cfg.model_url, cfg.model_pin) == (url, pin)
+
+
+def test_score_reads_the_state_model_once_there_is_one(tmp_path):
+    cfg = config(tmp_path)
+    (cfg.state / "model").mkdir(parents=True)
+    (cfg.state / "model" / "current").symlink_to("2026-10-14+5006318a")
+    rec = Recorder()
+    go(cfg, rec)
+    score = rec.calls[rec.stages.index("score")]
+    assert score[score.index("--model-dir") + 1] == str(cfg.state / "model" / "current")
+
+
+def test_score_falls_back_to_the_baked_model_with_no_state_model(tmp_path):
+    rec = Recorder()
+    go(config(tmp_path, model_dir=Path("/baked")), rec)
+    score = rec.calls[rec.stages.index("score")]
+    assert score[score.index("--model-dir") + 1] == "/baked"
+
+
+def test_a_current_the_pull_makes_during_the_run_is_what_score_reads(tmp_path):
+    cfg = config(tmp_path)
+
+    class SeedingPull(Recorder):
+        def __call__(self, argv, **kw):
+            if stage_of(argv) == "model":  # the first boot: the pull seeds state/model/current
+                (cfg.state / "model").mkdir(parents=True)
+                (cfg.state / "model" / "current").symlink_to("v1")
+            return super().__call__(argv, **kw)
+
+    rec = SeedingPull()
+    go(cfg, rec)
+    score = rec.calls[rec.stages.index("score")]
+    assert score[score.index("--model-dir") + 1] == str(cfg.state / "model" / "current")
+
+
+def test_a_failing_pull_does_not_fail_the_run(tmp_path):
+    rec = Recorder({"model": 3})
+    code, lines = go(config(tmp_path), rec)
+    assert code == 0
+    assert rec.stages[-2:] == ["score", "publish"]
+    assert step_lines(lines)["model"]["status"] == "failed" and step_lines(lines)["model"]["exit"] == "3"
+    assert fields(lines[-1])["status"] == "ok"
+
+
+def test_a_pull_that_hangs_does_not_fail_the_run(tmp_path):
+    def execute(argv, **kw):
+        if stage_of(argv) == "model":
+            raise runner.StageTimeout
+        return 0
+    code, lines = go(config(tmp_path), execute)
+    assert code == 0
+    assert step_lines(lines)["model"]["status"] == "timeout"
+    assert step_lines(lines)["publish"]["status"] == "ok"
+
+
+def test_a_pull_that_cannot_start_does_not_fail_the_run(tmp_path):
+    def execute(argv, **kw):
+        if stage_of(argv) == "model":
+            raise FileNotFoundError(argv[0])
+        return 0
+    code, lines = go(config(tmp_path), execute)
+    assert code == 0
+    assert step_lines(lines)["model"]["status"] == "failed" and step_lines(lines)["score"]["status"] == "ok"
+
+
 def test_publish_root_matches_the_nginx_config(tmp_path):
     conf = (REPO / "deploy" / "nginx" / "fightcard-engine.conf").read_text()
     assert f"alias {runner.ROOT}/current/" in conf
@@ -135,7 +234,7 @@ def test_one_line_per_stage_with_exit_code_and_duration(tmp_path):
     _, lines = go(config(tmp_path))
     assert all(line.startswith("fightcard-run run=r1 ") for line in lines)
     steps = step_lines(lines)
-    for name in ["scrape", "segments", "images", "score", "publish"]:
+    for name in ["scrape", "segments", "images", "model", "score", "publish"]:
         assert steps[name]["status"] == "ok" and steps[name]["exit"] == "0"
         assert re.fullmatch(r"\d+\.\d\d", steps[name]["duration_s"]), steps[name]
     start, end = fields(lines[0]), fields(lines[-1])
