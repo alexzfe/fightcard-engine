@@ -15,6 +15,7 @@ STAGES = {
     "segments": "fightcard.segments.stage",
     "publish": "fightcard.publish.stage",
     "history": "fightcard.history.stage",
+    "model": "fightcard.model.stage",
 }
 
 
