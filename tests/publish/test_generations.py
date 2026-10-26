@@ -7,6 +7,7 @@ import errno
 import json
 import os
 import pathlib
+import shutil
 import stat
 import threading
 
@@ -69,6 +70,15 @@ def test_identical_content_publishes_nothing(tmp_path):
     assert generations(root) == [first.id]
     after = os.stat(root / "current" / "snapshot.tar.gz")
     assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)  # same ETag
+
+
+def test_a_dangling_current_is_republished(tmp_path):
+    root = tmp_path / "srv"
+    first = publish(variant(tmp_path, 1), root)
+    shutil.rmtree(root / "generations" / first.id)  # removed by hand
+    again = publish(variant(tmp_path, 1), root)
+    assert again.changed
+    assert tree(root / "current") == variant(tmp_path, 1)
 
 
 def test_unchanged_files_are_shared_with_the_previous_generation(tmp_path):
