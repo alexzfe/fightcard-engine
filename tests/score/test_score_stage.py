@@ -103,6 +103,22 @@ def test_stale_record_nulls_tier_and_is_listed(data, model_dir, veterans):
     assert not (root / "stale_fighters.json").exists()
 
 
+def test_index_model_counts_the_stale_fighters(data, model_dir, veterans):
+    """index.model.stale_fighters: how many fighters the guard nulled (each once, however many bouts or events)."""
+    root, store = data
+    score(root, model_dir)
+    assert store.load_index().model.stale_fighters == 0
+    fighters = store.load_fighters()
+    for v in veterans[:2]:
+        fighters[v["fighter_id"]] = fighter_from(v, w=v["record_w"] + 1)
+    store.save_fighters(fighters)
+    store.save_event(event("later", "2026-11-21", [
+        Fight(id="again", red=veterans[0]["fighter_id"], blue=veterans[2]["fighter_id"], weight_class="Lightweight")]))
+    score(root, model_dir)
+    assert len(json.loads((root / "stale_fighters.json").read_text())) == 3  # entries: per fighter per event
+    assert store.load_index().model.stale_fighters == 2
+
+
 def test_past_event_tiers_are_frozen_once(data, model_dir, veterans):
     root, store = data
     v = veterans
