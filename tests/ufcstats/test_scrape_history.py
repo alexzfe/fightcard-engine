@@ -92,15 +92,19 @@ def test_a_card_going_upcoming_to_completed_updates_the_store_and_score_rates_th
     assert db.execute("SELECT status FROM events WHERE event_id = ?", (COMPLETED_ID,)).fetchone() == ("upcoming",)
     assert {outcome for _, outcome, _, _ in card_rows(db)} == {None}
     before = score(tmp_path, db_path, "2026-10-16T00:00:00Z")
-    assert [before[w]["elo"] for w in WINNERS] == [None] * len(WINNERS)  # no bout in the store yet
+    n_before = history_ratings(db, "2026-10-16")["n_bouts"].reindex(WINNERS, fill_value=0)
 
     assert run(tmp_path, db, client(), now=NOW + timedelta(days=1)) == 0
     assert db.execute("SELECT status FROM events WHERE event_id = ?", (COMPLETED_ID,)).fetchone() == ("completed",)
     assert card_rows(db) == [(f.id, f.result.outcome, f.result.winner, f.result.method) for f in CARD.fights]
 
     after = score(tmp_path, db_path, "2026-10-16T00:00:00Z")  # no re-ingest in between
+    ratings = history_ratings(db, "2026-10-16").loc[WINNERS]
+    assert (ratings["n_bouts"] == n_before + 1).all()  # the new bout counts
+    assert set(ratings["last_bout_date"]) == {CARD.date}
     assert all(after[w]["elo"] is not None for w in WINNERS)
-    assert set(history_ratings(db, "2026-10-16").loc[WINNERS, "last_bout_date"]) == {CARD.date}
+    assert any(before[w]["elo"] is None for w in WINNERS)  # most had no bout in the store before
+    assert all(after[w]["elo"] != before[w]["elo"] for w in WINNERS)
 
 
 def test_rerunning_on_the_same_pages_changes_nothing(tmp_path, db):
@@ -140,7 +144,7 @@ def test_a_store_write_failing_mid_run_rolls_back_and_writes_no_data(tmp_path, d
 
 def save_pages(c: FakeClient, cache: Path) -> None:
     """The pages a run fetched, laid out as a `history ingest` cache."""
-    for url in c.urls:
+    for url in dict.fromkeys(c.urls):  # c.get below appends to c.urls
         if url == stage.COMPLETED_URL:
             rel = "listings/events_completed.html"
         elif "/event-details/" in url or "/fighter-details/" in url:

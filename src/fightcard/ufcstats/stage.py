@@ -2,22 +2,39 @@
 
 Everything is fetched and validated in memory first; nothing is written unless
 the whole run succeeds (non-zero exit = do not commit, do not deploy).
+
+With a history store (`--history-db`, seeded by `fightcard history ingest`; `--no-history` to go without)
+the run also keeps it current, in one transaction committed only after data/ is written: the full completed
+listing (refetched every run: it says which events are UFC events), every event page and every fighter page
+fetched, through the same parse + upsert path as `history ingest`. Completed events in data/ with no bout in
+the store are refetched so `score` finds them.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import sqlite3
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from fightcard.history.ingest import (
+    LISTING_URL,
+    listed_ids,
+    page_path,
+    record_page,
+    upsert_card,
+    upsert_fighter_page,
+)
+from fightcard.history.store import connect
 from fightcard.models import Event, Fighter, Index
 from fightcard.store import Store
 from fightcard.ufcstats.client import Client, Halt, HttpError
 from fightcard.ufcstats.parsers import (
     parse_event_detail,
     parse_event_list,
+    ParsedEvent,
     parse_fighter,
     slugify,
 )
@@ -26,7 +43,7 @@ log = logging.getLogger(__name__)
 
 BASE_URL = "http://ufcstats.com"
 UPCOMING_URL = f"{BASE_URL}/statistics/events/upcoming"
-COMPLETED_URL = f"{BASE_URL}/statistics/events/completed"
+COMPLETED_URL = LISTING_URL  # ?page=all: the whole listing, as `history ingest` reads it
 FIGHTER_MAX_AGE = timedelta(days=30)
 
 
@@ -59,11 +76,26 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                         help="also scrape results for the N most recent completed events")
     parser.add_argument("--cookie-file", type=Path, default=None,
                         help="where to cache the ufcstats _fmc cookie (default ~/.cache/fightcard/)")
+    parser.add_argument("--history-db", type=Path, default=Path("history/history.sqlite"),
+                        help="bout-history store to keep current (seed it with fightcard history ingest)")
+    parser.add_argument("--no-history", action="store_true",
+                        help="scrape without a history store (score then rates nobody)")
 
 
 def run(args: argparse.Namespace) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    return scrape(Store(args.data), make_client(args.cookie_file), now=utcnow(), recent=args.recent)
+    if args.no_history:
+        return scrape(Store(args.data), make_client(args.cookie_file), now=utcnow(), recent=args.recent)
+    if not args.history_db.is_file():
+        print(f"scrape: no history store at {args.history_db}; seed it with `fightcard history ingest` "
+              "or pass --no-history", file=sys.stderr)
+        return 1
+    history = connect(args.history_db)
+    try:
+        return scrape(Store(args.data), make_client(args.cookie_file), now=utcnow(), recent=args.recent,
+                      history=history)
+    finally:
+        history.close()
 
 
 # --- merging ---------------------------------------------------------------------
@@ -102,21 +134,33 @@ def is_fresh(fighter: Fighter, now: datetime) -> bool:
 
 
 class _Run:
-    def __init__(self, store: Store, client, now: datetime, recent: int):
+    def __init__(self, store: Store, client, now: datetime, recent: int, history: sqlite3.Connection | None):
         self.store = store
         self.client = client
         self.now = now
         self.today = now.date().isoformat()
         self.recent = recent
+        self.history = history
         self.existing = store.load_events()
         self.fighters = store.load_fighters()
         self.scraped: dict[str, Event] = {}
         self.card_names: dict[str, str] = {}
         self.refresh: set[str] = set()  # fighters whose record just changed
         self.upcoming_ids: list[str] = []
+        # for the history store: pages as fetched (url -> html) and as parsed
+        self.pages: dict[str, str] = {}
+        self.parsed: dict[str, ParsedEvent] = {}
+        self.fighter_pages: dict[str, Fighter] = {}
+        self.listed: set[str] = set()
+
+    def _get(self, url: str) -> str:
+        html = self.client.get(url)
+        self.pages[url] = html
+        return html
 
     def _detail(self, url: str, event_id: str) -> Event:
-        parsed = parse_event_detail(self.client.get(url), event_id)
+        parsed = parse_event_detail(self._get(url), event_id)
+        self.parsed[event_id] = parsed
         for fid, name in parsed.fighters.items():
             self.card_names.setdefault(fid, name)
         return parsed.event
@@ -153,9 +197,16 @@ class _Run:
             key=lambda e: e.date,
         )
         targets = {e.id: event_url(e.id) for e in stale}
-        if self.recent > 0:
-            past = [s for s in parse_event_list(self.client.get(COMPLETED_URL))
-                    if s.date and s.date < self.today]
+        if self.history is not None:
+            rated = {eid for (eid,) in self.history.execute(
+                "SELECT DISTINCT event_id FROM fights WHERE outcome IS NOT NULL")}
+            for e in sorted(self.existing.values(), key=lambda e: e.date):
+                if e.status == "completed" and e.id not in rated:
+                    targets.setdefault(e.id, event_url(e.id))
+        if self.recent > 0 or self.history is not None:
+            listing = self._get(COMPLETED_URL)
+            self.listed = listed_ids(listing)
+            past = [s for s in parse_event_list(listing) if s.date and s.date < self.today]
             for stub in past[: self.recent]:
                 targets.setdefault(stub.id, stub.url)
 
@@ -173,12 +224,13 @@ class _Run:
             if current and fid not in self.refresh and is_fresh(current, self.now):
                 continue
             try:
-                fetched = parse_fighter(self.client.get(fighter_url(fid)), fid)
+                fetched = parse_fighter(self._get(fighter_url(fid)), fid)
             except HttpError as exc:
                 log.warning("fighter %s: %s", fid, exc)
                 if current is None:
                     self.fighters[fid] = Fighter(id=fid, name=self.card_names.get(fid, fid))
                 continue
+            self.fighter_pages[fid] = fetched
             self.fighters[fid] = fetched.model_copy(update={
                 "name": fetched.name or self.card_names.get(fid, fid),
                 "image": current.image if current else None,
@@ -186,6 +238,24 @@ class _Run:
             })
 
     def write(self) -> dict[str, int]:
+        if self.history is None:
+            return self._write_data()
+        with self.history:  # rolled back if anything below fails
+            self._write_history()
+            return self._write_data()
+
+    def _write_history(self) -> None:
+        """The run's pages in the order `history ingest` reads them: listing, event pages by id, fighter pages."""
+        stamp = iso(self.now)
+        for url, html in self.pages.items():
+            if "/fighter-details/" not in url or url.endswith(tuple(self.fighter_pages)):
+                record_page(self.history, url, page_path(url), html.encode("utf-8"), stamp)
+        for event_id in sorted(self.parsed):
+            upsert_card(self.history, self.parsed[event_id], self.listed)
+        for fid in sorted(self.fighter_pages):
+            upsert_fighter_page(self.history, self.fighter_pages[fid], stamp)
+
+    def _write_data(self) -> dict[str, int]:
         merged = {eid: merge_event(self.existing.get(eid), e) for eid, e in self.scraped.items()}
         events = {**self.existing, **merged}
         old_index = self.store.load_index()
@@ -212,15 +282,15 @@ class _Run:
         }
 
 
-def scrape(store: Store, client, now: datetime, recent: int = 1) -> int:
-    run_ = _Run(store, client, now, recent)
+def scrape(store: Store, client, now: datetime, recent: int = 1, history: sqlite3.Connection | None = None) -> int:
+    run_ = _Run(store, client, now, recent, history)
     try:
         run_.upcoming()
         run_.results()
         run_.fighter_details()
-    except (Halt, HttpError, ValidationError) as exc:
+        counts = run_.write()
+    except (Halt, HttpError, ValidationError, sqlite3.Error) as exc:
         print(f"scrape failed, nothing written: {exc}", file=sys.stderr)
         return 1
-    counts = run_.write()
     print("scrape ok: " + ", ".join(f"{k}={v}" for k, v in counts.items()), file=sys.stderr)
     return 0
