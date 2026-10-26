@@ -77,3 +77,25 @@ class Bucket:
     def stop(self) -> None:
         self.server.shutdown()
         self.server.server_close()
+
+
+class Redirector:
+    """A server that answers every request with a 302 to `location`: a bucket that redirects somewhere else."""
+
+    def __init__(self, location: str):
+        class Handler(SimpleHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802 - the stdlib's name
+                self.send_response(302)
+                self.send_header("Location", location)
+                self.end_headers()
+
+            def log_message(self, format, *args):  # noqa: A002
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def stop(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
