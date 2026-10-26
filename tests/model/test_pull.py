@@ -404,3 +404,86 @@ def test_only_http_urls_are_fetched(root, capsys, url):
     assert pull(root, url=url) == 0
     assert "http" in capsys.readouterr().err
     assert current(root) == BAKED_VERSION  # the seed was still made
+
+
+# FIGHTCARD_MODEL_PIN: run a kept version and pull nothing, which is also how a bad model is rolled back.
+
+@pytest.fixture
+def two(root, bucket):
+    """The baked version and NEW both kept, running NEW."""
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url)
+    assert current(root) == NEW and kept(root) == sorted([BAKED_VERSION, NEW])
+    bucket.requests.clear()
+
+
+def test_a_pin_rolls_back_to_a_kept_version_without_touching_the_bucket(root, bucket, two, capsys):
+    capsys.readouterr()
+    assert pull(root, "--pin", BAKED_VERSION, url=bucket.url) == 0
+    assert current(root) == BAKED_VERSION
+    assert kept(root) == sorted([BAKED_VERSION, NEW])  # the version rolled back from stays kept
+    assert bucket.requests == []
+    assert f"pinned {BAKED_VERSION} (was {NEW})" in capsys.readouterr().err
+
+
+def test_a_pin_holds_while_the_bucket_has_a_newer_version(root, bucket, two):
+    pull(root, "--pin", BAKED_VERSION, url=bucket.url)
+    bucket.publish("2026-10-28+bbbbbbbb", as_of="2026-10-28")
+    pull(root, "--pin", BAKED_VERSION, url=bucket.url)
+    assert current(root) == BAKED_VERSION
+    assert bucket.requests == []
+
+
+def test_unpinning_resumes_pulling(root, bucket, two):
+    pull(root, "--pin", BAKED_VERSION, url=bucket.url)
+    assert pull(root, url=bucket.url) == 0  # no pin: latest.json (NEW) differs from current, and NEW is still kept
+    assert current(root) == NEW
+
+
+def test_pinning_the_running_version_changes_nothing(root, bucket, two, capsys):
+    capsys.readouterr()
+    assert pull(root, "--pin", NEW, url=bucket.url) == 0
+    assert current(root) == NEW and bucket.requests == []
+    assert "already" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("pin", ["2030-01-01+ffffffff", "../model", "a/b", "current"])
+def test_a_pin_that_is_not_a_kept_version_is_held(root, bucket, two, capsys, pin):
+    capsys.readouterr()
+    assert pull(root, "--pin", pin, url=bucket.url) == 0
+    assert current(root) == NEW and bucket.requests == []
+    err = capsys.readouterr().err
+    assert "not a kept version" in err and f"keeping {NEW}" in err
+
+
+def test_a_pin_to_a_kept_version_that_no_longer_loads_is_held(root, bucket, two, capsys):
+    (root / BAKED_VERSION / "model.txt").write_text("garbage")
+    capsys.readouterr()
+    assert pull(root, "--pin", BAKED_VERSION, url=bucket.url) == 0
+    assert current(root) == NEW
+    assert "unusable" in capsys.readouterr().err
+
+
+def test_a_pin_works_without_a_url(root, bucket, two):
+    assert pull(root, "--pin", BAKED_VERSION) == 0
+    assert current(root) == BAKED_VERSION
+
+
+def test_the_pin_defaults_to_the_environment(root, bucket, two, monkeypatch):
+    monkeypatch.setenv("FIGHTCARD_MODEL_PIN", BAKED_VERSION)
+    assert pull(root, url=bucket.url) == 0
+    assert current(root) == BAKED_VERSION and bucket.requests == []
+
+
+def test_a_pin_on_the_first_boot_can_name_the_baked_version(root, bucket):
+    assert pull(root, "--pin", BAKED_VERSION, url=bucket.url) == 0
+    assert current(root) == BAKED_VERSION and bucket.requests == []
+
+
+def test_the_pinned_version_is_never_pruned(root, bucket, two):
+    bucket.publish("2026-10-28+bbbbbbbb", as_of="2026-10-28")
+    pull(root, url=bucket.url)
+    pull(root, "--pin", BAKED_VERSION, "--keep", "1", url=bucket.url)
+    assert current(root) == BAKED_VERSION
+    assert kept(root) == sorted([BAKED_VERSION, "2026-10-28+bbbbbbbb"])  # the newest, and the pin
