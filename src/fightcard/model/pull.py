@@ -115,10 +115,14 @@ def _seed(root: Path, seed_dir: Path, log: Log) -> bool:
     return True
 
 
+def _versions(root: Path) -> list[str]:
+    """The kept versions, oldest first (they start with their as_of date)."""
+    return sorted(p.name for p in root.iterdir() if p.is_dir() and not p.is_symlink() and VERSION.fullmatch(p.name))
+
+
 def _prune(root: Path, keep: int) -> None:
     """Delete all but the newest `keep` versions (they sort by as_of), and never the one `current` points at."""
-    versions = sorted(p.name for p in root.iterdir()
-                      if p.is_dir() and not p.is_symlink() and VERSION.fullmatch(p.name))
+    versions = _versions(root)
     live = _kept_current(root)
     for version in versions[:max(len(versions) - keep, 0)]:
         if version != live:
@@ -223,6 +227,20 @@ def _adopt(root: Path, base: str, latest: Latest, was: str, log: Log) -> None:
     log(f"adopted {latest.version} (was {was})")
 
 
+def _pin(root: Path, pin: str, was: str, log: Log) -> None:
+    """Run the kept version `pin`: no gates, since it passed them when it was adopted (or is the baked model)."""
+    versions = _versions(root)
+    if pin not in versions:
+        log(f"held pin {pin!r}: not a kept version (kept: {', '.join(versions)}); keeping {was}")
+    elif pin == was:
+        log(f"pin {pin} is already current")
+    elif not _usable(root, pin):
+        log(f"held pin {pin!r}: the kept version is unusable (it doesn't load); keeping {was}")
+    else:
+        _switch(root, pin)
+        log(f"pinned {pin} (was {was})")
+
+
 def pull(root: Path, *, url: str | None, pin: str | None, seed_dir: Path, keep: int = KEEP, log: Log) -> None:
     """One pull. Never raises for a model that can't be adopted: it logs why and leaves `current` as it was."""
     if not url and not pin:
@@ -234,6 +252,10 @@ def pull(root: Path, *, url: str | None, pin: str | None, seed_dir: Path, keep: 
     if not _seed(root, seed_dir, log):
         return
     was = _kept_current(root)
+    if pin:
+        _pin(root, pin, was, log)
+        _prune(root, keep)
+        return
     base = url.rstrip("/")
     try:
         latest = _latest(base)
