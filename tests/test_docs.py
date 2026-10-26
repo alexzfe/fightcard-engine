@@ -148,6 +148,14 @@ def test_contract_documents_the_model_fields_and_the_pull():
     assert row is not None and "FIGHTCARD_MODEL_URL" in row and "state/model" in row
 
 
+def test_contract_versioning_says_what_1_1_added():
+    section = CONTRACT.split("### Versioning")[1].split("###")[0]
+    assert '`"1.1"`' in section
+    for added in ("Result.outcome", "elo", "best_win", "index.model.stale_fighters"):
+        assert added in section, added
+    assert "Added without a new" not in CONTRACT  # it is 1.1 now
+
+
 def test_api_doc_names_the_model_fields():
     for field in ("model.version", "model.as_of", "model.stale_fighters"):
         assert field in api_doc(), field
