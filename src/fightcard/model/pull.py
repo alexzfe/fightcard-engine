@@ -10,6 +10,7 @@ way `publish` switches its own), so a reader sees the old model or the new one. 
 
 from __future__ import annotations
 
+import hashlib
 import http.client
 import json
 import os
@@ -22,12 +23,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fightcard.score.bundle import FILES, load_bundle
+from fightcard.score.parity import parity_failures
 
 KEEP = 3
+FORMAT_VERSION = 1  # latest.json's
+CUT_POINTS = ("low_max", "medium_max")  # thresholds.json: the tier boundaries a new model must keep
 EXAMPLES = "examples.json"
 BUNDLE_FILES = (*FILES, EXAMPLES)  # a bundle must have these
 OPTIONAL_FILES = ("fighter_rating.parquet",)  # and may have these
 VERSION = re.compile(r"[0-9A-Za-z][0-9A-Za-z._+-]{0,63}")  # a directory name: never a path
+SHA256 = re.compile(r"[0-9a-f]{64}")
 _STAGING, _LINK = ".tmp-", ".current-"
 TIMEOUT = 30  # seconds, per socket operation
 LATEST_MAX = 1 << 20
@@ -38,6 +43,14 @@ Log = Callable[[str], None]
 
 class Failed(Exception):
     """The bucket couldn't be read (down, 404, cut off): nothing to judge; the next run asks again."""
+
+
+class Held(Exception):
+    """A version was read and rejected: `label` is what the log calls it, `str(self)` why. Current stays."""
+
+    def __init__(self, label: str, reason: str):
+        super().__init__(reason)
+        self.label = label
 
 
 @dataclass(frozen=True)
@@ -129,23 +142,80 @@ def _read(url: str, sink: Callable[[bytes], None], limit: int) -> None:
 
 
 def _latest(base: str) -> Latest:
+    """latest.json: {"format_version": 1, "version", "as_of", "files": {name: sha256}}. Unreadable is a Failed; a
+    readable one that isn't a plain bundle of known files is Held, before anything it names is fetched."""
     body = bytearray()
     _read(f"{base}/latest.json", body.extend, LATEST_MAX)
     try:
         doc = json.loads(body)
-        return Latest(doc["version"], doc["files"])
+    except ValueError as e:
+        raise Failed(f"{base}/latest.json is not JSON: {e}") from e
+    if not isinstance(doc, dict):
+        raise Failed(f"{base}/latest.json is not an object")
+    version, files = doc.get("version"), doc.get("files")
+    label = version if isinstance(version, str) and VERSION.fullmatch(version) else "latest.json"
+    if doc.get("format_version") != FORMAT_VERSION:
+        raise Held(label, f"latest.json has format_version {doc.get('format_version')!r}, not {FORMAT_VERSION}")
+    if label == "latest.json":
+        raise Held(label, f"latest.json has an unusable version {version!r}")
+    if not isinstance(files, dict):
+        raise Held(label, "latest.json's files is not an object")
+    allowed = {*BUNDLE_FILES, *OPTIONAL_FILES}
+    for name, digest in files.items():
+        if name not in allowed:
+            raise Held(label, f"latest.json lists unexpected file {name!r}")
+        if not (isinstance(digest, str) and SHA256.fullmatch(digest)):
+            raise Held(label, f"latest.json's digest for {name} is not a sha256")
+    if missing := [n for n in BUNDLE_FILES if n not in files]:
+        raise Held(label, f"latest.json lacks required {', '.join(missing)}")
+    return Latest(version, files)
+
+
+def _download(base: str, latest: Latest, staging: Path) -> None:
+    quoted = urllib.parse.quote(latest.version, safe="")
+    for name, want in sorted(latest.files.items()):
+        digest = hashlib.sha256()
+        with open(staging / name, "wb") as out:
+            def sink(chunk: bytes) -> None:
+                digest.update(chunk)
+                out.write(chunk)
+            _read(f"{base}/{quoted}/{urllib.parse.quote(name)}", sink, FILE_MAX)
+        if digest.hexdigest() != want:
+            raise Held(latest.version, f"{name}: sha256 {digest.hexdigest()[:12]}… is not the published {want[:12]}…")
+
+
+def _gate(root: Path, latest: Latest, staging: Path, was: str) -> None:
+    """The candidate in `staging` (every checksum already matched) must be the version it says, load, keep the
+    running model's tier cut points, and re-score its own examples."""
+    label = latest.version
+    try:
+        listed = json.loads((staging / "manifest.json").read_text())["version"]
     except (ValueError, KeyError, TypeError) as e:
-        raise Failed(f"{base}/latest.json is unreadable: {e}") from e
+        raise Held(label, f"manifest.json is unreadable: {e}") from e
+    if listed != label:
+        raise Held(label, f"manifest.json is for version {listed!r}")
+    try:
+        bundle = load_bundle(staging)
+    except Exception as e:  # noqa: BLE001 - lightgbm, pyarrow and json each raise their own
+        raise Held(label, f"load_bundle failed: {type(e).__name__}: {e}") from e
+    running = load_bundle(root / was).thresholds
+    for cut in CUT_POINTS:
+        if bundle.thresholds.get(cut) != running[cut]:
+            raise Held(label, f"{cut} moved from {running[cut]!r} to {bundle.thresholds.get(cut)!r}")
+    try:
+        examples = json.loads((staging / EXAMPLES).read_text())
+    except ValueError as e:
+        raise Held(label, f"{EXAMPLES} is not JSON: {e}") from e
+    if failures := parity_failures(bundle, examples):
+        raise Held(label, "; ".join(failures[:3]))
 
 
 def _adopt(root: Path, base: str, latest: Latest, was: str, log: Log) -> None:
     staging = root / f"{_STAGING}{latest.version}"
     try:
         staging.mkdir()
-        quoted = urllib.parse.quote(latest.version, safe="")
-        for name in latest.files:
-            with open(staging / name, "wb") as out:
-                _read(f"{base}/{quoted}/{urllib.parse.quote(name)}", out.write, FILE_MAX)
+        _download(base, latest, staging)
+        _gate(root, latest, staging, was)
         _install(root, latest.version, staging)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
@@ -171,6 +241,8 @@ def pull(root: Path, *, url: str | None, pin: str | None, seed_dir: Path, keep: 
             log(f"up to date: {was}")
         else:
             _adopt(root, base, latest, was, log)
+    except Held as e:
+        log(f"held {e.label}: {e}; keeping {was}")
     except Failed as e:
         log(f"failed, keeping {was}: {e}")
     _prune(root, keep)
