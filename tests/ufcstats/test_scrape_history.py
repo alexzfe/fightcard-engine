@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from bs4 import BeautifulSoup
-from test_scrape_stage import BASE, COMPLETED_ID, NOW, UPCOMING_CARD, FakeClient, read_fixture, site_pages
+from test_scrape_stage import BASE, COMPLETED_ID, NOW, UPCOMING_CARD, UPCOMING_IDS, FakeClient, read_fixture, site_pages
 
 from fightcard.cli import main
 from fightcard.history import ingest as ingest_mod
@@ -501,3 +501,17 @@ def test_backfill_cards_fetch_only_fighters_missing_from_data(tmp_path, db):
     fetched = {u.rsplit("/", 1)[1] for u in c.urls if "/fighter-details/" in u}
     assert missing in fetched
     assert not (fetched & set(known)) - upcoming
+
+
+# --- upcoming events with no bouts yet ------------------------------------------------------------------------------
+
+
+def test_an_upcoming_event_skipped_for_0_fights_stays_out_of_the_store_as_out_of_data(tmp_path, db):
+    far = UPCOMING_IDS[6]
+    c = FakeClient(site_pages(empty=[far]), fighter_page=read_fixture("fighter.html"))
+    assert run(tmp_path, db, c) == 0
+    assert f"{BASE}/event-details/{far}" in c.urls
+    assert not (tmp_path / "data" / "events" / f"{far}.json").exists()
+    assert db.execute("SELECT COUNT(*) FROM events WHERE event_id = ?", (far,)).fetchone() == (0,)
+    assert db.execute("SELECT COUNT(*) FROM pages WHERE url = ?", (f"{BASE}/event-details/{far}",)).fetchone() == (0,)
+    assert db.execute("SELECT COUNT(*) FROM events WHERE event_id = ?", (UPCOMING_IDS[0],)).fetchone() == (1,)
