@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sqlite3
 from contextlib import closing
 from datetime import timedelta
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from bs4 import BeautifulSoup
-from test_scrape_stage import BASE, COMPLETED_ID, NOW, FakeClient, read_fixture, site_pages
+from test_scrape_stage import BASE, COMPLETED_ID, NOW, UPCOMING_CARD, FakeClient, read_fixture, site_pages
 
 from fightcard.cli import main
 from fightcard.history import ingest as ingest_mod
@@ -20,6 +21,7 @@ from fightcard.history import store as history_store
 from fightcard.history.ingest import ingest
 from fightcard.history.rating import history_ratings
 from fightcard.history.store import connect, dump
+from fightcard.models import Fighter
 from fightcard.score import stage as score_stage
 from fightcard.store import Store
 from fightcard.ufcstats import stage
@@ -474,6 +476,7 @@ def backfilled(c: FakeClient, ids: list[str]) -> list[str]:
 
 
 def test_backfill_refetches_are_capped_per_run_and_the_rest_come_next_run(tmp_path, db, caplog):
+    caplog.set_level(logging.INFO)
     assert stage.BACKFILL_PER_RUN == 20
     ids, c = backlog(tmp_path, stage.BACKFILL_PER_RUN + 5)
     assert run(tmp_path, db, c) == 0
@@ -482,3 +485,19 @@ def test_backfill_refetches_are_capped_per_run_and_the_rest_come_next_run(tmp_pa
     c.urls.clear()
     assert run(tmp_path, db, c) == 0
     assert backfilled(c, ids) == ids[stage.BACKFILL_PER_RUN:]
+
+
+def test_backfill_cards_fetch_only_fighters_missing_from_data(tmp_path, db):
+    """A backfilled card's fighters are already in fighters.json; stale ones there aren't refetched for it."""
+    data = Store(tmp_path / "data")
+    data.save_event(OLD)
+    missing, *known = sorted({fid for f in OLD.fights for fid in (f.red, f.blue)})
+    data.save_fighters({fid: Fighter(id=fid, name=fid, details_fetched_at="2020-01-01T00:00:00Z") for fid in known})
+    c = client()
+    c.pages[OLD_URL] = read_fixture("event_detail_completed.html")
+    assert run(tmp_path, db, c, recent=0) == 0  # only the upcoming cards are current
+    assert OLD_URL in c.urls
+    upcoming = {fid for f in UPCOMING_CARD.event.fights for fid in (f.red, f.blue)}
+    fetched = {u.rsplit("/", 1)[1] for u in c.urls if "/fighter-details/" in u}
+    assert missing in fetched
+    assert not (fetched & set(known)) - upcoming
