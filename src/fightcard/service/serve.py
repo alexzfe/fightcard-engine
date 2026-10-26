@@ -1,7 +1,8 @@
 """`fightcard-service serve`, the container's PID 1: nginx in the foreground, and a run at every schedule slot.
 
 Runs are child processes (`python -m fightcard.service run`), each leading its own process group, never two at once,
-and none longer than RUN_TIMEOUT. If nginx exits, serve exits non-zero and Docker restarts the container.
+and none longer than RUN_TIMEOUT. A slot that fires during a run waits for it (one slot at most; a daily one, which
+the gate always lets through, wins over an hourly one) and starts as soon as it ends. If nginx exits, serve exits non-zero and Docker restarts the container.
 SIGTERM/SIGINT stop nginx gracefully and end a running run, together, within STOP_GRACE.
 """
 
@@ -17,7 +18,7 @@ from datetime import UTC, datetime
 
 from fightcard.service import runner
 from fightcard.service.runner import Config, logfmt
-from fightcard.service.schedule import next_fire
+from fightcard.service.schedule import DAILY_CRON, next_fire
 
 NGINX = ["nginx", "-g", "daemon off;"]
 # Docker (and compose) SIGKILL a container 10 s after SIGTERM. serve signals nginx and the run at once and gives
@@ -80,7 +81,7 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
     stop = stop or threading.Event()
     run_cmd = [cfg.python, "-m", "fightcard.service", "run"]
     nginx = spawn(NGINX)
-    run = run_started = None
+    run = run_started = pending = None
 
     def start(*args: str):
         nonlocal run_started
@@ -103,12 +104,18 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
             _stop((run, signal.SIGTERM, True))
         if run is not None and run.poll() is not None:
             run = None
+        if run is None and pending is not None:
+            _log(out, event="schedule", cron=pending, status="started", reason="queued while the last run went")
+            run, pending = start("--event", "schedule", "--cron", pending), None
         if now() >= fire:
             if run is None:
                 _log(out, event="schedule", cron=cron, status="started")
                 run = start("--event", "schedule", "--cron", cron)
+            elif pending == DAILY_CRON:
+                _log(out, event="schedule", cron=cron, status="dropped", reason="a daily run is already queued")
             else:
-                _log(out, event="schedule", cron=cron, status="busy", reason="previous run still going")
+                _log(out, event="schedule", cron=cron, status="queued", reason="previous run still going")
+                pending = cron
             fire, cron = next_fire(now())
         sleep(1)
     _log(out, status="stopping")
