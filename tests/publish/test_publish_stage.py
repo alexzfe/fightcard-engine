@@ -168,6 +168,14 @@ def test_refuses_an_index_naming_a_missing_event(data_dir, out, capsys):
     assert "e2" in refused(data_dir, out, capsys)
 
 
+def test_refuses_a_fight_naming_a_fighter_not_in_fighters_json(data_dir, out, capsys):
+    fighters = load(data_dir / "fighters.json")
+    del fighters["f2"]
+    write_json(data_dir / "fighters.json", fighters)
+    message = refused(data_dir, out, capsys)
+    assert "e1-1" in message and "f2" in message
+
+
 @pytest.mark.parametrize("generated_at", ["2026-10-25T23:20:24", "2026-10-25T23:20:24+02:00", "yesterday"])
 def test_refuses_a_generated_at_that_is_not_utc_z(tmp_path, out, capsys, generated_at):
     data = make_data(tmp_path / "data", generated_at=generated_at)
