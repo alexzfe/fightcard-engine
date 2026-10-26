@@ -78,7 +78,7 @@ def config(tmp_path: Path, published: bool = True) -> Config:
     cfg = Config(root=tmp_path / "srv", fetch=False, fightcard="fightcard", model_dir=Path("model"),
                  gate_script=REPO / "scripts" / "should_run.py", python=sys.executable)
     if published:
-        cfg.root.mkdir(parents=True)
+        (cfg.root / "generations" / "x").mkdir(parents=True)
         (cfg.root / "current").symlink_to("generations/x")
     return cfg
 
