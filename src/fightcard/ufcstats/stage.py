@@ -9,8 +9,9 @@ the run also keeps it current, in one transaction (write lock taken up front, wa
 committed before data/ is written, so data/ is never ahead of the store: the full completed
 listing (refetched every run: it says which events are UFC events), every event page and every fighter page
 fetched, through the same parse + upsert path as `history ingest`. Completed events in data/ with no bout in
-the store are refetched so `score` finds them. A completed bout with a method but no W/L outcome fails the
-run with nothing written, as it fails `history ingest`. If writing data/ fails after the commit, the run exits 1
+the store are refetched so `score` finds them (backfill: up to `BACKFILL_PER_RUN` a run; one whose page 404s or
+lacks an outcome is skipped with a warning). A completed bout with a method but no W/L outcome on this run's
+cards fails the run with nothing written, as it fails `history ingest`. If writing data/ fails after the commit, the run exits 1
 saying so; the store being ahead of data/ is harmless, and the next run rewrites data/.
 """
 
@@ -51,6 +52,7 @@ BASE_URL = "http://ufcstats.com"
 UPCOMING_URL = f"{BASE_URL}/statistics/events/upcoming"
 COMPLETED_URL = LISTING_URL  # ?page=all: the whole listing, as `history ingest` reads it
 FIGHTER_MAX_AGE = timedelta(days=30)
+BACKFILL_PER_RUN = 20  # completed events refetched per run for the history store (~1 request each)
 BUSY_TIMEOUT_MS = 30_000  # how long to wait for another writer to release the history store
 
 
@@ -164,6 +166,7 @@ class _Run:
         self.card_names: dict[str, str] = {}
         self.refresh: set[str] = set()  # fighters whose record just changed
         self.upcoming_ids: list[str] = []
+        self.backfilled: set[str] = set()  # completed events refetched only for the history store
         # for the history store: pages as fetched (url -> html) and as parsed
         self.pages: dict[str, str] = {}
         self.parsed: dict[str, ParsedEvent] = {}
@@ -214,31 +217,66 @@ class _Run:
             key=lambda e: e.date,
         )
         targets = {e.id: event_url(e.id) for e in stale}
-        if self.history is not None:
-            rated = {eid for (eid,) in self.history.execute(
-                "SELECT DISTINCT event_id FROM fights WHERE outcome IS NOT NULL")}
-            for e in sorted(self.existing.values(), key=lambda e: e.date):
-                if e.status == "completed" and e.id not in rated:
-                    targets.setdefault(e.id, event_url(e.id))
         if self.recent > 0 or self.history is not None:
             listing = self._get(COMPLETED_URL)
             self.listed = listed_ids(listing)
             past = [s for s in parse_event_list(listing) if s.date and s.date < self.today]
             for stub in past[: self.recent]:
                 targets.setdefault(stub.id, stub.url)
-
         for event_id, url in targets.items():
-            event = self._detail(url, event_id)
-            prev = self.existing.get(event_id)
-            if event.status == "completed" and (prev is None or prev.status != "completed"):
-                self.refresh |= {fid for f in event.fights for fid in (f.red, f.blue)}
-            self.scraped[event_id] = event
+            self._result(url, event_id)
+        if self.history is not None:
+            self.backfill()
+
+    def backfill(self) -> None:
+        """Completed events in data/ the store lacks, up to BACKFILL_PER_RUN, oldest first. They're not on this
+        run's cards, so one that 404s or has a bout without an outcome is skipped with a warning (left out of the
+        store and data/) instead of failing every run. Their fighters are fetched only when fighters.json lacks
+        them."""
+        rated = {eid for (eid,) in self.history.execute(
+            "SELECT DISTINCT event_id FROM fights WHERE outcome IS NOT NULL")}
+        todo = [e.id for e in sorted(self.existing.values(), key=lambda e: e.date)
+                if e.status == "completed" and e.id not in rated and e.id not in self.scraped]
+        if len(todo) > BACKFILL_PER_RUN:
+            log.info("backfill: %d of %d events missing from the history store this run, %d in later runs",
+                     BACKFILL_PER_RUN, len(todo), len(todo) - BACKFILL_PER_RUN)
+        for event_id in todo[:BACKFILL_PER_RUN]:
+            url = event_url(event_id)
+            try:
+                self._result(url, event_id)
+            except HttpError as exc:
+                if exc.status != 404:
+                    raise
+                log.warning("backfill: skipping event %s: %s", event_id, exc)
+                continue
+            no_outcome = without_outcome(self.parsed[event_id])
+            if no_outcome:
+                log.warning("backfill: skipping event %s: %s", event_id, MissingOutcome(no_outcome))
+                self._forget(url, event_id)
+                self.scraped.pop(event_id)
+                continue
+            self.backfilled.add(event_id)
+
+    def _result(self, url: str, event_id: str) -> Event:
+        event = self._detail(url, event_id)
+        prev = self.existing.get(event_id)
+        if event.status == "completed" and (prev is None or prev.status != "completed"):
+            self.refresh |= {fid for f in event.fights for fid in (f.red, f.blue)}
+        self.scraped[event_id] = event
+        return event
+
+    def _forget(self, url: str, event_id: str) -> None:
+        """Keep a fetched event page out of the history store."""
+        self.pages.pop(url, None)
+        self.parsed.pop(event_id, None)
 
     def fighter_details(self) -> None:
         needed = dict.fromkeys(fid for e in self.scraped.values() for f in e.fights for fid in (f.red, f.blue))
+        backfill_only = needed.keys() - {fid for eid, e in self.scraped.items() if eid not in self.backfilled
+                                         for f in e.fights for fid in (f.red, f.blue)}
         for fid in needed:
             current = self.fighters.get(fid)
-            if current and fid not in self.refresh and is_fresh(current, self.now):
+            if current and fid not in self.refresh and (is_fresh(current, self.now) or fid in backfill_only):
                 continue
             try:
                 fetched = parse_fighter(self._get(fighter_url(fid)), fid)
