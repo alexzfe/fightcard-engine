@@ -1,9 +1,10 @@
-"""`fightcard-service run`: one refresh, gate → scrape → segments → images → score → publish.
+"""`fightcard-service run`: one refresh, gate → scrape → segments → images → model pull → score → publish.
 
 Each stage is a `fightcard` process over <root>/state/data, in its own session (so its process group holds it and
 anything it starts) at nice NICE. The run stops at the first stage that exits non-zero or outlives its TIMEOUTS
-entry; stages write nothing on failure and only publish switches what nginx serves, so the last good generation
-stays live. A flock on <root>/state/run.lock keeps two runs from overlapping; each stage inherits the locked fd,
+entry, except the model pull, which is logged and skipped past: it keeps the current model when it can't adopt a
+new one, and score then runs on that. Stages write nothing on failure and only publish switches what nginx serves,
+so the last good generation stays live. A flock on <root>/state/run.lock keeps two runs from overlapping; each stage inherits the locked fd,
 so the lock is held until the stage is gone too, even if the run itself is killed. SIGTERM (see `terminate`) ends
 the stage's process group first, then the run. Every step logs one line to stdout.
 """
@@ -32,7 +33,8 @@ _OFF = {"off", "0", "false", "no"}
 # Each stage's wall-clock limit, in seconds: well past its normal duration (scrape takes minutes, score seconds),
 # so only a hang hits it. Then the stage's process group gets SIGTERM, KILL_GRACE seconds, SIGKILL, and the run
 # fails with TIMED_OUT (timeout(1)'s code).
-TIMEOUTS = {"scrape": 30 * 60, "segments": 15 * 60, "images": 15 * 60, "score": 10 * 60, "publish": 10 * 60}
+TIMEOUTS = {"scrape": 30 * 60, "segments": 15 * 60, "images": 15 * 60, "model": 5 * 60, "score": 10 * 60,
+            "publish": 10 * 60}
 KILL_GRACE = 3
 TIMED_OUT = 124
 TERMINATED = 128 + signal.SIGTERM
@@ -48,6 +50,8 @@ class Config:
     gate_script: Path
     python: str
     schedule_minute: int = MINUTE  # the hourly slot's; off the fetch host (staging) half an hour later
+    model_url: str | None = None  # FIGHTCARD_MODEL_URL: where `fightcard model pull` looks; None: no pulls
+    model_pin: str | None = None  # FIGHTCARD_MODEL_PIN: a kept model version to run instead
 
     @property
     def state(self) -> Path:
@@ -75,6 +79,17 @@ class Config:
         # scrape upserts it, score reads it; both default to <--data>/../history/history.sqlite
         return self.state / "history" / "history.sqlite"
 
+    @property
+    def model_state(self) -> Path:
+        # `fightcard model pull` keeps its versions here, and `current` -> the one score reads
+        return self.state / "model"
+
+    @property
+    def scoring_model(self) -> Path:
+        """What score reads: the pulled model once there is one, else the image's baked model."""
+        current = self.model_state / "current"
+        return current if current.is_dir() else self.model_dir
+
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Config:
         fetch = env.get("FIGHTCARD_FETCH", "on").lower() not in _OFF
@@ -95,14 +110,17 @@ class Config:
             gate_script=Path(env.get("FIGHTCARD_GATE_SCRIPT", repo / "scripts" / "should_run.py")),
             python=sys.executable,
             schedule_minute=int(minute),
+            model_url=env.get("FIGHTCARD_MODEL_URL") or None,
+            model_pin=env.get("FIGHTCARD_MODEL_PIN") or None,
         )
 
 
 @dataclass(frozen=True)
 class Step:
     name: str
-    args: tuple[str, ...]
+    args: tuple[str, ...] | Callable[[], tuple[str, ...]]  # a callable is asked when the step starts
     fetches: bool = False
+    fatal: bool = True  # False: a failure is logged and the run goes on
 
 
 def steps(cfg: Config) -> list[Step]:
@@ -111,7 +129,11 @@ def steps(cfg: Config) -> list[Step]:
              fetches=True),
         Step("segments", ("segments",), fetches=True),
         Step("images", ("images",), fetches=True),
-        Step("score", ("score", "--model-dir", str(cfg.model_dir), "--history-db", str(cfg.history_db))),
+        Step("model", ("model", "pull", "--root", str(cfg.model_state), "--seed-dir", str(cfg.model_dir),
+                       *(("--url", cfg.model_url) if cfg.model_url else ()),
+                       *(("--pin", cfg.model_pin) if cfg.model_pin else ())), fatal=False),
+        # The pull may have just made state/model/current, so which model is only known when score starts.
+        Step("score", lambda: ("score", "--model-dir", str(cfg.scoring_model), "--history-db", str(cfg.history_db))),
         Step("publish", ("publish", "--out", str(cfg.root))),
     ]
 
@@ -227,18 +249,23 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
                     continue
                 t0 = clock()
                 limit = TIMEOUTS[step.name]
+                args = step.args() if callable(step.args) else step.args
                 try:
-                    code = execute([cfg.fightcard, "--data", str(cfg.data), *step.args], timeout=limit,
+                    code = execute([cfg.fightcard, "--data", str(cfg.data), *args], timeout=limit,
                                    pass_fds=(lock.fileno(),))
                 except StageTimeout:
                     log(step=step.name, status="timeout", timeout_s=f"{limit:g}", duration_s=f"{clock() - t0:.2f}")
+                    if not step.fatal:
+                        continue
                     return end("failed", TIMED_OUT, failed_step=step.name, exit=TIMED_OUT)
                 except OSError as e:
                     log(step=step.name, status="failed", exit=127, duration_s=f"{clock() - t0:.2f}", reason=str(e))
+                    if not step.fatal:
+                        continue
                     return end("failed", 127, failed_step=step.name, exit=127)
                 log(step=step.name, status="ok" if code == 0 else "failed", exit=code,
                     duration_s=f"{clock() - t0:.2f}")
-                if code != 0:
+                if code != 0 and step.fatal:
                     return end("failed", code, failed_step=step.name, exit=code)
         except Terminated:
             return end("terminated", TERMINATED, failed_step=step_name)

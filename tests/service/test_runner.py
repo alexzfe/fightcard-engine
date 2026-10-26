@@ -128,7 +128,7 @@ def test_the_url_and_the_pin_come_from_the_environment(env, url, pin):
 
 def test_score_reads_the_state_model_once_there_is_one(tmp_path):
     cfg = config(tmp_path)
-    (cfg.state / "model").mkdir(parents=True)
+    (cfg.state / "model" / "2026-10-14+5006318a").mkdir(parents=True)
     (cfg.state / "model" / "current").symlink_to("2026-10-14+5006318a")
     rec = Recorder()
     go(cfg, rec)
@@ -149,7 +149,7 @@ def test_a_current_the_pull_makes_during_the_run_is_what_score_reads(tmp_path):
     class SeedingPull(Recorder):
         def __call__(self, argv, **kw):
             if stage_of(argv) == "model":  # the first boot: the pull seeds state/model/current
-                (cfg.state / "model").mkdir(parents=True)
+                (cfg.state / "model" / "v1").mkdir(parents=True)
                 (cfg.state / "model" / "current").symlink_to("v1")
             return super().__call__(argv, **kw)
 
@@ -297,7 +297,7 @@ def test_the_real_gate_script_failing_raises(tmp_path):
 def test_fetch_off_skips_the_network_stages(tmp_path):
     rec = Recorder()
     code, lines = go(config(tmp_path, fetch=False), rec)
-    assert code == 0 and rec.stages == ["score", "publish"]
+    assert code == 0 and rec.stages == ["model", "score", "publish"]  # the pull is no ufcstats fetch
     steps = step_lines(lines)
     for name in ["scrape", "segments", "images"]:
         assert (steps[name]["status"], steps[name]["reason"]) == ("skipped", "fetch-off")

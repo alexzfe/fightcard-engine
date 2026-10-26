@@ -60,6 +60,7 @@ gate → scrape → segments → images → score → publish
   | scrape | 30 min |
   | segments | 15 min |
   | images | 15 min |
+  | model | 5 min |
   | score | 10 min |
   | publish | 10 min |
 
