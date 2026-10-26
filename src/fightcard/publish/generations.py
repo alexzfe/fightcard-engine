@@ -96,6 +96,8 @@ def publish(files: dict[str, bytes], root: Path, *, keep: int = KEEP,
 
     current = root / "current"
     live = current.resolve() if current.is_symlink() else None
+    if live is not None and not live.is_dir():
+        live = None  # dangling: its generation was removed
     digest = _digest(files)
     if live is not None and live.name.endswith(f"-{digest}"):
         return Generation(live.name, changed=False)
