@@ -9,6 +9,7 @@ import sqlite3
 import pytest
 
 from fightcard.history import ingest as ingest_mod
+from fightcard.history import store as store_mod
 from fightcard.history.ingest import ingest
 from fightcard.history.store import (
     TABLES,
@@ -21,6 +22,7 @@ from fightcard.history.store import (
     upsert_fighter,
 )
 from fightcard.models import Event, Fight, Fighter, Record, Result
+from fightcard.ufcstats.parsers import ParsedEvent
 
 from history_helpers import FIXTURES, cross_check, read_csv
 
@@ -271,3 +273,59 @@ def test_rating_bouts_stop_at_as_of(db):
 
 def test_names_prefer_the_fighter_page(seeded):
     assert names(seeded)[CYBORG] == "Cristiane Justino"
+
+
+# --- completed: from the listing --------------------------------------------------------------------------------
+
+LISTING_FIXTURE = FIXTURES.parent / "ufcstats" / "completed.html"
+NEXT = "55e94a9b525dcf45"  # the listing's first row: the next upcoming event (next.png)
+
+
+def test_the_listing_s_completed_ids_leave_out_the_next_upcoming_row():
+    html = LISTING_FIXTURE.read_text(encoding="utf-8")
+    assert NEXT in ingest_mod.listed_ids(html)  # a UFC event all the same
+    assert ingest_mod.completed_ids(html) == ingest_mod.listed_ids(html) - {NEXT}
+
+
+def card(fights=()) -> ParsedEvent:
+    return ParsedEvent(event=event("e1", "UFC 300", fights=fights), fighters={})
+
+
+def test_a_card_in_the_completed_listing_is_stored_completed_even_with_no_bouts(db):
+    """All bouts cancelled: the page parses as upcoming (no result), the listing says it took place."""
+    with db:
+        ingest_mod.upsert_card(db, card(), listed={"e1"}, completed={"e1"})
+    assert db.execute("SELECT status FROM events WHERE event_id = 'e1'").fetchone() == ("completed",)
+
+
+def test_a_card_listed_only_as_the_next_event_keeps_its_parsed_status(db):
+    with db:
+        ingest_mod.upsert_card(db, card(), listed={"e1"}, completed=set())
+    assert db.execute("SELECT status, source FROM events WHERE event_id = 'e1'").fetchone() == ("upcoming", "listing")
+
+
+def test_ingest_stores_an_empty_listed_card_completed(tmp_path, db):
+    """`history ingest` and `scrape` share `upsert_card`: the listing decides for both."""
+    (tmp_path / "listings").mkdir()
+    (tmp_path / "event-details").mkdir()
+    listing = LISTING_FIXTURE.read_text(encoding="utf-8")
+    (tmp_path / "listings" / "events_completed.html").write_text(listing, encoding="utf-8")
+    empty = (FIXTURES.parent / "ufcstats" / "event_detail_completed.html").read_text(encoding="utf-8").split(
+        '<tbody class="b-fight-details__table-body">')[0]
+    for eid in ("ad3fdba28a7540cf", NEXT):
+        (tmp_path / "event-details" / f"{eid}.html").write_text(empty, encoding="utf-8")
+    ingest(db, tmp_path)
+    assert dict(db.execute("SELECT event_id, status FROM events")) == {
+        "ad3fdba28a7540cf": "completed", NEXT: "upcoming"}
+
+
+# --- which store events are complete ----------------------------------------------------------------------------
+
+def test_complete_events_are_completed_rows_with_no_bouts_or_a_bout_with_an_outcome(db):
+    with db:
+        upsert_event(db, event("empty").model_copy(update={"status": "completed"}), True, "listing")
+        upsert_event(db, event("rated", fights=[fight("r1"), fight("r2", outcome=None)]), True, "listing")
+        upsert_event(db, event("pending", fights=[fight("p1", outcome=None)]).model_copy(
+            update={"status": "completed"}), True, "listing")  # listed, results not in yet
+        upsert_event(db, event("next"), True, "listing")  # upcoming, no bouts
+    assert store_mod.complete_events(db, ["empty", "rated", "pending", "next", "absent"]) == {"empty", "rated"}

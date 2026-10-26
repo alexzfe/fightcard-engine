@@ -437,3 +437,31 @@ def test_the_store_line_says_unknown_without_fetch_times(data, model_dir, vetera
     db = history(tmp_path, veterans)
     assert score_with(root, model_dir, db) == 0
     assert "newest completed event 2026-10-01, last page fetched unknown" in capsys.readouterr().err
+
+
+def test_an_empty_completed_card_in_the_store_passes(data, model_dir, veterans, tmp_path):
+    """A listed card with no bout (all cancelled) can't be "missing" forever: its completed row in the store is
+    what scrape's backfill checks too."""
+    root, store = data
+    store.save_event(event("e-empty", "2026-10-31", [], status="completed"))
+    db = history(tmp_path, veterans)
+    conn = connect(db)
+    with conn:
+        upsert_event(conn, event("e-empty", "2026-10-31", [], status="completed"), is_ufc=True, source="listing")
+    conn.close()
+    assert score_with(root, model_dir, db) == 0
+
+
+def test_a_listed_card_whose_bouts_have_no_outcome_yet_still_fails(data, model_dir, veterans, tmp_path, capsys):
+    """Completed in the listing, results not on the card page yet: the ratings would miss it."""
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    store.save_event(completed("e-late", "2026-10-31", v0, v1))
+    db = history(tmp_path, veterans)
+    conn = connect(db)
+    with conn:
+        upsert_event(conn, event("e-late", "2026-10-31", [Fight(id="e-late-1", red=v0, blue=v1)], status="completed"),
+                     is_ufc=True, source="listing")
+    conn.close()
+    assert score_with(root, model_dir, db) == 1
+    assert "e-late" in capsys.readouterr().err
