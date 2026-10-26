@@ -1,12 +1,12 @@
-"""Helpers shared by the scripts tests. Named uniquely, not `conftest`, because pipeline/tests has conftest.py modules
-too and CI collects both suites in one run. Importing this also puts scripts/ on sys.path."""
+"""Helpers shared by the ops tests. Named uniquely, not `conftest`, because the other suites under tests/ have
+conftest.py modules too and they are collected in one run. Importing this also puts scripts/ on sys.path."""
 
 import json
 import sys
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parents[1]
-REPO = SCRIPTS.parent
+REPO = Path(__file__).resolve().parents[2]
+SCRIPTS = REPO / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 

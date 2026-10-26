@@ -10,7 +10,7 @@ import numpy as np
 from fightcard.score.bundle import load_bundle
 from fightcard.score.features import bout_row
 
-MODEL_DIR = Path(__file__).resolve().parents[3] / "model"
+MODEL_DIR = Path(__file__).resolve().parents[2] / "model"
 
 
 def test_examples_reproduce_research_predictions():

@@ -10,7 +10,7 @@ import pytest
 from fightcard.score.bundle import load_bundle
 from fightcard.score.summary import GROUPS, model_summary
 
-MODEL_DIR = Path(__file__).resolve().parents[3] / "model"
+MODEL_DIR = Path(__file__).resolve().parents[2] / "model"
 
 
 @pytest.fixture(scope="module")

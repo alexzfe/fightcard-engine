@@ -5,21 +5,6 @@ import pytest
 from ops_helpers import write_json
 
 
-# Registered here as well as in scripts/pytest.ini: a combined `pytest pipeline/tests scripts/tests` run uses
-# pipeline's config (strict markers) instead. Docker tests are slow, so they only run when `-m` names them.
-def pytest_configure(config):
-    config.addinivalue_line("markers", "docker: builds and runs the site image; run explicitly with -m docker")
-
-
-def pytest_collection_modifyitems(config, items):
-    if "docker" in (config.option.markexpr or ""):
-        return
-    skip = pytest.mark.skip(reason="docker test; select with -m docker")
-    for item in items:
-        if "docker" in item.keywords:
-            item.add_marker(skip)
-
-
 @pytest.fixture
 def data_dir(tmp_path: Path) -> Path:
     d = tmp_path / "data"

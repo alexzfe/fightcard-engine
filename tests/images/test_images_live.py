@@ -1,4 +1,4 @@
-"""Live smoke checks. Run explicitly: pytest -m live pipeline/tests/images."""
+"""Live smoke checks. Run explicitly: pytest -m live tests/images."""
 
 import pytest
 

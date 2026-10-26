@@ -161,7 +161,7 @@ def test_missing_model_dir_fails(data, tmp_path, capsys):
 def test_default_model_dir_and_now(data, monkeypatch):
     """Without flags: model/ relative to the cwd, and the current UTC time."""
     root, store = data
-    monkeypatch.chdir(Path(__file__).resolve().parents[3])
+    monkeypatch.chdir(Path(__file__).resolve().parents[2])
     assert main(["--data", str(root), "score"]) == 0
     assert tiers(store, "future")["ok"] in ("low", "medium", "high")
 
