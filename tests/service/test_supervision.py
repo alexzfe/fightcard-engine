@@ -267,7 +267,9 @@ def test_serve_stops_a_run_past_the_whole_run_cap(fake):
 def test_a_slot_that_fires_mid_run_starts_when_the_real_run_ends(fake, monkeypatch):
     """Real run processes (a 2 s scrape), a scripted clock: 06:00 starts one; 06:17 fires while it runs."""
     from fightcard.service import serve
-    monkeypatch.setattr(serve, "NGINX", [sys.executable, "-c", "import time; time.sleep(300)"])
+    monkeypatch.setattr(serve, "NGINX", [sys.executable, "-c", "import os, signal, time\n"
+                                         "signal.signal(signal.SIGQUIT, lambda *_: os._exit(0))\n"
+                                         "time.sleep(300)"])
     monkeypatch.setenv("FIGHTCARD_BIN", fake.fightcard)
     monkeypatch.setenv("FIGHTCARD_ROOT", str(fake.root))
     monkeypatch.setenv("FAKE_SLEEP_SCRAPE", "2")
