@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 fightcard = "fightcard.cli:main"
+fightcard-service = "fightcard.service.__main__:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-cov>=5"]
