@@ -68,7 +68,9 @@ def test_serves_the_repo_nginx_config_on_8080_with_a_healthz_check():
     text = dockerfile().replace("\\\n", " ")  # join continuation lines
     assert "COPY deploy/nginx/fightcard-engine.conf /etc/nginx/conf.d/default.conf" in text
     assert re.search(r"^EXPOSE 8080$", text, re.M)
-    assert re.search(r"^HEALTHCHECK .*curl\b.*http://127\.0\.0\.1:8080/healthz", text, re.M)
+    # The container's check is the supervisor's (nginx up, data fresh, no stuck run); nginx's /healthz stays a
+    # plain 200 for infra's public smoke test.
+    assert re.search(r'^HEALTHCHECK .*CMD \["fightcard-service", "health"\]$', text, re.M)
 
 
 def test_pid_1_is_the_supervisor_and_stops_on_sigterm():
@@ -247,6 +249,31 @@ def test_a_failed_run_leaves_the_last_good_generation_live(container):
     assert run.returncode != 0
     assert "status=failed" in run.stdout.decode().splitlines()[-1]
     assert get(container.port, "/v1/index.json") == before
+
+
+@pytest.mark.docker
+def test_the_healthcheck_stays_healthy_after_publishing(container):
+    assert container.exec("fightcard-service", "health").returncode == 0
+    wait_for(lambda: docker("inspect", "-f", "{{.State.Health.Status}}", container.name).stdout.strip()
+             == "healthy", "a healthy HEALTHCHECK after publishing")
+
+
+@pytest.mark.docker
+def test_the_healthcheck_fails_where_fetching_is_on_and_the_data_is_stale(container):
+    index = "/srv/fightcard/current/index.json"
+    original = container.exec("cat", index).stdout
+    stale = container.exec("sh", "-c", f"sed -i 's/\"generated_at\": *\"[^\"]*\"/\"generated_at\": "
+                                       f"\"2020-01-01T00:00:00Z\"/' {index}")
+    assert stale.returncode == 0, stale.stderr
+    try:
+        check = subprocess.run(["docker", "exec", "-e", "FIGHTCARD_FETCH=on", container.name, "fightcard-service",
+                                "health"], capture_output=True, text=True)
+        print(check.stdout, check.stderr)
+        assert check.returncode == 1 and "generated_at" in check.stdout
+        # This container fetches nothing (FIGHTCARD_FETCH=off, like staging), so its own check doesn't count age.
+        assert container.exec("fightcard-service", "health").returncode == 0
+    finally:
+        container.exec("sh", "-c", f"cat > {index}", input=original)
 
 
 @pytest.mark.docker
