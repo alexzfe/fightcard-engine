@@ -403,3 +403,82 @@ def test_without_a_store_a_data_write_failing_exits_1_without_a_traceback(tmp_pa
     assert stage.scrape(Store(tmp_path / "data"), client(), now=NOW) == 1
     err = capsys.readouterr().err
     assert "data/ may be partially written" in err and "next run rewrites it" in err
+
+
+# --- backfill: completed events in data/ the store lacks ------------------------------------------------------------
+
+OLD_ID = "0123456789abcdef"  # a completed event in data/, not in this run's cards
+OLD_URL = f"{BASE}/event-details/{OLD_ID}"
+OLD = CARD.model_copy(update={"id": OLD_ID, "date": "2019-03-02"})
+
+
+def test_a_backfill_page_that_404s_is_skipped_with_a_warning(tmp_path, db, caplog):
+    Store(tmp_path / "data").save_event(OLD)
+    before = (tmp_path / "data" / "events" / f"{OLD_ID}.json").read_bytes()
+    c = client()  # no page at OLD_URL: 404
+    assert run(tmp_path, db, c) == 0
+    assert OLD_URL in c.urls
+    assert OLD_ID in caplog.text and "skipping" in caplog.text
+    assert db.execute("SELECT COUNT(*) FROM events WHERE event_id = ?", (OLD_ID,)).fetchone() == (0,)
+    assert db.execute("SELECT COUNT(*) FROM pages WHERE url = ?", (OLD_URL,)).fetchone() == (0,)
+    assert (tmp_path / "data" / "events" / f"{OLD_ID}.json").read_bytes() == before
+    assert len(card_rows(db)) == len(CARD.fights)  # the rest of the run went in
+
+
+def test_a_backfill_page_without_outcomes_is_skipped_with_a_warning(tmp_path, db, caplog):
+    Store(tmp_path / "data").save_event(OLD)
+    before = (tmp_path / "data" / "events" / f"{OLD_ID}.json").read_bytes()
+    c = client()
+    c.pages[OLD_URL] = without_flags(read_fixture("event_detail_completed.html"))
+    assert run(tmp_path, db, c) == 0
+    assert OLD_ID in caplog.text and "skipping" in caplog.text and CARD.fights[0].id in caplog.text
+    assert db.execute("SELECT COUNT(*) FROM events WHERE event_id = ?", (OLD_ID,)).fetchone() == (0,)
+    assert db.execute("SELECT COUNT(*) FROM pages WHERE url = ?", (OLD_URL,)).fetchone() == (0,)
+    assert (tmp_path / "data" / "events" / f"{OLD_ID}.json").read_bytes() == before
+    assert card_rows(db) == [(f.id, f.result.outcome, f.result.winner, f.result.method) for f in CARD.fights]
+
+
+def test_a_current_card_that_404s_still_fails_the_run(tmp_path, db):
+    """The --recent card: what data/'s index shows next, so it fails loudly (also with a backfill pending)."""
+    Store(tmp_path / "data").save_event(OLD)
+    c = client(fail=CARD_URL)
+    c.pages[OLD_URL] = read_fixture("event_detail_completed.html")
+    assert run(tmp_path, db, c) == 1
+
+
+def test_a_past_upcoming_card_without_outcomes_still_fails_the_run(tmp_path, db, capsys):
+    """An upcoming card in data/ whose date passed: its results are current, not backfill."""
+    Store(tmp_path / "data").save_event(CARD.model_copy(update={"status": "upcoming"}))
+    assert run(tmp_path, db, client(card=without_flags(read_fixture("event_detail_completed.html"))),
+               recent=0) == 1
+    assert "nothing written" in capsys.readouterr().err
+
+
+def backlog(tmp_path, n: int) -> tuple[list[str], FakeClient]:
+    """n completed events in data/ the store lacks (oldest first), and a site with their pages: the completed
+    card under its own fight ids."""
+    c = client()
+    ids = [f"{i:016x}" for i in range(1, n + 1)]
+    for i, eid in enumerate(ids):
+        html = read_fixture("event_detail_completed.html")
+        for f in CARD.fights:
+            html = html.replace(f.id, eid[-4:] + f.id[4:])
+        c.pages[f"{BASE}/event-details/{eid}"] = html
+        Store(tmp_path / "data").save_event(
+            parse_event_detail(html, eid).event.model_copy(update={"date": f"2010-01-{i + 1:02d}"}))
+    return ids, c
+
+
+def backfilled(c: FakeClient, ids: list[str]) -> list[str]:
+    return [eid for eid in ids if f"{BASE}/event-details/{eid}" in c.urls]
+
+
+def test_backfill_refetches_are_capped_per_run_and_the_rest_come_next_run(tmp_path, db, caplog):
+    assert stage.BACKFILL_PER_RUN == 20
+    ids, c = backlog(tmp_path, stage.BACKFILL_PER_RUN + 5)
+    assert run(tmp_path, db, c) == 0
+    assert backfilled(c, ids) == ids[: stage.BACKFILL_PER_RUN]
+    assert "5" in caplog.text and "later" in caplog.text
+    c.urls.clear()
+    assert run(tmp_path, db, c) == 0
+    assert backfilled(c, ids) == ids[stage.BACKFILL_PER_RUN:]
