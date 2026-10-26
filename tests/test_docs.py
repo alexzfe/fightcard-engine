@@ -86,6 +86,8 @@ def test_service_doc_covers(term):
     "status=timeout", "process group", "nice", "SIGTERM", "STOP_GRACE", "status=queued", "FIGHTCARD_SCHEDULE_MINUTE",
     ":47", "fightcard-service health", "26 h", "2 h", "fightcard history backup", "pull-backup@ufc-data",
     "next slot",
+    # Round 2: stale data doesn't fail the HEALTHCHECK; --staleness reports it.
+    "--staleness",
 ])
 def test_service_doc_covers_the_supervision(term):
     assert term in service_doc(), term
