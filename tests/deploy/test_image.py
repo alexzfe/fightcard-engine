@@ -65,10 +65,10 @@ def test_runs_as_a_non_root_user():
 
 
 def test_serves_the_repo_nginx_config_on_8080_with_a_healthz_check():
-    text = dockerfile()
+    text = dockerfile().replace("\\\n", " ")  # join continuation lines
     assert "COPY deploy/nginx/fightcard-engine.conf /etc/nginx/conf.d/default.conf" in text
     assert re.search(r"^EXPOSE 8080$", text, re.M)
-    assert re.search(r"^HEALTHCHECK .*curl .*http://127\.0\.0\.1:8080/healthz", text, re.M)
+    assert re.search(r"^HEALTHCHECK .*curl\b.*http://127\.0\.0\.1:8080/healthz", text, re.M)
 
 
 def test_pid_1_is_the_supervisor_and_stops_on_sigterm():
@@ -234,7 +234,7 @@ def test_a_failed_run_leaves_the_last_good_generation_live(container):
 @pytest.mark.docker
 def test_every_process_runs_as_non_root(container):
     assert container.exec("id", "-u").stdout.decode().strip() == "101"
-    top = docker("top", container.name, "-eo", "uid,args").stdout.splitlines()[1:]
+    top = docker("top", container.name, "-eo", "uid,pid,args").stdout.splitlines()[1:]  # docker top needs pid
     print("\n".join(top))
     assert top and all(line.split()[0] != "0" for line in top), top
     assert any("nginx" in line for line in top) and any("fightcard-service serve" in line for line in top)
