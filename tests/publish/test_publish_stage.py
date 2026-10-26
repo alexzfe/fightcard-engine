@@ -13,7 +13,8 @@ from publish_helpers import GENERATED_AT, PNG, WEBP, load, make_data, snapshot_m
 
 from fightcard.cli import main
 from fightcard.publish.build import CONTRACT_VERSION, build, snapshot
-from fightcard.store import dumps, write_json
+from fightcard.models import ModelInfo
+from fightcard.store import Store, dumps, write_json
 
 V1_FILES = {"index.json", "fighters.json", "schema.json", "snapshot.tar.gz",
             "events/e1.json", "events/e2.json", "images/f1.webp", "images/f2.png"}
@@ -90,6 +91,20 @@ def test_schema_describes_the_top_level_types(data_dir, out):
     assert "contract_version" in defs["Index"]["required"]
     assert defs["Fighters"] == {"type": "object", "additionalProperties": {"$ref": "#/$defs/Fighter"}}
     assert "fights" in defs["Event"]["properties"]
+
+
+def test_index_model_stale_fighters_is_published_and_in_the_schema(data_dir, out):
+    store = Store(data_dir)
+    index = store.load_index()
+    index.model = ModelInfo(as_of="2026-10-14", version="2026-10-14+5006318a", stale_fighters=3)
+    store.save_index(index)
+    publish(data_dir, out)
+    published = load(out / "current" / "index.json")
+    assert published["model"]["stale_fighters"] == 3
+    assert published["model"]["version"] == "2026-10-14+5006318a" and published["model"]["as_of"] == "2026-10-14"
+    model = load(out / "current" / "schema.json")["$defs"]["ModelInfo"]
+    assert "stale_fighters" in model["properties"]
+    assert "stale_fighters" not in model["required"]  # additive: data written before it still validates
 
 
 def test_snapshot_holds_every_other_file(data_dir, out):
