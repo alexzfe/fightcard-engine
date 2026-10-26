@@ -117,3 +117,34 @@ parse as `upcoming`, which then puts it in the past-upcoming path (refetched eve
 RED tests written for it (scrape: backfilled once; score: an empty completed store row passes) are kept outside
 the repo. Choosing where "completed" comes from for an empty card (the completed listing, data/'s status, or
 the date) changes data/ (published as `/v1/`) and `history ingest`, so it's left for a decision.
+
+### Review fixes round 2 (orchestrator decisions 1 and 3; decision 2 open)
+
+Decision 1 (finding 3 → option A) and decision 3 (skipped backfill events back off) are done. Decision 2 (score's
+strict check only for events in `index.json`) is not: `index.recent` lists every completed event in data/, a
+skipped backfill event's data/ file is kept, so it's in `index.recent` and the rule would change nothing. It's left
+for a decision.
+
+| Step | Command | Result |
+|---|---|---|
+| RED (`63a746e`) | `uv run pytest -q` | `11 failed, 522 passed`: store 5 (`completed_ids`, `upsert_card(completed=)`, ingest stores an empty listed card `upcoming`, `complete_events`), score 1 (empty completed store row reported missing), scrape 4 (empty listed card stored `upcoming`; no `BACKFILL_RETRY`; a skipped event retried the next run, taking a cap slot; no `backfill_skips`). The 11th is `test_layout`, which reruns the score tests. Guards passing already: an unlisted empty card keeps `upcoming`; a listed card with outcome-less bouts still fails score |
+| GREEN (`0e2b82a`, test fix `48139a1`) | `uv run pytest -q` | `534 passed, 1 skipped`. `0e2b82a` was committed with its new guard test failing on test setup (the file's `event()` helper marks a card with fights completed); `48139a1` fixes the setup, no code change |
+| Docs (`7a0db5a`) | — | CONTRACT.md: score's stale-store rule, `backfill_skips` / 7-day retry, empty listed cards completed. ELO.md in brief |
+| Final | `uv run pytest -q`; `-m seed`; `-m docker` | `534 passed, 1 skipped, 51 deselected`; seed `6 passed`; docker `44 passed` |
+| Coverage | `uv run pytest -q --cov=fightcard --cov-report=term-missing` | `history/ingest.py` 100%, `history/store.py` 100%, `score/stage.py` 99%, `ufcstats/stage.py` 99% (75 `utcnow`, 217 all-upcoming-empty), `ufcstats/parsers.py` 98%. Total 99% |
+
+Choice made while implementing decision 1: the listing settles `completed` only for a card with **no bouts**. A
+listed card with bouts keeps its parsed status (`completed` once a result is on its page). Applying the listing to
+every card would make data/ show a card just after the event as completed with no results, and fail `score` until
+ufcstats posts them (it broke the acceptance test `test_a_card_going_upcoming_to_completed_…`). The listing's
+next-upcoming row (next.png) never counts.
+
+| # | What is guaranteed | Test |
+|---|---|---|
+| S1 | The listing's completed ids leave out its next.png row (still a listed, UFC event) | `tests/history/test_history_store.py::test_the_listing_s_completed_ids_leave_out_the_next_upcoming_row` |
+| S2 | `upsert_card`: a listed card with no bouts is stored `completed`; next-row-only keeps its status; a listed card with outcome-less bouts stays `upcoming` | `…::test_a_card_in_the_completed_listing_is_stored_completed_even_with_no_bouts`, `…::test_a_card_listed_only_as_the_next_event_keeps_its_parsed_status`, `…::test_a_listed_card_with_bouts_keeps_its_parsed_status_until_a_result_is_in` |
+| S3 | `history ingest` agrees (same `upsert_card`) | `…::test_ingest_stores_an_empty_listed_card_completed` |
+| S4 | In full = completed row with no bouts or a bout with an outcome (not: completed with outcome-less bouts, upcoming, absent) | `…::test_complete_events_are_completed_rows_with_no_bouts_or_a_bout_with_an_outcome` |
+| S5 | `score` passes on an empty completed store row; still fails on a completed row with outcome-less bouts | `tests/score/test_score_stage.py::test_an_empty_completed_card_in_the_store_passes`, `…::test_a_listed_card_whose_bouts_have_no_outcome_yet_still_fails` |
+| S6 | scrape: an empty listed card is backfilled once (store and data/ `completed`, in `index.recent`), not refetched, `score` passes; an unlisted empty card stays `upcoming` | `tests/ufcstats/test_scrape_history.py::test_an_empty_listed_card_is_backfilled_once`, `…::test_an_empty_unlisted_card_keeps_its_parsed_status` |
+| S7 | A skipped backfill event (404 or no outcome) is recorded in `backfill_skips`, not retried within 7 days, retried at 7 days, row removed once it goes in; waiting events leave the 20-a-run cap to others | `…::test_a_skipped_backfill_event_is_retried_only_after_seven_days`, `…::test_a_backfill_page_without_outcomes_backs_off_too`, `…::test_events_backing_off_leave_the_cap_to_the_others` |
