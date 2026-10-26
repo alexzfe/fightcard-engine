@@ -467,6 +467,22 @@ def test_a_pin_that_is_not_a_kept_version_is_held(root, bucket, two, capsys, pin
     assert "not a kept version" in err and f"keeping {NEW}" in err
 
 
+def test_a_pin_that_cannot_be_honoured_is_an_error_on_every_run(root, bucket, two, capsys):
+    capsys.readouterr()
+    for _ in range(2):
+        assert pull(root, "--pin", "2030-01-01+ffffffff", url=bucket.url) == 0  # still never fails the run
+        lines = [ln for ln in capsys.readouterr().err.splitlines() if "2030-01-01+ffffffff" in ln]
+        assert len(lines) == 1 and "ERROR" in lines[0] and "FIGHTCARD_MODEL_PIN" in lines[0], lines
+        assert current(root) == NEW
+
+
+def test_a_pin_to_an_unusable_kept_version_is_an_error_too(root, bucket, two, capsys):
+    (root / BAKED_VERSION / "model.txt").write_text("garbage")
+    capsys.readouterr()
+    pull(root, "--pin", BAKED_VERSION, url=bucket.url)
+    assert "ERROR" in capsys.readouterr().err
+
+
 def test_a_pin_to_a_kept_version_that_no_longer_loads_is_held(root, bucket, two, capsys):
     (root / BAKED_VERSION / "model.txt").write_text("garbage")
     capsys.readouterr()
