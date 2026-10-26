@@ -35,10 +35,13 @@ import pandas as pd
 from fightcard.models import Fighter, PastResult
 
 INIT = 1500.0
-DECAY_PER_YEAR = 0.9
+DECAY_PER_YEAR, DAYS_PER_YEAR = 0.9, 365.25
+K_NUMERATOR, K_OFFSET, K_EXPONENT = 275.0, 5, 0.4
 WIN_CREDIT = {"S-DEC": 0.6, "M-DEC": 0.8}  # ufcstats methods; every other win is a full win
+NO_UPDATE_METHODS = ("CNC", "Overturned")  # a no contest whatever the recorded outcome
 FLIP = {"win": "loss", "loss": "win"}
-NOT_UFC = ("DWCS", "Road to UFC")  # event-name prefixes of in-scope bouts that aren't UFC bouts
+NOT_UFC = ("dwcs", "road to ufc")  # lower-cased event-name prefixes of in-scope bouts that aren't UFC bouts
+NO_DIVISION = ("catch", "open")  # weight classes that say nothing about gender
 ESTABLISHED_N, ANCHOR_DAYS = 3, 730
 P4P_UFC_BOUTS, ACTIVE_DAYS, P4P_SIZE = 5, 365, {"M": 15, "F": 10}
 PROVISIONAL_UFC_BOUTS, PEAK_UFC_BOUTS = 3, 5
@@ -64,30 +67,36 @@ class Bout:
     result: PastResult  # from a's side
     method: str | None = None  # ufcstats method, e.g. "S-DEC"
     ufc: bool = True
+    weight_class: str | None = None  # sets gender: any Women's division -> "F", else a named division -> "M"
 
 
 @dataclass(frozen=True)
 class Step:
-    """What one bout did: each side's K, pre-day (decayed) rating, change, and rating after the day."""
+    """What one bout did: each side's K, pre-day (decayed) rating, a's expected and result score (None = no
+    update), the change, and rating and raw peak after the day. Same fields as a rating_cases.json log row."""
 
     bout: Bout
     k_a: float
     k_b: float
     pre_a: float
     pre_b: float
+    e_a: float
+    w_a: float | None
     delta_a: float
     delta_b: float
     post_a: float
     post_b: float
+    peak_a: float | None
+    peak_b: float | None
 
 
 def k_factor(n: int) -> float:
-    return 275.0 / (n + 5) ** 0.4
+    return K_NUMERATOR / (n + K_OFFSET) ** K_EXPONENT
 
 
 def credit(result: PastResult, method: str | None) -> float | None:
     """Result score W for the fighter whose result this is; None for a no contest."""
-    if result == "nc":
+    if result == "nc" or method in NO_UPDATE_METHODS:
         return None
     if result == "draw":
         return 0.5
@@ -99,11 +108,20 @@ def decay(rating: float, last: str | None, day: str) -> float:
     if last is None:
         return rating
     days = (date.fromisoformat(day) - date.fromisoformat(last)).days
-    return INIT + (rating - INIT) * DECAY_PER_YEAR ** (days / 365.25)
+    return INIT + (rating - INIT) * DECAY_PER_YEAR ** (days / DAYS_PER_YEAR)
 
 
 def expected(ra: float, rb: float) -> float:
     return 1.0 / (1.0 + 10 ** ((rb - ra) / 400.0))
+
+
+def _gender(gender: str | None, weight_class: str | None) -> str | None:
+    wc = (weight_class or "").lower()
+    if "women" in wc:
+        return "F"
+    if gender is None and wc and not wc.startswith(NO_DIVISION):
+        return "M"
+    return gender
 
 
 def roll_forward(states: dict[str, State], bouts: Iterable[Bout]) -> list[Step]:
@@ -125,22 +143,25 @@ def roll_forward(states: dict[str, State], bouts: Iterable[Bout]) -> list[Step]:
         for b in by_day[day]:
             sa, sb = states[b.a], states[b.b]
             ka, kb = k_factor(sa.n), k_factor(sb.n)
-            w = credit(b.result, b.method)
-            da = 0.0 if w is None else ka * (w - expected(sa.rating, sb.rating))
-            db = 0.0 if w is None else kb * ((1.0 - w) - expected(sb.rating, sa.rating))
+            w, ea = credit(b.result, b.method), expected(sa.rating, sb.rating)
+            da = 0.0 if w is None else ka * (w - ea)
+            db = 0.0 if w is None else kb * ((1.0 - w) - (1.0 - ea))
             delta[b.a] += da
             delta[b.b] += db
-            todo.append((b, ka, kb, sa.rating, sb.rating, da, db))
+            todo.append((b, ka, kb, sa.rating, sb.rating, ea, w, da, db))
         for fid, today in fought.items():
             s = states[fid]
             s.rating += delta[fid]
             s.n += len(today)
             s.n_ufc += sum(b.ufc for b in today)
             s.last = day
-            if s.n_ufc >= PEAK_UFC_BOUTS and any(b.ufc for b in today):
+            if s.n_ufc >= PEAK_UFC_BOUTS:  # any bout, UFC or not, once the fighter has 5 UFC bouts
                 s.peak = s.rating if s.peak is None else max(s.peak, s.rating)
-        steps += [Step(b, ka, kb, ra, rb, da, db, states[b.a].rating, states[b.b].rating)
-                  for b, ka, kb, ra, rb, da, db in todo]
+            for b in today:
+                s.gender = _gender(s.gender, b.weight_class)
+        steps += [Step(b, ka, kb, ra, rb, ea, w, da, db, states[b.a].rating, states[b.b].rating,
+                       states[b.a].peak, states[b.b].peak)
+                  for b, ka, kb, ra, rb, ea, w, da, db in todo]
     return steps
 
 
@@ -171,7 +192,7 @@ def _newer_bouts(fighters: dict[str, Fighter], as_of: str) -> tuple[list[Bout], 
             known[fid] += 1
             a, b = sorted((fid, p.opponent_id))
             result = p.result if a == fid else FLIP.get(p.result, p.result)
-            bouts[(p.date, a, b)] = Bout(p.date, a, b, result, p.method, ufc=not p.event.startswith(NOT_UFC))
+            bouts[(p.date, a, b)] = Bout(p.date, a, b, result, p.method, ufc=not p.event.lower().startswith(NOT_UFC))
     return list(bouts.values()), known, missing
 
 

@@ -56,7 +56,7 @@ over full history. One row per fighter with at least one bout in scope, as of `a
 | `last_bout_date` | `YYYY-MM-DD` |
 | `n_bouts` | bouts in scope, NC included (drives K) |
 | `n_ufc_bouts` | UFC-event bouts, NC included (tags, P4P eligibility, peak) |
-| `peak` | raw peak: highest post-bout rating from the 5th UFC bout on, undecayed; null until then |
+| `peak` | raw peak: highest post-bout rating at any bout (UFC or not) once the fighter has ≥5 UFC bouts counting that bout, undecayed; null until then |
 | `gender` | `"M"`, `"F"` or null (from weight classes) |
 
 `score` (`pipeline/src/fightcard/score/elo.py`) rolls it forward over the card fighters' `recent_fights` dated after
@@ -64,6 +64,8 @@ over full history. One row per fighter with at least one bout in scope, as of `a
 anchors and ranks, and writes the Fighter rating fields (see `docs/CONTRACT.md`). If the newer bouts found don't
 match the record change since the export (record from `fighter_snapshot.parquet`), that fighter is unrated and left
 out of the ranking. Fighters off our cards who fought after `as_of` stay stale until the next export.
+The export's golden cases are vendored in `pipeline/tests/score/fixtures/rating_cases.json`;
+`test_rating_parity.py` replays them through the site's roll-forward and must match to 1e-9.
 
 ## feature_spec.json
 

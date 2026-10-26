@@ -158,7 +158,8 @@ def test_peak_counts_from_the_fifth_ufc_bout_and_only_rises():
     assert states["a"].peak == pytest.approx(top)
     roll_forward(states, [Bout("2026-04-01", "a", "b", "loss")])
     assert states["a"].peak == pytest.approx(top)
-    roll_forward(states, [Bout("2026-05-01", "a", "b", "win", ufc=False)])  # any bout counts from then on
+    states["c"] = State(rating=2200, n=30, n_ufc=30, last="2026-05-01")
+    roll_forward(states, [Bout("2026-05-01", "a", "c", "win", ufc=False)])  # any bout counts from then on
     assert states["a"].peak == pytest.approx(states["a"].rating) and states["a"].peak > top
 
 
