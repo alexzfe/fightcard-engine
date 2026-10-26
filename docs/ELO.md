@@ -34,7 +34,7 @@ they were expected to win clearly.
   (2026-10-26, `docs/tdd/elo-ui.tdd.md`).
 - **P4P rank:** top 15 men and top 10 women, among fighters with ≥5 UFC bouts and a bout in the last 12 months.
 - **Tags:** `provisional` for fewer than 3 UFC bouts; `inactive` for no bout in the last 12 months.
-- **Peak:** the highest rating reached after ≥5 UFC bouts. Shown under Stats, with the best win.
+- **Peak:** the highest rating reached after ≥5 UFC bouts. Shown under Stats with the best win, and in the Elo's tooltip.
 - `null` / hidden when the rating is unknown, as today.
 
 ## Where it is computed (interim)
