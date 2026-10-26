@@ -125,6 +125,9 @@ class ModelInfo(BaseModel):
     oos: OosEvidence | None = None
     tiers: dict[Literal["low", "medium", "high"], TierStats] | None = None
     importance: list[ImportanceShare] | None = None
+    # Fighters whose record moved since the export, so their bouts get no tier (`score`'s staleness guard); None
+    # before `score` writes it. The model pull's research-side gate reads it.
+    stale_fighters: int | None = None
 
 
 class Index(BaseModel):
