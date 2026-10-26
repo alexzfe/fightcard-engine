@@ -32,6 +32,7 @@ EXAMPLES = "examples.json"
 BUNDLE_FILES = (*FILES, EXAMPLES)  # a bundle must have these
 OPTIONAL_FILES = ("fighter_rating.parquet",)  # and may have these
 VERSION = re.compile(r"[0-9A-Za-z][0-9A-Za-z._+-]{0,63}")  # a directory name: never a path
+RESERVED = "current"  # the symlink's name: no version may take it
 SHA256 = re.compile(r"[0-9a-f]{64}")
 _STAGING, _LINK = ".tmp-", ".current-"
 TIMEOUT = 30  # seconds, per socket operation
@@ -59,13 +60,17 @@ class Latest:
     files: dict[str, str]  # name -> sha256 hex
 
 
+def _is_version(value: object) -> bool:
+    return isinstance(value, str) and VERSION.fullmatch(value) is not None and value != RESERVED
+
+
 def _kept_current(root: Path) -> str | None:
     """The version `current` points at, or None when there is no current or its version was removed."""
     link = root / "current"
     if not link.is_symlink():
         return None
     version = os.readlink(link)
-    return version if VERSION.fullmatch(version) and (root / version).is_dir() else None
+    return version if _is_version(version) and (root / version).is_dir() else None
 
 
 def _usable(root: Path, version: str) -> bool:
@@ -98,7 +103,7 @@ def _seed(root: Path, seed_dir: Path, log: Log) -> bool:
         return True
     try:
         baked = load_bundle(seed_dir).manifest["version"]
-        if not (isinstance(baked, str) and VERSION.fullmatch(baked)):
+        if not _is_version(baked):
             raise ValueError(f"unusable version {baked!r}")
     except Exception as e:  # noqa: BLE001
         log(f"can't seed current from {seed_dir}: {e}")
@@ -117,7 +122,7 @@ def _seed(root: Path, seed_dir: Path, log: Log) -> bool:
 
 def _versions(root: Path) -> list[str]:
     """The kept versions, oldest first (they start with their as_of date)."""
-    return sorted(p.name for p in root.iterdir() if p.is_dir() and not p.is_symlink() and VERSION.fullmatch(p.name))
+    return sorted(p.name for p in root.iterdir() if p.is_dir() and not p.is_symlink() and _is_version(p.name))
 
 
 def _prune(root: Path, keep: int) -> None:
@@ -157,7 +162,7 @@ def _latest(base: str) -> Latest:
     if not isinstance(doc, dict):
         raise Failed(f"{base}/latest.json is not an object")
     version, files = doc.get("version"), doc.get("files")
-    label = version if isinstance(version, str) and VERSION.fullmatch(version) else "latest.json"
+    label = version if _is_version(version) else "latest.json"
     if doc.get("format_version") != FORMAT_VERSION:
         raise Held(label, f"latest.json has format_version {doc.get('format_version')!r}, not {FORMAT_VERSION}")
     if label == "latest.json":
