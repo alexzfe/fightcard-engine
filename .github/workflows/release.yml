@@ -1,0 +1,93 @@
+# From infra/templates/app-release.yml, for the `ufc-data` entry in infra/sites.yml (docs/SERVICE.md).
+# It also took over ci.yml's checks, so PRs and main run one workflow.
+#
+#   PR            -> test (full suite, actionlint) and docker (the -m docker container tests)
+#   push to main  -> both, then build ghcr.io/alexzfe/fightcard-engine:<sha>, deploy to staging
+#   push tag v*   -> deploy the image already built for that commit to prod, then cut a GitHub Release
+#
+# Prod never rebuilds: the tag points at a commit main already built and staging already ran.
+# Action pins match fight-card-website's release.yml.
+name: release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  test:
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --frozen
+      - run: uv run pytest
+      - run: uvx --from actionlint-py==1.7.12.25 actionlint
+
+  # Builds the service image and runs it (and the nginx config) in Docker; slower, so its own job.
+  docker:
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - run: uv sync --frozen
+      - run: uv run pytest -m docker
+
+  build:
+    if: github.ref == 'refs/heads/main'
+    needs: [test, docker]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ github.sha }}
+
+  staging:
+    needs: build
+    uses: alexzfe/infra/.github/workflows/deploy-app.yml@main
+    with:
+      app: ufc-data
+      env: staging
+      tag: ${{ github.sha }}
+      url: https://ufc-data-staging.xlobax.com
+    secrets: inherit
+
+  prod:
+    if: github.ref_type == 'tag'
+    uses: alexzfe/infra/.github/workflows/deploy-app.yml@main
+    with:
+      app: ufc-data
+      env: prod
+      tag: ${{ github.sha }}
+      url: https://ufc-data.xlobax.com
+    secrets: inherit
+
+  release:
+    needs: prod
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
