@@ -112,5 +112,7 @@ Do this when the "Re-export finish model" issue opens or the model changes.
    - the tier finish rates aren't strictly increasing
 3. `cp /tmp/finish-model/* model/`
 4. Update the numbers in this README, run `uv run --project pipeline pytest pipeline/tests/score`, then commit `model/`.
+5. Update `site/src/lib/finish-model.ts`, which the how-it-works page quotes; `cd site && npm test` fails until it
+   matches. Recompute its `importance` from `model.txt` as `docs/tdd/elo-ui.tdd.md` describes.
 
 The next refresh re-scores every unfrozen bout. Tiers already frozen (past events) never change.

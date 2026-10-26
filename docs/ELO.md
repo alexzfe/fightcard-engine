@@ -1,7 +1,7 @@
 # Fighter rating (Elo): spec
 
-Agreed 2026-10-25 in a design session (branch `feat/elo`). **Not implemented yet.** This replaces the plain
-K=32 Elo that the site shows today. The finish model's own `elo` feature is **not** changed.
+Agreed 2026-10-25 in a design session (branch `feat/elo`); implemented the same day. It replaced the plain
+K=32 Elo the site showed before. The finish model's own `elo` feature is **not** changed.
 
 ## What the number means
 
@@ -30,10 +30,11 @@ they were expected to win clearly.
 
 - **Re-anchor:** shift every displayed rating uniformly so that the mean of established fighters (≥3 prior
   bouts) is 1500. Ranks and gaps don't change.
-- **Card:** `Elo 1690 · #4 P4P` when the fighter has a P4P rank, otherwise `Elo 1690`.
+- **Card:** `Elo 1690 · #4 P4P` when the fighter has a P4P rank, otherwise `Elo 1690`, on its own line under the record
+  (2026-10-26, `docs/tdd/elo-ui.tdd.md`).
 - **P4P rank:** top 15 men and top 10 women, among fighters with ≥5 UFC bouts and a bout in the last 12 months.
 - **Tags:** `provisional` for fewer than 3 UFC bouts; `inactive` for no bout in the last 12 months.
-- **Peak:** the highest rating reached after ≥5 UFC bouts. Shown in the tooltip.
+- **Peak:** the highest rating reached after ≥5 UFC bouts. Shown under Stats, with the best win.
 - `null` / hidden when the rating is unknown, as today.
 
 ## Where it is computed (interim)
@@ -100,9 +101,8 @@ Exact semantics. Both repos implement them, and `model/rating_cases.json` holds 
 - `elo_inactive: bool` (default false)
 - `best_win: {opponent_id: str, opponent: str, elo: int, date: "YYYY-MM-DD"} | null`, where `elo` is the
   opponent's rating going into that bout on the display scale.
-  **Data only; not displayed yet.** It's an option for the Elo display discussion (e.g. "Best win: Blachowicz
-  1578" next to the peak in the tooltip). Added 2026-10-25 so it's ready if the display uses it. The user chose
-  to keep the number a pure Elo and handle "untested" through display, not the formula.
+  Shown under Stats since 2026-10-26. The user chose to keep the number a pure Elo and handle "untested" through
+  display, not the formula.
 
 Roll-forward: start every fighter in the export from their row. Apply card fighters' `recent_fights` after
 `as_of` with the rules above (an opponent missing from the export starts as a debutant: 1500, n=0). Decay
