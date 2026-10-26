@@ -271,7 +271,7 @@ def test_the_healthcheck_stays_healthy_after_publishing(container):
 
 
 @pytest.mark.docker
-def test_the_healthcheck_fails_where_fetching_is_on_and_the_data_is_stale(container):
+def test_stale_data_keeps_the_healthcheck_healthy_and_staleness_reports_it(container):
     index = "/srv/fightcard/current/index.json"
     original = container.exec("cat", index).stdout
     stale = container.exec("sh", "-c", f"sed -i 's/\"generated_at\": *\"[^\"]*\"/\"generated_at\": "
@@ -281,9 +281,10 @@ def test_the_healthcheck_fails_where_fetching_is_on_and_the_data_is_stale(contai
         check = subprocess.run(["docker", "exec", "-e", "FIGHTCARD_FETCH=on", container.name, "fightcard-service",
                                 "health"], capture_output=True, text=True)
         print(check.stdout, check.stderr)
-        assert check.returncode == 1 and "generated_at" in check.stdout
-        # This container fetches nothing (FIGHTCARD_FETCH=off, like staging), so its own check doesn't count age.
-        assert container.exec("fightcard-service", "health").returncode == 0
+        assert check.returncode == 0, check.stdout
+        report = container.exec("fightcard-service", "health", "--staleness")
+        print(report.stdout, report.stderr)
+        assert report.returncode == 1 and b"generated_at" in report.stdout
     finally:
         container.exec("sh", "-c", f"cat > {index}", input=original)
 

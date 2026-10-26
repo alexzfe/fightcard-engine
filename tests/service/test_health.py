@@ -1,4 +1,6 @@
-"""fightcard-service health, the container's HEALTHCHECK: nginx answers, what it serves is fresh, no run is stuck.
+"""fightcard-service health, the container's HEALTHCHECK: nginx answers and no run is stuck. Stale data doesn't fail
+it (a prod container unhealthy while ufcstats is down would make deploy-app roll back every deploy); `health
+--staleness` reports the data's age for alerting instead.
 
 nginx's own /healthz (what infra's public smoke test hits) stays a plain 200; this is the container's check."""
 
@@ -70,27 +72,38 @@ def test_nginx_not_answering_is_unhealthy(tmp_path):
     assert found and "nginx" in found[0]
 
 
-@pytest.mark.parametrize("age,healthy", [(timedelta(hours=25, minutes=59), True), (timedelta(hours=26, minutes=1),
-                                                                                       False)])
-def test_what_is_served_must_be_under_26_hours_old(tmp_path, nginx, age, healthy):
+@pytest.mark.parametrize("fetch", [True, False])
+def test_stale_or_unreadable_data_does_not_fail_the_healthcheck(tmp_path, nginx, fetch):
+    # Review round 2: an external site down for a day must not block every deploy.
+    for generated_at in (NOW - timedelta(days=30), "not a date"):
+        cfg = config(tmp_path / str(generated_at)[:4], fetch=fetch)
+        publish(cfg, generated_at)
+        assert problems(cfg, nginx) == []
+
+
+def stale(cfg: Config) -> list[str]:
+    return health.staleness(cfg, now=NOW)
+
+
+@pytest.mark.parametrize("age,fresh", [(timedelta(hours=25, minutes=59), True), (timedelta(hours=26, minutes=1),
+                                                                                   False)])
+def test_staleness_flags_data_over_26_hours_old(tmp_path, age, fresh):
     cfg = config(tmp_path)
     publish(cfg, NOW - age)
-    found = problems(cfg, nginx)
-    assert (found == []) is healthy, found
-    if not healthy:
-        assert "generated_at" in found[0]
+    found = stale(cfg)
+    assert (found == []) is fresh, found
+    if not fresh:
+        assert "generated_at" in found[0] and "age 26 h 01 min" in found[0]
 
 
-def test_staging_never_scrapes_so_its_data_age_is_not_checked(tmp_path, nginx):
-    cfg = config(tmp_path, fetch=False)
-    publish(cfg, NOW - timedelta(days=30))
-    assert problems(cfg, nginx) == []
+def test_staleness_passes_an_unseeded_volume(tmp_path):
+    assert stale(config(tmp_path)) == []
 
 
-def test_an_unreadable_index_is_unhealthy(tmp_path, nginx):
+def test_staleness_flags_an_unreadable_index(tmp_path):
     cfg = config(tmp_path)
     publish(cfg, "not a date")
-    assert problems(cfg, nginx)
+    assert stale(cfg)
 
 
 @pytest.mark.parametrize("age,healthy", [(timedelta(hours=1, minutes=59), True), (timedelta(hours=2, minutes=1),
@@ -136,5 +149,26 @@ def test_cli_health_exits_0_or_1(tmp_path, nginx, monkeypatch, capsys):
     monkeypatch.setenv("FIGHTCARD_FETCH", "on")
     assert cli.main(["health"]) == 0
     publish(config(tmp_path), "2020-01-01T00:00:00Z")
+    assert cli.main(["health"]) == 0  # stale, but the HEALTHCHECK passes
+    busy(config(tmp_path), datetime.now(UTC) - timedelta(hours=3))
     assert cli.main(["health"]) == 1
-    assert "generated_at" in capsys.readouterr().out
+    assert "busy" in capsys.readouterr().out
+    monkeypatch.setattr(health, "URL", "http://127.0.0.1:9/healthz")
+    assert cli.main(["health"]) == 1
+
+
+def test_cli_health_staleness_exits_1_on_stale_data_and_prints_the_age(tmp_path, monkeypatch, capsys):
+    from fightcard.service import __main__ as cli
+    monkeypatch.setattr(health, "URL", "http://127.0.0.1:9/healthz")  # --staleness doesn't ask nginx
+    monkeypatch.setenv("FIGHTCARD_ROOT", str(tmp_path / "srv"))
+    assert cli.main(["health", "--staleness"]) == 0
+    publish(config(tmp_path), datetime.now(UTC) - timedelta(hours=1))
+    assert cli.main(["health", "--staleness"]) == 0
+    assert "age" in capsys.readouterr().out
+    (tmp_path / "srv" / "current").unlink()
+    (tmp_path / "srv" / "generations" / "g1" / "index.json").write_text(
+        json.dumps({"generated_at": "2020-01-01T00:00:00Z"}))
+    (tmp_path / "srv" / "current").symlink_to("generations/g1")
+    assert cli.main(["health", "--staleness"]) == 1
+    out = capsys.readouterr().out
+    assert "stale" in out and "generated_at 2020-01-01T00:00:00Z" in out
