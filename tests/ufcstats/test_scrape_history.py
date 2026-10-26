@@ -533,3 +533,85 @@ def test_a_backfill_page_failing_with_another_http_error_still_fails_the_run(tmp
     c.get = get
     assert run(tmp_path, db, c) == 1
     assert not (tmp_path / "data" / "index.json").exists()
+
+
+# --- a listed card with no bouts (all cancelled) --------------------------------------------------------------------
+
+LAST_LISTED = "495add4fbede0a44"  # the fixture listing's last row
+
+
+def listing_with_old() -> str:
+    """The completed listing with OLD in it (in place of its last row)."""
+    return read_fixture("completed.html").replace(LAST_LISTED, OLD_ID)
+
+
+def empty_completed_card() -> str:
+    return read_fixture("event_detail_completed.html").split('<tbody class="b-fight-details__table-body">')[0]
+
+
+def test_an_empty_listed_card_is_backfilled_once(tmp_path, db, db_path):
+    """No bout with an outcome ever: the listing says it's completed, for the store, data/ and score."""
+    Store(tmp_path / "data").save_event(OLD.model_copy(update={"fights": []}))
+    c = client()
+    c.pages[stage.COMPLETED_URL] = listing_with_old()
+    c.pages[OLD_URL] = empty_completed_card()
+    assert run(tmp_path, db, c) == 0
+    assert OLD_URL in c.urls
+    assert db.execute("SELECT status FROM events WHERE event_id = ?", (OLD_ID,)).fetchone() == ("completed",)
+    assert Store(tmp_path / "data").load_events()[OLD_ID].status == "completed"
+    assert OLD_ID in json.loads((tmp_path / "data" / "index.json").read_text())["recent"]
+    c.urls.clear()
+    assert run(tmp_path, db, c) == 0
+    assert OLD_URL not in c.urls
+    score(tmp_path, db_path, "2026-10-16T00:00:00Z")  # exit 0: not reported missing
+
+
+def test_an_empty_unlisted_card_keeps_its_parsed_status(tmp_path, db):
+    """Not in the completed listing (or only as its next.png row): nothing says it took place."""
+    c = client()
+    c.pages[CARD_URL] = empty_completed_card()
+    c.pages[stage.COMPLETED_URL] = read_fixture("completed.html").replace(COMPLETED_ID, OLD_ID)
+    assert run(tmp_path, db, c, recent=0) == 0
+    Store(tmp_path / "data").save_event(CARD.model_copy(update={"status": "upcoming", "date": "2026-10-10"}))
+    assert run(tmp_path, db, c, recent=0) == 0  # refetched as a past-dated upcoming card
+    assert CARD_URL in c.urls
+    assert db.execute("SELECT status FROM events WHERE event_id = ?", (COMPLETED_ID,)).fetchone() == ("upcoming",)
+
+
+# --- skipped backfill events back off --------------------------------------------------------------------------------
+
+
+def test_a_skipped_backfill_event_is_retried_only_after_seven_days(tmp_path, db, caplog):
+    assert stage.BACKFILL_RETRY == timedelta(days=7)
+    Store(tmp_path / "data").save_event(OLD)
+    c = client()  # 404 at OLD_URL
+    assert run(tmp_path, db, c) == 0
+    assert OLD_URL in c.urls
+    assert db.execute("SELECT tried_at FROM backfill_skips WHERE event_id = ?", (OLD_ID,)).fetchone() == (
+        stage.iso(NOW),)
+    c.urls.clear()
+    assert run(tmp_path, db, c, now=NOW + timedelta(days=6, hours=23)) == 0
+    assert OLD_URL not in c.urls
+    c.pages[OLD_URL] = read_fixture("event_detail_completed.html")
+    assert run(tmp_path, db, c, now=NOW + timedelta(days=7)) == 0
+    assert OLD_URL in c.urls
+    assert db.execute("SELECT COUNT(*) FROM backfill_skips").fetchone() == (0,)  # in the store now
+    assert db.execute("SELECT status FROM events WHERE event_id = ?", (OLD_ID,)).fetchone() == ("completed",)
+
+
+def test_events_backing_off_leave_the_cap_to_the_others(tmp_path, db):
+    ids, c = backlog(tmp_path, stage.BACKFILL_PER_RUN + 1)
+    c.pages.pop(f"{BASE}/event-details/{ids[0]}")  # 404: skipped
+    assert run(tmp_path, db, c) == 0
+    assert backfilled(c, ids) == ids[: stage.BACKFILL_PER_RUN]
+    c.urls.clear()
+    assert run(tmp_path, db, c, now=NOW + timedelta(days=1)) == 0
+    assert backfilled(c, ids) == ids[stage.BACKFILL_PER_RUN:]  # not ids[0] again
+
+
+def test_a_backfill_page_without_outcomes_backs_off_too(tmp_path, db):
+    Store(tmp_path / "data").save_event(OLD)
+    c = client()
+    c.pages[OLD_URL] = without_flags(read_fixture("event_detail_completed.html"))
+    assert run(tmp_path, db, c) == 0
+    assert db.execute("SELECT event_id FROM backfill_skips").fetchall() == [(OLD_ID,)]
