@@ -62,3 +62,24 @@ def test_api_doc_explains(term):
 
 def test_readme_links_the_api_doc():
     assert "(docs/API.md)" in README
+
+
+# docs/SERVICE.md: how the engine runs on the VPS.
+
+def service_doc() -> str:
+    path = REPO / "docs" / "SERVICE.md"
+    assert path.is_file(), "docs/SERVICE.md is missing"
+    return path.read_text()
+
+
+@pytest.mark.parametrize("term", [
+    "one container", "compose.yml.j2", "06:00 UTC", "should_run.py", "flock", "FIGHTCARD_FETCH", "staging",
+    "mem_limit", "stdout", "last good generation", "/srv/fightcard", "state/history.db", "state/cache",
+    "state/data", "seed", "history", "healthcheck: image",
+])
+def test_service_doc_covers(term):
+    assert term in service_doc(), term
+
+
+def test_readme_links_the_service_doc():
+    assert "(docs/SERVICE.md)" in README
