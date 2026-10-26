@@ -195,8 +195,9 @@ class _Run:
             if not event.fights:
                 if stub is soonest:
                     raise ValidationError(f"soonest upcoming event {stub.id} ({stub.name}) has 0 fights")
-                # far-out cards often have no bouts yet: don't write or index them
+                # far-out cards often have no bouts yet: don't write, index or store them
                 log.info("skipping event %s (%s): 0 fights announced", stub.id, stub.name)
+                self._forget(stub.url, stub.id)
                 continue
             name = stub.name or event.name
             self.scraped[stub.id] = event.model_copy(update={
