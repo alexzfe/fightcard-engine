@@ -31,9 +31,11 @@ class Recorder:
     def __init__(self, codes: dict[str, int] | None = None):
         self.codes = codes or {}
         self.calls: list[list[str]] = []
+        self.timeouts: dict[str, float] = {}
 
-    def __call__(self, argv: list[str]) -> int:
+    def __call__(self, argv: list[str], *, timeout: float, **_) -> int:
         self.calls.append(argv)
+        self.timeouts[stage_of(argv)] = timeout
         return self.codes.get(stage_of(argv), 0)
 
     @property
@@ -119,7 +121,7 @@ def test_stops_at_the_first_failing_stage_and_returns_its_code(tmp_path, failing
 
 
 def test_a_stage_that_cannot_start_counts_as_a_failure(tmp_path):
-    def execute(argv):
+    def execute(argv, **_):
         raise FileNotFoundError(argv[0])
     code, lines = go(config(tmp_path), execute)
     assert code == 127
@@ -239,7 +241,7 @@ def test_the_lock_is_held_during_the_stages_and_released_after(tmp_path):
     cfg = config(tmp_path)
     probes = []
 
-    def execute(argv):
+    def execute(argv, **_):
         with open(cfg.lock, "w") as f:
             try:
                 fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -263,7 +265,13 @@ def test_a_run_creates_the_state_dirs(tmp_path):
 # The real subprocess executor and the CLI.
 
 def test_execute_runs_the_command_and_returns_its_exit_code():
-    assert runner.execute([sys.executable, "-c", "import sys; sys.exit(4)"]) == 4
+    assert runner.execute([sys.executable, "-c", "import sys; sys.exit(4)"], timeout=30) == 4
+
+
+def test_each_stage_gets_its_own_timeout(tmp_path):
+    rec = Recorder()
+    go(config(tmp_path), rec)
+    assert rec.timeouts == runner.TIMEOUTS
 
 
 def test_cli_run_uses_the_environment(tmp_path, monkeypatch):
