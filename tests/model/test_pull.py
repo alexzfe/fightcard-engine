@@ -321,6 +321,7 @@ def bad_latest(bucket, **changes) -> dict:
     ({"format_version": None}, "format_version"),
     ({"version": "../escape"}, "version"),
     ({"version": "a/b"}, "version"),
+    ({"version": "current"}, "version"),  # the symlink's own name
     ({"version": ""}, "version"),
     ({"version": 5}, "version"),
     ({"files": []}, "files"),
