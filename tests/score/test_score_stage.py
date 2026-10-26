@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import date
 from pathlib import Path
 
@@ -465,3 +466,67 @@ def test_a_listed_card_whose_bouts_have_no_outcome_yet_still_fails(data, model_d
     conn.close()
     assert score_with(root, model_dir, db) == 1
     assert "e-late" in capsys.readouterr().err
+
+
+def skip(db: Path, eid: str, reason: str) -> None:
+    """Record `eid` in the store's `backfill_skips`, as scrape's backfill does when it gives up on a page."""
+    conn = connect(db)
+    with conn:
+        conn.execute("INSERT INTO backfill_skips (event_id, tried_at, reason) VALUES (?, ?, ?)",
+                     (eid, "2026-10-31T12:00:00Z", reason))
+    conn.close()
+
+
+def test_a_completed_event_the_backfill_skipped_warns_and_ratings_are_written(data, model_dir, veterans, tmp_path,
+                                                                              capsys):
+    """scrape's backfill gave up on it (page gone, or a bout without an outcome): failing every run would leave the
+    last good generation stuck forever, so score names it and goes on."""
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    store.save_event(completed("e-late", "2026-10-31", v0, v1))
+    db = history(tmp_path, veterans)
+    skip(db, "e-late", "HTTP 404")
+    assert score_with(root, model_dir, db) == 0
+    warnings = [line for line in capsys.readouterr().err.splitlines() if "WARNING" in line]
+    assert len(warnings) == 1
+    assert "e-late" in warnings[0] and "HTTP 404" in warnings[0]
+    assert store.load_fighters()[v0].elo is not None
+
+
+def test_a_skipped_event_relaxes_only_itself(data, model_dir, veterans, tmp_path, capsys):
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    store.save_event(completed("e-late", "2026-10-31", v0, v1))
+    store.save_event(completed("e-other", "2026-10-30", v0, v1))
+    db = history(tmp_path, veterans)
+    skip(db, "e-late", "HTTP 404")
+    before = snapshot_files(root)
+    assert score_with(root, model_dir, db) == 1
+    assert "completed events with no bouts in the history store: e-other" in capsys.readouterr().err
+    assert snapshot_files(root) == before
+
+
+def test_a_store_without_the_backfill_skips_table_stays_strict(data, model_dir, veterans, tmp_path, capsys):
+    """Stores made by `history ingest` before the table existed."""
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    store.save_event(completed("e-late", "2026-10-31", v0, v1))
+    db = history(tmp_path, veterans)
+    conn = sqlite3.connect(db)
+    with conn:
+        conn.execute("DROP TABLE backfill_skips")
+    conn.close()
+    assert score_with(root, model_dir, db) == 1
+    err = capsys.readouterr().err
+    assert "completed events with no bouts in the history store: e-late" in err
+    assert "unusable" not in err
+
+
+def test_a_store_without_the_backfill_skips_table_passes_when_complete(data, model_dir, veterans, tmp_path):
+    root, _ = data
+    db = history(tmp_path, veterans)
+    conn = sqlite3.connect(db)
+    with conn:
+        conn.execute("DROP TABLE backfill_skips")
+    conn.close()
+    assert score_with(root, model_dir, db) == 0
