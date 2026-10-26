@@ -1,0 +1,10 @@
+# Only what the Dockerfile copies.
+*
+!pyproject.toml
+!uv.lock
+!src
+!model
+!deploy/nginx
+!scripts/should_run.py
+!scripts/gh_output.py
+**/__pycache__
