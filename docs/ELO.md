@@ -49,8 +49,9 @@ One implementation, in this repo, over the full bout history (since 2026-10-26, 
    listing, every event page and every fighter page the run fetched go in through the same parse + upsert
    functions as `history ingest`, in one transaction committed before the data/ write (data/ is never ahead of
    the store). A failed run leaves the store as it was, and re-running on the same pages changes nothing.
-   Completed events in data/ with no bout in the store are refetched, at most 20 a run; one whose page 404s or
-   lacks an outcome is skipped with a warning. Without the store, `scrape` exits 1 unless `--no-history`; like
+   Completed events in data/ the store doesn't have in full are refetched, at most 20 a run; one whose page 404s
+   or lacks an outcome is skipped with a warning and retried after 7 days. A listed card with no bouts (all
+   cancelled) is stored `completed`, so it counts as in full. Without the store, `scrape` exits 1 unless `--no-history`; like
    `history ingest`, it exits 1 on a completed bout on this run's cards with a method but no outcome. A fighter
    fresh in data/ (< 30 days) gets a full store row (bio, record) only at their next refresh.
 2. **Rating pass** (`src/fightcard/history/rating.py`, ported from research `export/rating.py`): `rate` over
@@ -61,7 +62,7 @@ One implementation, in this repo, over the full bout history (since 2026-10-26, 
    display scale. `score --history-db <path>` runs 2 and 3 over the bouts up to `--now` and writes the `Fighter`
    fields. The store defaults to `<--data>/../history/history.sqlite`. `score` exits 1 and writes nothing when the
    store is missing, unusable (empty, not SQLite, never ingested) or behind data/ (a completed event up to `--now`
-   with no bout with a result in it), so the live ratings stay instead of going null. `--no-history` scores tiers
+   that the store doesn't have as `completed` with no bouts, or with at least one bout with a result), so the live ratings stay instead of going null. `--no-history` scores tiers
    only and leaves the rating fields as they are.
 
 There's no roll-forward and no `null` for "too many unseen bouts": every bout in the store counts. The ratings
