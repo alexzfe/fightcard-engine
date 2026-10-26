@@ -125,7 +125,7 @@ Run from the repo root: `uv run fightcard --data data <stage>`.
 
 | Stage | Package | Reads | Writes |
 |---|---|---|---|
-| `scrape` | `fightcard.ufcstats` | ufcstats.com, data/ | events/, fighters.json, index.json |
+| `scrape` | `fightcard.ufcstats` | ufcstats.com, data/, the history store (`--history-db`) | events/, fighters.json, index.json; upserts the pages it fetched into the history store |
 | `images` | `fightcard.images` | index.json, events/, fighters.json, ESPN, Wikipedia | images/, `Fighter.image` (cards in `index.upcoming` then `index.recent`) |
 | `segments` | `fightcard.segments` | events/, fighters.json, ESPN | `Fight.segment` (upcoming events only) |
 | `history ingest` | `fightcard.history` | a ufcstats HTML cache (`--html-dir`) | the history store (`--db`, SQLite), optional sorted JSONL dump |
@@ -138,6 +138,7 @@ Run from the repo root: `uv run fightcard --data data <stage>`.
 - `score` resolves the default `--history-db` against `--data`, not the cwd: `<--data>/../history/history.sqlite` (`data/` and `history/` side by side, as in the repo and on the VPS). An explicit `--history-db` is used as given.
 - `score` exits 1 before writing anything when the history store is missing, unusable (empty, not SQLite, missing tables, no events) or stale: a completed event in events/ dated up to `--now` has no bout with a result in the store. It prints one line saying which. Each run logs the store's newest completed event and last page fetch against `--now`.
 - `score --no-history` (exclusive with `--history-db`) scores tiers only: the history store isn't read and every fighter's rating fields stay as they are in fighters.json.
+- `scrape` keeps the history store current: it refetches the full completed listing every run and upserts it, every event page and every fighter page it fetched, through the same functions as `history ingest`, in one transaction committed with the data/ write (a failed run changes neither). Completed events in data/ with no bout with a result in the store are refetched, so `score`'s stale-store check passes after a good scrape. It resolves `--history-db` like `score` (default `<--data>/../history/history.sqlite`) and exits 1 before fetching anything when there's no store there; `--no-history` (exclusive with `--history-db`) scrapes without one. Like `history ingest`, it exits 1 with nothing written when a completed bout has a method but no W/L outcome. Seed the store once with `history ingest`; a refresh is then `scrape` → … → `score`.
 - `scrape` must exit non-zero if it finds 0 upcoming events, if the soonest upcoming event has 0 fights, or if all upcoming events together have 0 fights. Far-out events with no bouts announced yet are not written and stay out of `index.upcoming` until fights appear.
 - `segments` exits 0 when ESPN is down or an event can't be matched, and keeps the segments it already has. It exits 1 only if data/ is unreadable.
 - `score` writes `data/stale_fighters.json` (list of `{fighter_id, name, event_id}`), or removes it when nothing is stale. `scripts/stale_issue.py` turns it into the body of a "Re-export finish model" issue.

@@ -44,7 +44,12 @@ One implementation, in this repo, over the full bout history (since 2026-10-26, 
 1. **History store** (`src/fightcard/history/store.py`): a SQLite file with every ufcstats event, bout, fighter
    and the raw page each came from. `fightcard history ingest --html-dir <cache> --db <path>` fills it from a
    ufcstats HTML cache with the same parsers `scrape` uses; it was seeded from fight-auto-research's cache
-   (`data/raw_html/ufcstats/`) and agrees with research's parsed CSVs on all 11,600 bouts.
+   (`data/raw_html/ufcstats/`) and agrees with research's parsed CSVs on all 11,600 bouts. After that, each
+   `fightcard scrape` keeps it current (`--history-db`, the same default path as `score`): the full completed
+   listing, every event page and every fighter page the run fetched go in through the same parse + upsert
+   functions as `history ingest`, in one transaction committed with the data/ write. A failed run leaves the
+   store as it was, and re-running on the same pages changes nothing. Completed events in data/ with no bout in
+   the store are refetched. Without the store, `scrape` exits 1 unless `--no-history`.
 2. **Rating pass** (`src/fightcard/history/rating.py`, ported from research `export/rating.py`): `rate` over
    `store.rating_bouts`, in date order, gives each fighter's raw rating, n, n_ufc, last bout, peak, gender and
    best win. Over the bouts research had, it reproduces research's last `fighter_rating.parquet` (4,146 fighters,
@@ -57,7 +62,8 @@ One implementation, in this repo, over the full bout history (since 2026-10-26, 
    only and leaves the rating fields as they are.
 
 There's no roll-forward and no `null` for "too many unseen bouts": every bout in the store counts. The ratings
-are as fresh as the store, so the store has to be ingested before `score`. `model/fighter_rating.parquet` isn't
+are as fresh as the store; `scrape` updates it before `score` reads it, so a card's results count from the
+refresh that first sees them (`docs/tdd/scrape-history.tdd.md`). `model/fighter_rating.parquet` isn't
 read any more. The finish model's own `elo` column in `fighter_snapshot.parquet` is separate and unchanged.
 
 ## Contract (pinned for the build)
@@ -165,10 +171,11 @@ Exact numbers have to be re-derived from the research implementation at 0.6/0.8 
 
 ## Future
 
-- **Feed the store from the daily scrape.** Today `history ingest` reads an HTML cache directory. The next step
-  is for `scrape` (or a step after it) to upsert the event pages it fetches, so the ratings update with each
-  refresh without a separate crawl. Then research's `export/rating.py` and its copy of the golden cases can go,
-  and research can train from this history.
+- **Keep the scraped HTML.** `scrape` records each page's url, sha256 and fetch time in `pages`, but not the HTML
+  itself, so a parser fix re-ingests the seed cache and re-fetches what the scrape added since. Saving the pages
+  into a cache directory would make `history ingest` able to rebuild the whole store offline.
+- Research's `export/rating.py` and its copy of the golden cases can go, and research can train from this
+  history.
 - **Rank tiers** (chess or video-game style, e.g. "GM" for very high ratings), as a separate discussion.
   FIDE-style "title kept once earned" fits the peak.
 - Revisit pre-UFC history (Sherdog/Tapology) if a source becomes practical.
