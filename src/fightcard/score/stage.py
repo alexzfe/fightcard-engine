@@ -22,7 +22,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fightcard.models import Event, Fight, Fighter, ModelInfo
+from fightcard.models import BestWin, Event, Fight, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
 from fightcard.score.elo import fighter_ratings
 from fightcard.score.features import bout_context, bout_row
@@ -89,6 +89,11 @@ def _now(arg: str | None) -> datetime:
     return datetime.fromisoformat(arg.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
+def _rating_fields(r: dict) -> dict:
+    """`fighter_ratings` output as Fighter field values (model_copy doesn't validate, so build BestWin here)."""
+    return r | {"best_win": None if r["best_win"] is None else BestWin(**r["best_win"])}
+
+
 def run(args: argparse.Namespace) -> int:
     try:
         bundle = load_bundle(args.model_dir)
@@ -99,7 +104,7 @@ def run(args: argparse.Namespace) -> int:
     now = _now(args.now)
     fighters = store.load_fighters()
     rating = fighter_ratings(fighters, bundle.ratings, bundle.snapshot, bundle.manifest["as_of"], now.date())
-    fighters = {fid: f.model_copy(update=rating[fid]) for fid, f in fighters.items()}
+    fighters = {fid: f.model_copy(update=_rating_fields(rating[fid])) for fid, f in fighters.items()}
     store.save_fighters(fighters)
     events, stale = score_events(list(store.load_events().values()), fighters, bundle, now)
     for ev in events:

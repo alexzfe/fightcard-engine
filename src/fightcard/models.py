@@ -36,8 +36,13 @@ class PastFight(BaseModel):
     date: str | None = None  # YYYY-MM-DD
 
 
-class BestWin(BaseModel):  # stub
-    pass
+class BestWin(BaseModel):
+    """The beaten opponent rated highest going into the bout (docs/ELO.md)."""
+
+    opponent_id: str
+    opponent: str
+    elo: int  # opponent's rating going into that bout, on the displayed scale
+    date: str  # YYYY-MM-DD
 
 
 class Fighter(BaseModel):
@@ -58,6 +63,7 @@ class Fighter(BaseModel):
     p4p_rank: int | None = None  # 1-15 men, 1-10 women; None = unranked
     elo_provisional: bool = False  # fewer than 3 UFC bouts
     elo_inactive: bool = False  # no bout in the last 365 days
+    best_win: BestWin | None = None  # data only, not displayed yet; None = no win / unknown
 
 
 class Result(BaseModel):

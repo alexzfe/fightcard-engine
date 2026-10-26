@@ -47,6 +47,16 @@ P4P_UFC_BOUTS, ACTIVE_DAYS, P4P_SIZE = 5, 365, {"M": 15, "F": 10}
 PROVISIONAL_UFC_BOUTS, PEAK_UFC_BOUTS = 3, 5
 
 
+@dataclass(frozen=True)
+class Win:
+    """A fighter's best win: the beaten opponent rated highest going in (raw, decayed to the bout day)."""
+
+    opponent_id: str
+    opponent: str | None
+    rating: float
+    date: str
+
+
 @dataclass
 class State:
     """One fighter's raw rating state between bouts."""
@@ -57,6 +67,7 @@ class State:
     last: str | None = None  # YYYY-MM-DD of the last bout
     peak: float | None = None  # highest post-bout rating from the 5th UFC bout on
     gender: str | None = None  # "M" / "F"
+    best_win: Win | None = None
 
 
 @dataclass(frozen=True)
@@ -68,6 +79,8 @@ class Bout:
     method: str | None = None  # ufcstats method, e.g. "S-DEC"
     ufc: bool = True
     weight_class: str | None = None  # sets gender: any Women's division -> "F", else a named division -> "M"
+    name_a: str | None = None  # display names, for the best win
+    name_b: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +128,12 @@ def expected(ra: float, rb: float) -> float:
     return 1.0 / (1.0 + 10 ** ((rb - ra) / 400.0))
 
 
+def _best_win(s: State, win: Win) -> None:
+    """Keep the higher-rated opponent; a tie goes to the later bout (bouts arrive in date order)."""
+    if s.best_win is None or win.rating >= s.best_win.rating:
+        s.best_win = win
+
+
 def _gender(gender: str | None, weight_class: str | None) -> str | None:
     wc = (weight_class or "").lower()
     if "women" in wc:
@@ -148,6 +167,9 @@ def roll_forward(states: dict[str, State], bouts: Iterable[Bout]) -> list[Step]:
             db = 0.0 if w is None else kb * ((1.0 - w) - (1.0 - ea))
             delta[b.a] += da
             delta[b.b] += db
+            if w is not None and w != 0.5:  # a win (split / majority included) for one side
+                winner, loser, name = (sa, b.b, b.name_b) if w > 0.5 else (sb, b.a, b.name_a)
+                _best_win(winner, Win(loser, name, states[loser].rating, day))
             todo.append((b, ka, kb, sa.rating, sb.rating, ea, w, da, db))
         for fid, today in fought.items():
             s = states[fid]
@@ -169,11 +191,22 @@ def states_from_export(ratings: pd.DataFrame) -> dict[str, State]:
     """`ratings` is model/fighter_rating.parquet indexed by fighter_id."""
     out = {}
     for fid, r in ratings.iterrows():
-        peak, gender = r.get("peak"), r.get("gender")
+        peak, gender = _value(r, "peak"), _value(r, "gender")
+        best = None
+        if _value(r, "best_win_opponent_id") is not None:  # columns absent from older exports
+            name = _value(r, "best_win_opponent")
+            best = Win(str(r["best_win_opponent_id"]), None if name is None else str(name),
+                       float(r["best_win_rating"]), str(r["best_win_date"]))
         out[str(fid)] = State(rating=float(r["rating"]), n=int(r["n_bouts"]), n_ufc=int(r["n_ufc_bouts"]),
-                              last=str(r["last_bout_date"]), peak=None if pd.isna(peak) else float(peak),
-                              gender=None if pd.isna(gender) else str(gender))
+                              last=str(r["last_bout_date"]), peak=None if peak is None else float(peak),
+                              gender=None if gender is None else str(gender), best_win=best)
     return out
+
+
+def _value(r: pd.Series, column: str):
+    """A row's value, or None when the column is missing or null."""
+    v = r.get(column)
+    return None if v is None or pd.isna(v) else v
 
 
 def _newer_bouts(fighters: dict[str, Fighter], as_of: str) -> tuple[list[Bout], dict[str, int], set[str]]:
@@ -192,18 +225,21 @@ def _newer_bouts(fighters: dict[str, Fighter], as_of: str) -> tuple[list[Bout], 
             known[fid] += 1
             a, b = sorted((fid, p.opponent_id))
             result = p.result if a == fid else FLIP.get(p.result, p.result)
-            bouts[(p.date, a, b)] = Bout(p.date, a, b, result, p.method, ufc=not p.event.lower().startswith(NOT_UFC))
+            names = (f.name, p.opponent) if a == fid else (p.opponent, f.name)
+            bouts[(p.date, a, b)] = Bout(p.date, a, b, result, p.method, ufc=not p.event.lower().startswith(NOT_UFC),
+                                         name_a=names[0], name_b=names[1])
     return list(bouts.values()), known, missing
 
 
 def _unrated() -> dict:
-    return {"elo": None, "elo_peak": None, "p4p_rank": None, "elo_provisional": False, "elo_inactive": False}
+    return {"elo": None, "elo_peak": None, "p4p_rank": None, "elo_provisional": False, "elo_inactive": False,
+            "best_win": None}
 
 
 def fighter_ratings(fighters: dict[str, Fighter], ratings: pd.DataFrame | None, snapshot: pd.DataFrame,
                     as_of: str, now: date) -> dict[str, dict]:
-    """The Fighter rating fields (`elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`) for each
-    fighter in `fighters`.
+    """The Fighter rating fields (`elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`)
+    for each fighter in `fighters`.
 
     `ratings` is model/fighter_rating.parquet indexed by fighter_id (None when absent); `snapshot` is indexed
     by fighter_id with record_w/l/d/nc as of the export."""
@@ -251,10 +287,8 @@ def fighter_ratings(fighters: dict[str, Fighter], ratings: pd.DataFrame | None, 
                     "elo_peak": None if s.peak is None else round(s.peak + shift),
                     "p4p_rank": rank.get(fid),
                     "elo_provisional": s.n_ufc < PROVISIONAL_UFC_BOUTS,
-                    "elo_inactive": not active(fid)}
+                    "elo_inactive": not active(fid),
+                    "best_win": None if s.best_win is None else {
+                        "opponent_id": s.best_win.opponent_id, "opponent": s.best_win.opponent or s.best_win.opponent_id,
+                        "elo": round(s.best_win.rating + shift), "date": s.best_win.date}}
     return out
-
-
-class Win:  # stub: best win (docs/ELO.md)
-    def __init__(self, *a, **kw):
-        raise NotImplementedError

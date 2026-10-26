@@ -58,9 +58,17 @@ over full history. One row per fighter with at least one bout in scope, as of `a
 | `n_ufc_bouts` | UFC-event bouts, NC included (tags, P4P eligibility, peak) |
 | `peak` | raw peak: highest post-bout rating at any bout (UFC or not) once the fighter has ≥5 UFC bouts counting that bout, undecayed; null until then |
 | `gender` | `"M"`, `"F"` or null (from weight classes) |
+| `best_win_opponent_id` | the beaten opponent rated highest going in (split/majority wins count; draws, NC, CNC, Overturned don't; a tie goes to the most recent); null without a win |
+| `best_win_opponent` | that opponent's display name |
+| `best_win_rating` | their raw pre-bout rating, decayed to the bout day |
+| `best_win_date` | `YYYY-MM-DD` |
+
+The four `best_win_*` columns are newer than the rest. With an export that lacks them, `Fighter.best_win` is null
+(until a newer win on our cards sets it).
 
 `score` (`pipeline/src/fightcard/score/elo.py`) rolls it forward over the card fighters' `recent_fights` dated after
-`as_of` with the same formula (an opponent not in the export starts at 1500 with n = 0), decays everyone to `--now`,
+`as_of` with the same formula (an opponent not in the export starts at 1500 with n = 0; a newer win can replace the
+best win, named from `PastFight.opponent`), decays everyone to `--now`,
 anchors and ranks, and writes the Fighter rating fields (see `docs/CONTRACT.md`). If the newer bouts found don't
 match the record change since the export (record from `fighter_snapshot.parquet`), that fighter is unrated and left
 out of the ranking. Fighters off our cards who fought after `as_of` stay stale until the next export.
