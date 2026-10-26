@@ -17,6 +17,10 @@ static files: `fightcard publish` writes them and nginx serves them. The exact r
 
 Start from `index.json`, then fetch the events it lists. Or just download the snapshot.
 
+`index.json`'s `model` says which finish model scored this generation: `model.version` and `model.as_of` (the
+export's date), and `model.stale_fighters`, how many fighters the model can't score right now because they've
+fought since that export (their bouts show "—").
+
 ```
 curl -s https://ufc-data.xlobax.com/v1/index.json
 ```
