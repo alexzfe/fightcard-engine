@@ -20,6 +20,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from fightcard.score.bundle import FILES, load_bundle
@@ -58,11 +59,27 @@ class Held(Exception):
 @dataclass(frozen=True)
 class Latest:
     version: str
+    as_of: date
     files: dict[str, str]  # name -> sha256 hex
 
 
 def _is_version(value: object) -> bool:
     return isinstance(value, str) and VERSION.fullmatch(value) is not None and value != RESERVED
+
+
+def _as_of(value: object) -> date | None:
+    """A YYYY-MM-DD string as a date; None for anything else."""
+    try:
+        return date.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+
+
+def _running_as_of(root: Path, version: str) -> date | None:
+    try:
+        return _as_of(json.loads((root / version / "manifest.json").read_text()).get("as_of"))
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def _kept_current(root: Path) -> str | None:
@@ -180,6 +197,9 @@ def _latest(base: str) -> Latest:
         raise Held(label, f"latest.json has format_version {doc.get('format_version')!r}, not {FORMAT_VERSION}")
     if label == "latest.json":
         raise Held(label, f"latest.json has an unusable version {version!r}")
+    as_of = _as_of(doc.get("as_of"))
+    if as_of is None:
+        raise Held(label, f"latest.json has an unusable as_of {doc.get('as_of')!r}")
     if not isinstance(files, dict):
         raise Held(label, "latest.json's files is not an object")
     allowed = {*BUNDLE_FILES, *OPTIONAL_FILES}
@@ -190,7 +210,16 @@ def _latest(base: str) -> Latest:
             raise Held(label, f"latest.json's digest for {name} is not a sha256")
     if missing := [n for n in BUNDLE_FILES if n not in files]:
         raise Held(label, f"latest.json lacks required {', '.join(missing)}")
-    return Latest(version, files)
+    return Latest(version, as_of, files)
+
+
+def _no_downgrade(label: str, as_of: date | None, running: date | None, was: str, source: str) -> None:
+    """An older export than the running model's is never adopted; going back is FIGHTCARD_MODEL_PIN's job."""
+    if as_of is None:
+        raise Held(label, f"{source} has no usable as_of")
+    if running is not None and as_of < running:
+        raise Held(label, f"{source} as_of {as_of} is older than {was}'s {running}; to go back, "
+                          f"set FIGHTCARD_MODEL_PIN to a kept version")
 
 
 def _download(base: str, latest: Latest, staging: Path) -> None:
@@ -211,11 +240,13 @@ def _gate(root: Path, latest: Latest, staging: Path, was: str) -> None:
     running model's tier cut points, and re-score its own examples."""
     label = latest.version
     try:
-        listed = json.loads((staging / "manifest.json").read_text())["version"]
+        manifest = json.loads((staging / "manifest.json").read_text())
+        listed = manifest["version"]
     except (ValueError, KeyError, TypeError) as e:
         raise Held(label, f"manifest.json is unreadable: {e}") from e
     if listed != label:
         raise Held(label, f"manifest.json is for version {listed!r}")
+    _no_downgrade(label, _as_of(manifest.get("as_of")), _running_as_of(root, was), was, "manifest.json")
     try:
         bundle = load_bundle(staging)
     except Exception as e:  # noqa: BLE001 - lightgbm, pyarrow and json each raise their own
@@ -233,6 +264,7 @@ def _gate(root: Path, latest: Latest, staging: Path, was: str) -> None:
 
 
 def _adopt(root: Path, base: str, latest: Latest, was: str, log: Log) -> None:
+    _no_downgrade(latest.version, latest.as_of, _running_as_of(root, was), was, "latest.json")
     staging = root / f"{_STAGING}{latest.version}"
     try:
         staging.mkdir()
