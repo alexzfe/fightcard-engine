@@ -95,3 +95,34 @@
 | 21 | CNC / Overturned never update, whatever the recorded result | `test_credit_by_result_and_method[win-Overturned…, loss-Overturned…, draw-CNC…]` | unit | PASS |
 | 22 | DWCS / Road to UFC in any letter case are not UFC bouts | `test_contender_series_and_road_to_ufc_are_not_ufc_bouts_in_any_case[*]` (5) | integration | PASS |
 | 23 | Once the fighter has ≥5 UFC bouts, any bout (UFC or not) can set the peak | `test_peak_counts_from_the_fifth_ufc_bout_and_only_rises`, golden `peak_fifth_ufc` | unit/parity | PASS |
+
+## Cycle 3: best win (2026-10-25)
+
+- **Why:** ELO.md adds the Contract's "Best win" bullet, four `best_win_*` export columns, and `Fighter.best_win {opponent_id, opponent, elo, date} | null`. It's data only and not displayed yet. It addresses strength of schedule ("untested" fighters) without changing the formula.
+- **Fixture:** `pipeline/tests/score/fixtures/rating_cases.json` re-vendored, byte-identical (`cmp`) to the research `tests/fixtures/rating_cases.json`. It now has 12 cases, each with `names`, and `best_win_*` in the expected rows.
+- **RED (`c6d85f2`):** `uv run pytest -q tests/score` gave `28 failed, 72 passed`. Stubs `Win` and `BestWin` were added so the tests collect. Failures:
+  - 17 × `TypeError: Bout.__init__() got an unexpected keyword argument 'name_a'`: all 12 golden cases plus the new roll-forward tests.
+  - `KeyError: 'best_win'` and the `NULL`-dict mismatches in `fighter_ratings`.
+  - `AttributeError: 'Fighter' object has no attribute 'best_win'` in the stage tests.
+- **GREEN (`8f7db71`):** `uv run pytest -q` gave **`314 passed, 1 deselected`**, with no warnings. Coverage: `elo.py` 100% (192 stmts), `stage.py` 99% (the same pre-existing line 48). Changes:
+  - `Bout.name_a/name_b`; `State.best_win: Win(opponent_id, opponent, rating, date)`.
+  - `roll_forward` updates the best win from the pre-day ratings when `credit` is a win (`w ≠ 0.5`, not None), so split/majority wins count and draws, NC, CNC and Overturned don't. `>=` keeps the later bout on a tie. Bouts arrive in date order, and within a day in input order, which matches the research rule "later date, then later fight_id" on every golden case.
+  - The export's columns are read when present. When they're missing (older exports) or null, the best win is None.
+  - Newer bouts carry names: the card fighter's `Fighter.name` and the opponent's `PastFight.opponent`.
+  - Display `elo = round(raw + shift)`.
+  - `models.BestWin`.
+- **Bug found during GREEN:** the first green run had 4 pydantic serializer warnings. `model_copy(update=...)` doesn't validate, so `best_win` was stored as a dict. The stage now builds `BestWin` (`stage._rating_fields`). `test_best_win_is_written_as_a_json_object` pins the JSON shape.
+- **Smoke with the real export** (`--model-dir <export-out>`, which has the four columns; a scratch copy of data/; `--now 2026-10-25`): exit 0, 49 tiers, 133 rated, **125/134 with a best win**. Examples: Yan → Dvalishvili 1814 (2025-12-06); Volkanovski → Holloway 1743 (2019-12-14); Stirling → Blachowicz 1577 (2026-08-01).
+
+| # | Guarantee | Test | Type | Result |
+|---|---|---|---|---|
+| 24 | Best win = the beaten opponent rated highest going in, decayed to the bout day; a split win counts; the loser gets no best win | `test_elo.py::test_best_win_is_the_opponent_rated_highest_going_in_decayed_to_the_day` | unit | PASS |
+| 25 | Draws, NC, and CNC / Overturned recorded as wins never set a best win | `test_draws_and_no_contests_are_not_wins[*]` (4) | unit | PASS |
+| 26 | A tie goes to the most recent win; a lower-rated win never replaces it | `test_best_win_tie_goes_to_the_most_recent_and_lower_never_replaces`, golden `best_win_tie` | unit/parity | PASS |
+| 27 | The export's best win is shown on the display scale; a fighter without a win gets null | `test_best_win_from_the_export_is_shown_on_the_display_scale` | integration | PASS |
+| 28 | An older export without the columns gives null, and the other fields are unaffected | `test_older_export_without_best_win_columns_gives_null` | integration | PASS |
+| 29 | A newer win over a stronger opponent replaces the export's best win: named from `PastFight.opponent`, rated at the opponent's pre-bout value, M-DEC counts | `test_a_newer_win_over_a_stronger_opponent_becomes_the_best_win_named_from_the_past_fight` | integration | PASS |
+| 30 | Golden parity covers best win in all 12 cases (`best_win_split`, `best_win_tie` included) | `test_rating_parity.py::test_golden_case[*]`, `test_best_win_cases_are_present` | parity | PASS |
+| 31 | fighters.json carries `best_win` as `{date, elo, opponent, opponent_id}` or null; unrated fighters and no-export runs give null | `test_score_stage.py::test_best_win_is_written_as_a_json_object`, `test_writes_rating_fields_into_fighters_json`, `test_without_a_rating_export_…` | integration | PASS |
+
+- **Gap:** if the export's `best_win_opponent` is null, the site falls back to the opponent id for the name. No test pins this; it can only happen if the research name lookup misses.
