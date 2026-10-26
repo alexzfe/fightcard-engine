@@ -3,7 +3,7 @@
 Source: the orchestrator's Phase 5 brief and the shared contract (`phase5-contract.md`: public R2 bucket
 `fightcard-models`, `latest.json` written last, `<version>/<file>` immutable). The research side (publisher and
 export gate) is built separately against the same contract. Branch `feat/model-pull`, from `origin/main` at 85a8f8e.
-Baseline: 696 passed, 1 skipped. Final: 821 passed, 1 skipped.
+Baseline: 696 passed, 1 skipped. Final: 885 passed, 1 skipped (821 before the review fixes below).
 
 ## User journeys
 
@@ -28,9 +28,19 @@ Baseline: 696 passed, 1 skipped. Final: 821 passed, 1 skipped.
 | Runner: non-fatal `model` step before score, score reads `state/model/current`; `-m docker` pull from a local server | 116c7fe | 69b6575 | `uv run pytest tests/service tests/test_docs.py`; `uv run pytest tests/deploy/test_image.py -m docker` | 15 failed, 94 passed in `tests/service`; `-m docker`: `test_a_run_pulls_a_model_…` failed on the missing `step=model` line (run with `-x`, so the unreachable-bucket test wasn't reached) | 182 passed; `-m docker` image tests 12/12 |
 | Docs: SERVICE.md, CONTRACT.md, API.md, model/README.md, README | 9ad4a37 | 6eb2fbe | `uv run pytest tests/test_docs.py` | 28 failed, 73 passed | 106 passed (docs + layout) |
 | `current` is not a version name | 017ca67 | 066f6ec | `uv run pytest tests/model` | 1 failed, 8 passed (found on review) | 76 passed |
+| Review 2: `parity_failures` holds on any exception (malformed `p_finish`, `LightGBMError`) | c916397 | 2d19b54 | `uv run pytest tests/score/test_score_parity.py` | 4 failed, 21 passed (string, `None`, dict `p_finish` raised `TypeError`; a raising booster propagated) | 25 passed |
+| Review 9: sweep stray `.current-*` symlinks | a725f6c | 10ad28c | `uv run pytest tests/model` | 1 failed | 77 passed |
+| Review 7: an unknown or unusable pin logs `ERROR` every run | 4c39f57 | bda8f71 | `uv run pytest tests/model -k pin` | 2 failed, 13 passed | 15 passed |
+| Review 10: redirects only to http(s) | 8a1d584 | 27e2653 | `uv run pytest tests/model` | 3 failed, 1 passed (urllib follows an http to ftp redirect; `file:` and `gopher:` it already refused, with its own message: those two cases are regression guards) | 83 passed |
+| Review 5: no silent downgrade (`as_of` older than the running model's is held; a missing or malformed `as_of` is held) | 37fd45f | 1956ce9 | `uv run pytest tests/model` | 5 failed, 83 passed (the old "`latest.json` pointing back rolls back" test became "is held") | 88 passed |
+| Review 1: `.held-<version>` marker, written before the gate; no refetch while version + digests + running version match | d70a82d | 66993e4 | `uv run pytest tests/model` | 5 failed, 92 passed | 98 passed (the GREEN also corrects two RED tests, see the notes) |
+| Review 3: a baked model with a newer `as_of` replaces an older `current` (gate minus the cut points) | ff3bb8f | 1763bf9 | `uv run pytest tests/model` | 6 failed, 5 passed | 105 passed |
+| Review 4: score reads `state/model/current` only when a pull is configured; `--fallback-model-dir`; score logs which model | 7f1d295 | 4ce968d | `uv run pytest tests/service tests/score` | 7 failed, 88 passed | 196 passed |
+| Review 11: `contract_version` `"1.1"` (index.json, schema.json title, CONTRACT.md Versioning) | 2f1a418 | 6b28b06 | `uv run pytest tests/publish tests/test_docs.py` | 3 failed, 139 passed | 142 passed |
+| Review: docs for all of the above (SERVICE.md "The model") | 3c73c6e | 6405a4d | `uv run pytest tests/test_docs.py` | 9 failed, 104 passed | 113 passed |
 
-Final runs: `uv run pytest` 821 passed, 1 skipped; `uv run pytest -m docker` 56 passed (54 before, plus the two pull
-tests); `-m seed` 6 passed; actionlint as `release.yml` runs it,
+Final runs (after the review fixes): `uv run pytest` 885 passed, 1 skipped; `uv run pytest -m docker` 56 passed (the
+image tests pull from a local bucket); `-m seed` 6 passed; actionlint as `release.yml` runs it,
 `mise x shellcheck@0.11.0 -- uvx --from actionlint-py==1.7.12.25 actionlint`, exit 0 (the bare command fails here
 only because this machine's mise shellcheck shim has no version set, as in `ops.tdd.md`).
 
@@ -44,6 +54,26 @@ Notes on the RED commits:
   `36fa9fc` GREEN skips the `current` symlink.
 - Some tests pass at RED because they pin behaviour an earlier GREEN already gave (an unreachable bucket, the size
   cap, http(s)-only urls, equal cut points with other evidence): they are regression guards, not new behaviour.
+
+Notes on the review fixes (rows "Review …"; each is a RED commit, then a GREEN commit):
+
+- The review's findings 6 and 8 were not in the brief for this round. Each finding that was was verified against the
+  code first and all were real (the isclose loop sat outside the `try`; urllib's redirect handler allows `ftp:`; a
+  newer baked model was ignored once state existed; score preferred `state/model/current` with no pull configured).
+- Review 1, a decision: the marker is written for a **gate verdict** and for a **pull that dies inside the gate**
+  (a segfault leaves "the pull ended inside the gate"), not for a checksum mismatch. A verdict is a function of
+  the version, its digests and the running model, so skipping it while those are unchanged is safe. A mismatch
+  says nothing about the model (the transfer, or the bucket, may be what broke, and re-uploading the same bytes
+  keeps the same digests), so it is fetched again each run. The first RED used `corrupt=` for the marker tests;
+  the GREEN switched those two to an `examples.json` verdict and added `test_a_checksum_mismatch_is_no_verdict…`.
+  An exception raised inside the gate (not only `Held`) is now a hold with a marker.
+- Review 5: both `latest.json`'s `as_of` (before any fetch) and the downloaded `manifest.json`'s `as_of` (in the
+  gate) are compared with the running model's; equal dates are adopted (a same-day re-export).
+- Review 3: under a pin the newer baked model is kept (so it can be pinned) but not switched to; a baked model that is
+  not newer is logged every run, as asked.
+- Review 4: score gets `--fallback-model-dir` rather than the runner probing the bundle (importing LightGBM into the
+  supervisor process is avoided). With no fallback a model dir that won't load still fails as it did.
+- Review 2/10 RED notes: some malformed examples (bad tier, bad date or context) already held at RED; they are guards.
 
 ## Test specification
 
@@ -61,6 +91,13 @@ Notes on the RED commits:
 | 10 | The runner runs `model pull` just before score (also with fetch off), passes `--root`, `--seed-dir`, `--url`, `--pin`; score reads `state/model/current` once it exists (even one made during the run), else `FIGHTCARD_MODEL_DIR`; a pull that fails, hangs or can't start never fails the run; the step has a 5 min timeout | `tests/service/test_runner.py::test_the_model_pull_*`, `test_score_*`, `test_a_*pull*`; `test_supervision.py::test_the_timeouts_*` | unit | PASS |
 | 11 | In the image: a run with `FIGHTCARD_MODEL_URL` pointing at a `python -m http.server` bucket inside the container seeds, adopts, scores with the pulled version, and `/v1/index.json` says `model.version`, `model.as_of`, `model.stale_fighters`; an unreachable bucket keeps the run green and the model | `tests/deploy/test_image.py::test_a_run_pulls_a_model_from_a_local_bucket_and_scores_with_it`, `::test_an_unreachable_bucket_keeps_the_run_and_the_model` | e2e (docker) | PASS |
 | 12 | The docs describe all of it (gates, hold, pin, rollback, the fields, the automated re-export) | `tests/test_docs.py` (Phase 5 block) | docs | PASS |
+| 13 | `parity_failures` holds on any exception; a malformed `p_finish`, tier or bout and a raising booster are failures, not crashes | `test_score_parity.py::test_parity_failures_holds_*` | unit | PASS |
+| 14 | A gate verdict or a crash in the gate leaves `.held-<version>` (digests, running version, reason); while it matches nothing is fetched and the hold is logged each run; a changed digest or running version retries; adoption or a newer `latest.json` clears it; a failed download or a checksum mismatch leaves none | `test_pull.py::test_a_held_version_is_not_downloaded_again_*`, `test_the_marker_*`, `test_a_pull_that_dies_in_the_gate_*`, `test_a_checksum_mismatch_*` | unit | PASS |
+| 15 | A newer baked model replaces an older `current` (cut points exempt), is only kept under a pin, fails closed on its examples; an older one is logged; an older `latest.json` is held | `test_pull.py::test_a_newer_baked_model_*`, `test_an_older_baked_model_*`, `test_a_pin_still_wins_*` | unit | PASS |
+| 16 | `latest.json` and `manifest.json` `as_of` not older than the running model's (equal is fine), valid `as_of` required; rollback only by pin | `test_pull.py::test_a_latest_that_points_back_*`, `test_a_manifest_older_*`, `test_a_version_with_the_same_as_of_*` | unit | PASS |
+| 17 | An unusable pin is an `ERROR` line every run; `.current-*` are swept; a redirect to a non-http(s) scheme is refused | `test_pull.py::test_a_pin_that_cannot_be_honoured_*`, `test_a_current_symlink_*`, `test_a_redirect_*` | unit | PASS |
+| 18 | The runner passes `current` (and the baked model as fallback) only when a pull is configured; score falls back with an `ERROR` and says which model it uses | `test_runner.py::test_score_*`, `test_score_stage.py::test_a_model_dir_that_does_not_load_*`, `test_score_says_which_model_*` | unit | PASS |
+| 19 | `contract_version` is `"1.1"`, and the docs say what it holds | `test_publish_stage.py`, `test_docs.py::test_contract_versioning_*` | unit/docs | PASS |
 
 ## Gaps and decisions
 
@@ -71,9 +108,10 @@ Notes on the RED commits:
   not a bucket that someone else controls. A crafted model with a matching digest still has to load and re-score its
   examples, but `load_bundle` runs in the pull's own process: LightGBM segfaults on some corrupt model files, which
   would end that process (the run goes on, and the next run tries again).
-- A held version is downloaded again on every run until `latest.json` moves on.
-- `contract_version` stays `"1"`: the earlier additions (`Result.outcome`, the rating fields) didn't bump it either,
-  though CONTRACT.md says an addition bumps the minor part. Bumping to `"1.1"` is a one-line change if wanted.
+- A held version is not fetched again while its `.held-<version>` marker matches (same digests, same running
+  model); a checksum mismatch is fetched again each run (see the review notes).
+- `contract_version` is now `"1.1"` (it was `"1"` although `Result.outcome`, the rating fields and the model summary
+  were already additive changes); CONTRACT.md's Versioning lists what each version holds.
 - `model.version` and `model.as_of` already existed in `index.model`; only `stale_fighters` is new. It counts
   distinct fighters, while `stale_fighters.json` lists one entry per fighter per event.
 - A pin without a url still works (rollback shouldn't need the bucket), a small step past "url unset = no-op".
