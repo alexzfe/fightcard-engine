@@ -51,3 +51,81 @@ the `serve` subcommand dispatch, `__main__`'s `sys.exit`, and serve's kill-after
 
 Gaps: score's memory was measured on the publish fixture only (peak 193 MiB), not real data. The scrapers aren't run
 in the container (fetch off). Scrape only upserts the history store once `feat/scrape-history` merges; until then this branch's scrape leaves the store as seeded.
+
+## Review fixes (PR #4 code review)
+
+Source: the orchestrator's p4-review-fixes brief (findings 1-10 on `feat/service`, and infra PR #17 `add-ufc-data`).
+Journeys added: as the site owner, I want a hung stage to fail its run instead of blocking every refresh; a busy
+slot (above all the daily one) to run when the run ends; a deploy's stop to fit Docker's 10 s with nothing orphaned;
+a container that reports unhealthy when it serves stale data or a run is stuck; a nightly backup of the history
+store; and staging never scoring at the same time as prod.
+
+Real-process tests (finding 10) use `tests/service/fake_stage.py` as the `fightcard` binary: it sleeps, ignores
+SIGTERM, or starts a grandchild when told to, and reports its pid, process group, niceness and the lock.
+
+| # | Finding | RED | GREEN | RED evidence | GREEN evidence |
+|---|---|---|---|---|---|
+| 1 | No per-stage timeout | 194615a | e03866e | 18 failed: no `runner.TIMEOUTS`; `execute()` takes no timeout; stage pgid == runner's | 577 passed |
+| 4 | SIGTERM orphaned the stage; lock freed while it ran; no reaping | 07b128c | c2aa615 | 3 failed: run outlived by its stage (pipe held 10 s), lock free while scrape ran, zombie under serve | 580 passed |
+| 3 (+1's run cap) | Shutdown budget 20 s + 20 s; no whole-run cap | 1107835 | ddf0f72 | 6 failed (the message says 7): shutdown > 20 s with nginx ignoring QUIT and the stage ignoring TERM; cap never fired | 586 passed; worst-case stop 5.9 s |
+| 2 | Busy ticks dropped | 4dddde4 | 6ee2091 | 6 failed: busy slots dropped | 591 passed; the real test was re-run against the old serve.py: 1 failed |
+| 7 | Both envs score at :17 | d5d89e5 | 391f119 | 14 failed: no `schedule_minute`, `next_fire` takes no minute | 605 passed |
+| 5 | Healthy while serving nothing useful | 72fc03f | 91876eb | collection error: no `fightcard.service.health`; Dockerfile still curls /healthz | 617 passed; `-m docker` below |
+| 6 | No backup of the history store | 1634dbf | ae06275 | 4 failed: `invalid choice: 'backup'` | 621 passed; infra 1120daf |
+| 8 (+ docs for 1-7) | Restart with stale data waits silently | b099863 | bdb9786 | 13 failed doc terms | 636 passed |
+| 9 | infra comment wording | (scratchpad check) | infra 1120daf | `check_sites.py`: `backup: None` | `ok` |
+
+Decisions:
+
+- **#1**: `TIMEOUTS` are in `runner.py`, with `KILL_GRACE` 3 s and exit 124 (timeout(1)'s code). Stages run with
+  `start_new_session=True` and `nice` 10 via `preexec_fn`, which is safe because the run process has no threads.
+  `RUN_TIMEOUT` = sum of the stage timeouts + a `KILL_GRACE` each + 10 min = 5415 s.
+- **#2**: one pending slot. A queued daily slot drops later hourlies, and a daily slot replaces a queued hourly one.
+- **#3**: nginx `SIGQUIT` and the run group's `SIGTERM` go out together, then a 5 s `STOP_GRACE`, then `SIGKILL`.
+  The run needs at most `KILL_GRACE` (3 s) to end its stage.
+- **#4**: the run's SIGTERM handler raises `Terminated` (a `BaseException`), so `execute()` ends the stage group on
+  the way out. A second TERM is ignored. The stage gets the locked fd through `pass_fds`. `serve.reap()` uses
+  `waitid(WNOWAIT)` to peek, so nginx's and the run's exit codes stay with their Popen objects.
+- **#5**: a separate `fightcard-service health` is cleaner than changing nginx's `/healthz`, which the public smoke
+  test and the first, unseeded deploy depend on. `generated_at` only advances when scrape runs, so the 26 h check
+  applies only where fetching is on (prod). Otherwise staging would go unhealthy a day after seeding and every
+  staging deploy would roll back. The busy check reads `state/run.json` (pid + start), not the flock: probing the
+  flock could make a starting run see `locked`.
+- **#7**: the minute comes from `FIGHTCARD_SCHEDULE_MINUTE`, else from the host: 17 on the fetch host, 47 elsewhere,
+  so `sites.yml` needs no change. The daily slot moves by the same amount (staging 06:30) and is still reported as
+  `DAILY_CRON`.
+- **#8**: documented, not changed. A startup run whenever data is stale would scrape on every prod deploy.
+
+### Test specification (review fixes)
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| R1 | Timeouts are per stage, in one place (30/15/15/10/10 min) and passed to each stage | `test_supervision.py::test_the_timeouts_are_per_stage…`, `test_runner.py::test_each_stage_gets_its_own_timeout` | unit | PASS |
+| R2 | A stage past its timeout is killed with its whole process group (grandchild too); `status=timeout`, exit 124 | `test_a_stage_past_its_timeout_is_killed_with_its_process_group` | real process | PASS |
+| R3 | A stage ignoring SIGTERM is SIGKILLed after `KILL_GRACE` | `test_a_stage_that_ignores_sigterm_is_killed_after_the_grace` | real process | PASS |
+| R4 | Each stage leads its own process group at nice 10 | `test_each_stage_runs_in_its_own_process_group_at_nice_10` | real process | PASS |
+| R5 | SIGTERM to a run ends its stage (and grandchild) before the run exits 143; the lock is free after | `test_sigterm_to_a_run_ends_its_stage_first_then_the_run` | real process | PASS |
+| R6 | A killed run can't release the lock while its stage still runs | `test_a_stage_holds_the_lock_even_if_its_run_is_killed` | real process | PASS |
+| R7 | serve (as subreaper standing in for PID 1) leaves no zombie after a killed run | `test_serve_reaps_the_orphans_of_a_killed_run` | real process | PASS |
+| R8 | Stop with nginx ignoring QUIT and a stage ignoring TERM ends in < 8 s with nothing left | `test_shutdown_with_a_stage_mid_run_fits_in_dockers_10s` | real process | PASS (5.9 s) |
+| R9 | serve stops a run past `RUN_TIMEOUT`, killing its stage | `test_serve_stops_a_run_past_the_whole_run_cap`, `test_serve.py::test_a_run_past_the_cap…` | real process / unit | PASS |
+| R10 | `RUN_TIMEOUT` covers every stage and stays under the 2 h busy limit; `KILL_GRACE` < `STOP_GRACE` ≤ 7 | `test_serve.py::test_the_run_cap_covers…`, `test_the_shutdown_budget…` | unit | PASS |
+| R11 | A busy slot is queued and starts when the run ends; at most one waits; a daily wins | `test_serve.py::test_a_busy_slot…`, `test_a_pending_daily_slot_wins…[2]`, `test_at_most_one_slot_waits`, `test_supervision.py::test_a_slot_that_fires_mid_run…` | unit / real process | PASS |
+| R12 | Staging (off the fetch host) fires at :47 and 06:30; `FIGHTCARD_SCHEDULE_MINUTE` overrides; bad values are refused | `test_schedule.py::test_next_fire_at_another_minute[4]`, `test_runner.py::test_the_schedule_minute…[5]`, `test_a_bad_schedule_minute…[3]`, `test_serve.py::test_staging_runs_at_its_own_minute` | unit | PASS |
+| R13 | Health: unseeded passes; nginx down, stale (> 26 h, fetch on only), unreadable index, busy > 2 h (live pid) fail | `tests/service/test_health.py` | unit (real files, local HTTP) | PASS |
+| R14 | Image HEALTHCHECK is `fightcard-service health`; healthy after publishing; exit 1 on stale data with fetch on | `test_image.py` static + `-m docker` | static / e2e | PASS |
+| R15 | `fightcard history backup` streams a .tgz of `history/history.sqlite`, consistent mid-transaction, restorable to `state/`; missing store exits 1 without creating it | `tests/history/test_history_backup.py` | integration | PASS |
+| R16 | infra's backup command works in the image (`docker exec … fightcard history backup --db …`) | `test_image.py::test_the_history_backup_streams_a_tgz_the_way_infra_runs_it` | e2e (docker) | PASS |
+| R17 | SERVICE.md covers all of the above; its timeout table matches `runner.TIMEOUTS` | `test_docs.py::test_service_doc_covers_the_supervision[14]`, `test_service_doc_states_the_stage_timeouts` | static | PASS |
+
+### Verification (final)
+
+- `uv run pytest -q`: **636 passed, 1 skipped, 60 deselected**.
+- `uv run pytest -m docker -v tests/deploy`: **54 passed** (image + nginx). Image 1501 MiB, `memory.peak` 203 MiB of
+  768 MiB, `docker stop` 0.5 s, exit 0.
+- Coverage (`--cov=fightcard.service --cov=fightcard.history.stage`, in-process only): 96%. stage 100%, schedule
+  100%, runner 96%, health 96%, serve 93%, `__main__` 92%. The code the real-process tests exercise runs in child
+  processes and isn't counted.
+- actionlint 1.7.12 clean, run as `mise exec shellcheck@0.11.0 -- uvx --from actionlint-py==1.7.12.25 actionlint`,
+  because the local shellcheck shim has no version.
+- infra: `terraform fmt -check` OK, `terraform validate` OK, `ansible-lint site.yml` 0 failures.
