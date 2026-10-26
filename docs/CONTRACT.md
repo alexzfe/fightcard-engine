@@ -1,6 +1,6 @@
 # Shared contract
 
-Source of truth for types: `pipeline/src/fightcard/models.py` (pydantic). This doc explains layout and ownership. Read `PLAN.md` for the why.
+Source of truth for types: `src/fightcard/models.py` (pydantic). This doc explains layout and ownership. Read fight-card-website's `PLAN.md` for the why.
 
 ## data/ layout (pipeline output, site input; committed)
 
@@ -42,7 +42,7 @@ The exact `feature_spec.json` and snapshot columns are defined by the model owne
 
 ## Pipeline CLI
 
-Run from the repo root: `uv run --project pipeline fightcard --data data <stage>`.
+Run from the repo root: `uv run fightcard --data data <stage>`.
 
 | Stage | Package | Reads | Writes |
 |---|---|---|---|
@@ -63,11 +63,11 @@ Each owner edits only their paths. Contract changes (`models.py`, this doc, `pyp
 
 | Owner | Paths |
 |---|---|
-| scraper | `pipeline/src/fightcard/ufcstats/`, `pipeline/src/fightcard/store.py`, `pipeline/tests/ufcstats/`, `pipeline/tests/fixtures/ufcstats/` |
-| images | `pipeline/src/fightcard/images/`, `pipeline/tests/images/`, `pipeline/tests/fixtures/espn/`, `pipeline/tests/fixtures/wikipedia/` |
-| segments | `pipeline/src/fightcard/segments/`, `pipeline/tests/segments/`, `pipeline/tests/fixtures/espn/fightcenter_*.json`, `pipeline/tests/fixtures/espn/scoreboard_calendar.json` |
-| model | `~/Projects/fight-auto-research` (`export/` + tests, on branch `feat/export`), `model/`, `pipeline/src/fightcard/score/`, `pipeline/tests/score/` |
-| site | `site/` |
+| scraper | `src/fightcard/ufcstats/`, `src/fightcard/store.py`, `tests/ufcstats/`, `tests/fixtures/ufcstats/` |
+| images | `src/fightcard/images/`, `tests/images/`, `tests/fixtures/espn/`, `tests/fixtures/wikipedia/` |
+| segments | `src/fightcard/segments/`, `tests/segments/`, `tests/fixtures/espn/fightcenter_*.json`, `tests/fixtures/espn/scoreboard_calendar.json` |
+| model | `~/Projects/fight-auto-research` (`export/` + tests, on branch `feat/export`), `model/`, `src/fightcard/score/`, `tests/score/` |
+| site | fight-card-website: `site/` |
 | ops | `Dockerfile`, `.dockerignore`, `.github/`, `scripts/`, `~/Projects/infra` (branch `add-ufc-site`, no push) |
 
 `store.py` (reading/writing data/ with the formatting rules above) is owned by scraper. Other stages may import it once it lands. Until then, read and write via `models.py` with the same formatting rules.

@@ -1,7 +1,7 @@
 # model/ — vendored finish-tier model
 
 Exported from `~/Projects/fight-auto-research` by `python -m export` (branch `feat/export`), then copied here by hand.
-`fightcard score` (`pipeline/src/fightcard/score/`) reads it. The only runtime dependencies are lightgbm, pandas and pyarrow, and it never needs the research repo.
+`fightcard score` (`src/fightcard/score/`) reads it. The only runtime dependencies are lightgbm, pandas and pyarrow, and it never needs the research repo.
 
 Current export: **as of 2026-10-14** (build data through the 2026-10-10 card), version `2026-10-14+5006318a`, research sha `d179cf2`.
 
@@ -13,7 +13,7 @@ Current export: **as of 2026-10-14** (build data through the 2026-10-10 card), v
 | `feature_spec.json` | Ordered model columns, categorical levels, and how to build each feature from the snapshot. |
 | `manifest.json` | `as_of`, `version`, `research_sha`, training rows, build provenance, lightgbm version. With a rating export it also has `"rating": {"format_version": 1, "params": {...}}`. |
 | `fighter_rating.parquet` | **Optional.** The fighter rating as of `as_of` (below). Without it, `score` leaves every fighter unrated and still scores tiers. Not in the current export yet. |
-| `examples.json` | 12 bouts with the export's own `p_finish` and tier. `pipeline/tests/score/test_score_parity.py` re-scores them, which keeps the scorer and the research code in lockstep. |
+| `examples.json` | 12 bouts with the export's own `p_finish` and tier. `tests/score/test_score_parity.py` re-scores them, which keeps the scorer and the research code in lockstep. |
 
 ## Tiers
 
@@ -66,13 +66,13 @@ over full history. One row per fighter with at least one bout in scope, as of `a
 The four `best_win_*` columns are newer than the rest. With an export that lacks them, `Fighter.best_win` is null
 (until a newer win on our cards sets it).
 
-`score` (`pipeline/src/fightcard/score/elo.py`) rolls it forward over the card fighters' `recent_fights` dated after
+`score` (`src/fightcard/score/elo.py`) rolls it forward over the card fighters' `recent_fights` dated after
 `as_of` with the same formula (an opponent not in the export starts at 1500 with n = 0; a newer win can replace the
 best win, named from `PastFight.opponent`), decays everyone to `--now`,
 anchors and ranks, and writes the Fighter rating fields (see `docs/CONTRACT.md`). If the newer bouts found don't
 match the record change since the export (record from `fighter_snapshot.parquet`), that fighter is unrated and left
 out of the ranking. Fighters off our cards who fought after `as_of` stay stale until the next export.
-The export's golden cases are vendored in `pipeline/tests/score/fixtures/rating_cases.json`;
+The export's golden cases are vendored in `tests/score/fixtures/rating_cases.json`;
 `test_rating_parity.py` replays them through the site's roll-forward and must match to 1e-9.
 
 ## feature_spec.json
@@ -114,10 +114,10 @@ the tests passed and the tier thresholds didn't move, and runs a refresh to re-s
    - snapshot rows don't reproduce the build's rows on 200 historical bouts
    - the tier finish rates aren't strictly increasing
 3. `cp /tmp/finish-model/* model/`
-4. Update the numbers in this README, run `uv run --project pipeline pytest pipeline/tests/score`, then commit `model/`.
+4. Update the numbers in this README, run `uv run pytest tests/score`, then commit `model/`.
 5. Nothing to update on the site: `score` writes the numbers the how-it-works page quotes into `index.model`
-   (`pipeline/src/fightcard/score/summary.py`, importance by theme from the booster's gain). A model with a new
+   (`src/fightcard/score/summary.py`, importance by theme from the booster's gain). A model with a new
    feature fails `score` and the pipeline tests until the feature is given a theme in `summary.GROUPS`; a new
-   theme also needs a label in `site/src/lib/finish-model.ts`.
+   theme also needs a label in fight-card-website's `site/src/lib/finish-model.ts`.
 
 The next refresh re-scores every unfrozen bout. Tiers already frozen (past events) never change.
