@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -249,7 +250,8 @@ def edit_examples(**changes):
 def assert_kept_out(root: Path, version: str = NEW, keeping: str = BAKED_VERSION) -> None:
     assert current(root) == keeping
     assert version not in kept(root)
-    assert sorted(p.name for p in root.iterdir()) == sorted(["current", *kept(root)])  # no staging left behind
+    left = sorted(p.name for p in root.iterdir() if not p.name.startswith(".held-"))
+    assert left == sorted(["current", *kept(root)])  # no staging left behind (a .held-<version> marker may be)
 
 
 def held(root: Path, bucket, capsys, reason: str, version: str = NEW) -> None:
@@ -333,6 +335,129 @@ def test_a_good_version_after_a_held_one_is_adopted(root, bucket):
     pull(root, url=bucket.url)
     assert current(root) == "2026-10-28+bbbbbbbb"
     assert kept(root) == sorted([BAKED_VERSION, "2026-10-28+bbbbbbbb"])
+
+
+
+# A version that was held isn't fetched again until something changes: a .held-<version> marker records the verdict.
+
+def marker(root: Path, version: str = NEW) -> dict:
+    return json.loads((root / f".held-{version}").read_text())
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_held_version_is_not_downloaded_again_but_is_logged_every_run(root, bucket, capsys):
+    bucket.publish(NEW, edit=edit_examples(p_finish=0.123456))
+    held(root, bucket, capsys, "example 3")
+    for _ in range(2):
+        bucket.requests.clear()
+        capsys.readouterr()
+        assert pull(root, url=bucket.url) == 0
+        lines = [ln for ln in capsys.readouterr().err.splitlines() if f"held {NEW}" in ln]
+        assert bucket.requests == ["/latest.json"]
+        assert len(lines) == 1 and "example 3" in lines[0] and f"keeping {BAKED_VERSION}" in lines[0], lines
+        assert_kept_out(root)
+
+
+@pytest.mark.usefixtures("seeded")
+def test_the_marker_records_the_digests_the_running_version_and_why(root, bucket, capsys):
+    doc = bucket.publish(NEW, corrupt="model.txt")
+    held(root, bucket, capsys, "model.txt: sha256")
+    m = marker(root)
+    assert (m["version"], m["files"], m["running"]) == (NEW, doc["files"], BAKED_VERSION)
+    assert "model.txt: sha256" in m["reason"]
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_version_published_again_with_other_digests_is_tried_again(root, bucket, capsys):
+    bucket.publish(NEW, corrupt="model.txt")
+    held(root, bucket, capsys, "sha256")
+    shutil.rmtree(bucket.root / NEW)
+    bucket.publish(NEW)  # research fixed the files: latest.json's digests differ
+    bucket.requests.clear()
+    pull(root, url=bucket.url)
+    assert any("model.txt" in r for r in bucket.requests)
+    assert current(root) == NEW and not (root / f".held-{NEW}").exists()
+
+
+def test_a_changed_running_version_makes_a_held_version_be_tried_again(root, bucket, capsys):
+    bucket.publish("2026-10-21+aaaaaaaa", as_of="2026-10-21")
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url)
+    bucket.publish("2026-10-28+bbbbbbbb", as_of="2026-10-28", corrupt="model.txt")
+    held(root, bucket, capsys, "sha256", "2026-10-28+bbbbbbbb")
+    assert marker(root, "2026-10-28+bbbbbbbb")["running"] == "2026-10-21+aaaaaaaa"
+    pull(root, "--pin", BAKED_VERSION, url=bucket.url)  # the running model changes ...
+    bucket.requests.clear()
+    pull(root, url=bucket.url)  # ... and the pin is lifted
+    assert any("model.txt" in r for r in bucket.requests)
+    assert marker(root, "2026-10-28+bbbbbbbb")["running"] == BAKED_VERSION
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_pull_that_dies_in_the_gate_leaves_a_marker_that_stops_the_loop(root, bucket, capsys, monkeypatch):
+    class Segfault(BaseException):  # lightgbm can end the process; nothing in-process catches that
+        pass
+
+    def die(bundle, examples):
+        raise Segfault
+
+    bucket.publish(NEW)
+    monkeypatch.setattr(pull_module, "parity_failures", die)
+    with pytest.raises(Segfault):
+        pull(root, url=bucket.url)
+    assert "gate" in marker(root)["reason"]
+    monkeypatch.undo()
+    capsys.readouterr()
+    bucket.requests.clear()
+    assert pull(root, url=bucket.url) == 0
+    err = capsys.readouterr().err
+    assert bucket.requests == ["/latest.json"] and f"held {NEW}" in err and "gate" in err, err
+    assert current(root) == BAKED_VERSION and NEW not in kept(root)
+    assert not list(root.glob(".tmp-*"))
+
+
+@pytest.mark.usefixtures("seeded")
+def test_an_exception_in_the_gate_is_a_hold_with_a_marker(root, bucket, capsys, monkeypatch):
+    def broken(bundle, examples):
+        raise RuntimeError("boom")
+
+    bucket.publish(NEW)
+    monkeypatch.setattr(pull_module, "parity_failures", broken)
+    held(root, bucket, capsys, "boom")
+    assert "boom" in marker(root)["reason"]
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_version_adopted_after_a_hold_leaves_no_marker_and_a_newer_latest_clears_the_old_one(root, bucket, capsys):
+    bucket.publish("2026-10-21+aaaaaaaa", corrupt="model.txt")
+    held(root, bucket, capsys, "sha256", "2026-10-21+aaaaaaaa")
+    bucket.publish("2026-10-28+bbbbbbbb", as_of="2026-10-28")
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url)
+    assert current(root) == "2026-10-28+bbbbbbbb"
+    assert not list(root.glob(".held-*"))
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_failed_download_is_not_a_verdict_and_leaves_no_marker(root, bucket, capsys):
+    bucket.publish(NEW)
+    (bucket.root / NEW / "model.txt").rename(bucket.root / "model.txt.away")
+    capsys.readouterr()
+    pull(root, url=bucket.url)
+    assert "failed, keeping" in capsys.readouterr().err and not list(root.glob(".held-*"))
+    (bucket.root / "model.txt.away").rename(bucket.root / NEW / "model.txt")
+    pull(root, url=bucket.url)
+    assert current(root) == NEW
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_marker_that_cannot_be_read_is_ignored(root, bucket, capsys):
+    bucket.publish(NEW, corrupt="model.txt")
+    held(root, bucket, capsys, "sha256")
+    (root / f".held-{NEW}").write_text("{not json")
+    bucket.requests.clear()
+    pull(root, url=bucket.url)
+    assert any("model.txt" in r for r in bucket.requests)
 
 
 # A latest.json that isn't a plain, known bundle is held before any file is fetched.
