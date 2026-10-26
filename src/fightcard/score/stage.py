@@ -15,13 +15,17 @@
   `--now` and decayed to it (`fightcard.history.rating` / `.display`). The
   default store is `<--data>/../history/history.sqlite` (beside data/, not the
   cwd). A missing, empty, non-SQLite or never-ingested store is an error: exit
-  1 before writing anything, so the last good generation stays live.
+  1 before writing anything, so the last good generation stays live. So is a
+  stale store: a completed event in data/ dated up to `--now` with no bout with
+  a result in the store. Each run logs the store's newest completed event and
+  last page fetch against `--now`.
   `--no-history` scores tiers only and leaves the rating fields as they are.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from contextlib import closing
@@ -45,7 +49,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--now", default=None, help="ISO 8601 UTC time to act as (default: now)")
     ratings = parser.add_mutually_exclusive_group()
     ratings.add_argument("--history-db", type=Path, default=None,
-                         help="bout-history store (fightcard history ingest; default <--data>/../history/history.sqlite)")
+                         help="bout-history store (fightcard history ingest); "
+                              "default <--data>/../history/history.sqlite")
     ratings.add_argument("--no-history", action="store_true",
                          help="tiers only: leave every fighter's rating fields as they are")
 
@@ -109,8 +114,27 @@ class HistoryUnavailable(Exception):
     """The history store can't be read; the message is the one line `score` prints."""
 
 
-def _history_ratings(db: Path, as_of: str) -> pd.DataFrame:
-    """The full-history pass up to `as_of` (read-only: score never writes the store)."""
+def _store_line(conn: sqlite3.Connection, db: Path, now: datetime) -> str:
+    newest = conn.execute("SELECT MAX(date) FROM events WHERE status = 'completed'").fetchone()[0]
+    fetched = conn.execute("SELECT MAX(fetched_at) FROM pages").fetchone()[0]
+    return (f"history store {db}: newest completed event {newest or 'unknown'}, last page fetched "
+            f"{fetched or 'unknown'} (now {now.strftime('%Y-%m-%dT%H:%M:%SZ')})")
+
+
+def _missing_events(conn: sqlite3.Connection, events: list[Event], as_of: str) -> list[str]:
+    """Completed events dated up to `as_of` with no bout with a result in the store, sorted."""
+    want = sorted(ev.id for ev in events if ev.status == "completed" and ev.date <= as_of)
+    have = {eid for (eid,) in conn.execute(
+        "SELECT DISTINCT event_id FROM fights "
+        "WHERE outcome IS NOT NULL AND event_id IN (SELECT value FROM json_each(?))",
+        (json.dumps(want),))}
+    return [eid for eid in want if eid not in have]
+
+
+def _history_ratings(db: Path, now: datetime, events: list[Event]) -> pd.DataFrame:
+    """The full-history pass up to `now`'s date (read-only: score never writes the store), after checking the
+    store is usable and has every completed event in `events` up to then."""
+    as_of = now.date().isoformat()
     if not db.is_file():
         raise HistoryUnavailable(f"no history store at {db}; run `fightcard history ingest`, "
                                  f"or pass --no-history for tiers only")
@@ -121,6 +145,11 @@ def _history_ratings(db: Path, as_of: str) -> pd.DataFrame:
             tables = {name for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
             if not set(TABLES) <= tables or conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0:
                 raise unusable
+            print(f"score: {_store_line(conn, db, now)}", file=sys.stderr)
+            missing = _missing_events(conn, events, as_of)
+            if missing:
+                raise HistoryUnavailable(f"completed events with no bouts in the history store: {', '.join(missing)}; "
+                                         f"run `fightcard history ingest`")
             return history_ratings(conn, as_of)
         except sqlite3.DatabaseError as e:
             raise unusable from e
@@ -140,11 +169,12 @@ def run(args: argparse.Namespace) -> int:
     store = Store(args.data)
     now = _now(args.now)
     fighters = store.load_fighters()
+    events = list(store.load_events().values())
     rated = "ratings left as they are (--no-history)"
     if not args.no_history:
         db = args.history_db or args.data.resolve().parent / "history" / "history.sqlite"
         try:
-            history = _history_ratings(db, now.date().isoformat())
+            history = _history_ratings(db, now, events)
         except HistoryUnavailable as e:
             print(f"score: {e}", file=sys.stderr)
             return 1
@@ -152,7 +182,7 @@ def run(args: argparse.Namespace) -> int:
         fighters = {fid: f.model_copy(update=_rating_fields(rating[fid])) for fid, f in fighters.items()}
         store.save_fighters(fighters)
         rated = f"{sum(r['elo'] is not None for r in rating.values())} fighters with an Elo"
-    events, stale = score_events(list(store.load_events().values()), fighters, bundle, now)
+    events, stale = score_events(events, fighters, bundle, now)
     for ev in events:
         store.save_event(ev)
     stale_path = store.root / "stale_fighters.json"
