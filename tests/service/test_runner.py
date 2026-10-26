@@ -217,6 +217,23 @@ def test_fetch_comes_from_the_environment(env, fetch):
     assert Config.from_env(env).fetch is fetch
 
 
+@pytest.mark.parametrize("env,minute", [
+    ({}, 17),
+    ({"FIGHTCARD_HOST": "ufc-data.xlobax.com", "FIGHTCARD_FETCH_HOST": "ufc-data.xlobax.com"}, 17),
+    ({"FIGHTCARD_HOST": "ufc-data-staging.xlobax.com", "FIGHTCARD_FETCH_HOST": "ufc-data.xlobax.com"}, 47),
+    ({"FIGHTCARD_SCHEDULE_MINUTE": "5"}, 5),
+    ({"FIGHTCARD_SCHEDULE_MINUTE": "5", "FIGHTCARD_HOST": "a", "FIGHTCARD_FETCH_HOST": "b"}, 5),
+])
+def test_the_schedule_minute_comes_from_the_host(env, minute):
+    assert Config.from_env(env).schedule_minute == minute
+
+
+@pytest.mark.parametrize("value", ["60", "-1", "x"])
+def test_a_bad_schedule_minute_is_refused(value):
+    with pytest.raises(ValueError, match="FIGHTCARD_SCHEDULE_MINUTE"):
+        Config.from_env({"FIGHTCARD_SCHEDULE_MINUTE": value})
+
+
 def test_config_reads_paths_from_the_environment(tmp_path):
     cfg = Config.from_env({"FIGHTCARD_ROOT": str(tmp_path), "FIGHTCARD_MODEL_DIR": "/m",
                            "FIGHTCARD_GATE_SCRIPT": "/g.py"})

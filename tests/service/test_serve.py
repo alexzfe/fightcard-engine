@@ -87,9 +87,9 @@ class World:
                                stop=self.stop)
 
 
-def config(tmp_path: Path, published: bool = True) -> Config:
+def config(tmp_path: Path, published: bool = True, **overrides) -> Config:
     cfg = Config(root=tmp_path / "srv", fetch=False, fightcard="fightcard", model_dir=Path("model"),
-                 gate_script=REPO / "scripts" / "should_run.py", python=sys.executable)
+                 gate_script=REPO / "scripts" / "should_run.py", python=sys.executable, **overrides)
     if published:
         (cfg.root / "generations" / "x").mkdir(parents=True)
         (cfg.root / "current").symlink_to("generations/x")
@@ -110,6 +110,14 @@ def test_runs_at_each_slot_with_its_cron(tmp_path):
     assert world.serve(config(tmp_path)) == 0
     assert world.runs == [RUN + ["--event", "schedule", "--cron", "0 6 * * *"],
                           RUN + ["--event", "schedule", "--cron", "17 * * * *"]]
+
+
+def test_staging_runs_at_its_own_minute(tmp_path):
+    world = World("2026-10-26 05:50:00", steps=120)  # an hour
+    world.serve(config(tmp_path, schedule_minute=47))
+    assert world.runs == [RUN + ["--event", "schedule", "--cron", "0 6 * * *"],
+                          RUN + ["--event", "schedule", "--cron", "47 * * * *"]]
+    assert [t.strftime("%H:%M") for t in world.spawned_at[1:]] == ["06:30", "06:47"]
 
 
 def test_a_run_on_an_empty_root_starts_at_once(tmp_path):

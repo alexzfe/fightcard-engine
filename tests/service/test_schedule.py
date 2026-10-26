@@ -51,3 +51,25 @@ def test_one_day_has_24_hourly_slots_and_one_daily():
             break
         seen.append(cron)
     assert seen.count(HOURLY_CRON) == 24 and seen.count(DAILY_CRON) == 1
+
+
+# Finding 7: staging fires half an hour after prod, so the two envs never score at once on the 2 vCPUs.
+
+@pytest.mark.parametrize("now,when,cron", [
+    ("2026-10-26 05:20:00", "2026-10-26 05:47:00", "47 * * * *"),
+    ("2026-10-26 05:50:00", "2026-10-26 06:30:00", DAILY_CRON),  # the daily slot moves with the hourly one
+    ("2026-10-26 06:30:00", "2026-10-26 06:47:00", "47 * * * *"),
+    ("2026-10-26 23:50:00", "2026-10-27 00:47:00", "47 * * * *"),
+])
+def test_next_fire_at_another_minute(now, when, cron):
+    assert next_fire(at(now), minute=47) == (at(when), cron)
+
+
+def test_a_staggered_day_still_has_24_hourly_slots_and_one_daily():
+    now, seen = at("2026-10-26 00:00:00"), []
+    while True:
+        now, cron = next_fire(now, minute=47)
+        if now >= at("2026-10-27 00:00:00"):
+            break
+        seen.append(cron)
+    assert seen.count("47 * * * *") == 24 and seen.count(DAILY_CRON) == 1
