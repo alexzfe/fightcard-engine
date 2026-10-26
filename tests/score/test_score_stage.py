@@ -55,7 +55,8 @@ def data(tmp_path, veterans, real_snapshot) -> tuple[Path, Store]:
 
 
 def score(root: Path, model_dir: Path, now: str = NOW) -> int:
-    return main(["--data", str(root), "score", "--model-dir", str(model_dir), "--now", now])
+    """Tiers only (`--no-history`): the tier tests don't need a history store."""
+    return main(["--data", str(root), "score", "--model-dir", str(model_dir), "--no-history", "--now", now])
 
 
 def tiers(store: Store, eid: str) -> dict:
@@ -166,7 +167,7 @@ def test_default_model_dir_and_now(data, monkeypatch):
     """Without flags: model/ relative to the cwd, and the current UTC time."""
     root, store = data
     monkeypatch.chdir(Path(__file__).resolve().parents[2])
-    assert main(["--data", str(root), "score"]) == 0
+    assert main(["--data", str(root), "score", "--no-history"]) == 0
     assert tiers(store, "future")["ok"] in ("low", "medium", "high")
 
 
@@ -267,26 +268,89 @@ def test_decay_and_the_bouts_counted_follow_now(data, model_dir, veterans, tmp_p
     assert early.elo != late.elo
 
 
-def test_without_a_history_store_fighters_are_unrated_and_tiers_still_score(data, model_dir, tmp_path, capsys):
+def snapshot_files(root: Path) -> dict[str, str]:
+    return {str(p.relative_to(root)): p.read_text() for p in sorted(root.rglob("*.json"))}
+
+
+def unrelated(n: int = 6) -> list[dict]:
+    """Stand-ins for `veterans` in `history`: fighters who aren't in data/."""
+    return [{"fighter_id": f"x{i}", "name": f"X {i}"} for i in range(n)]
+
+
+def test_a_missing_history_store_fails_and_writes_nothing(data, model_dir, tmp_path, capsys):
+    """No store (wrong path, volume not restored) must not publish every fighter as unrated."""
     root, store = data
-    set_thresholds(model_dir, -1.0, 2.0)
+    before = snapshot_files(root)
     db = tmp_path / "nope" / "history.sqlite"
-    assert score_with(root, model_dir, db) == 0
-    for f in store.load_fighters().values():
-        assert (f.elo, f.elo_peak, f.p4p_rank, f.elo_provisional, f.elo_inactive) == (None, None, None, False, False)
-        assert f.best_win is None
-    assert tiers(store, "future") == {"ok": "medium", "rookie": None, "unknown": None}
+    assert score_with(root, model_dir, db) == 1
     err = capsys.readouterr().err
-    assert "0 fighters with an Elo" in err and "no history store" in err
+    assert f"no history store at {db}" in err and "--no-history" in err
+    assert snapshot_files(root) == before
     assert not db.exists()
 
 
-def test_the_model_exports_rating_file_is_not_read(data, model_dir, veterans, tmp_path):
+@pytest.mark.parametrize("content", [b"", b"not a database at all, just some bytes" * 50], ids=["empty", "garbage"])
+def test_an_unreadable_history_store_fails_with_one_line(data, model_dir, tmp_path, capsys, content):
     root, store = data
-    pd.DataFrame([{"fighter_id": v["fighter_id"], "rating": 2000.0, "peak": 2000.0, "n_bouts": 12, "n_ufc_bouts": 8,
-                   "last_bout_date": "2026-10-01", "gender": "M"} for v in veterans]
+    before = snapshot_files(root)
+    db = tmp_path / "history.sqlite"
+    db.write_bytes(content)
+    assert score_with(root, model_dir, db) == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert [line for line in err.splitlines() if str(db) in line] == [
+        f"score: history store {db} is unusable (not an ingested history store); run `fightcard history ingest`"]
+    assert snapshot_files(root) == before
+
+
+def test_a_never_ingested_history_store_fails(data, model_dir, tmp_path, capsys):
+    """Schema but no events: `connect` ran, `ingest` never did."""
+    root, store = data
+    db = tmp_path / "history.sqlite"
+    connect(db).close()
+    assert score_with(root, model_dir, db) == 1
+    assert "is unusable" in capsys.readouterr().err
+
+
+def test_no_history_scores_tiers_and_leaves_rating_fields_as_they_are(data, model_dir, veterans, tmp_path):
+    root, store = data
+    set_thresholds(model_dir, -1.0, 2.0)
+    v0 = veterans[0]["fighter_id"]
+    fighters = store.load_fighters()
+    fighters[v0] = fighters[v0].model_copy(update={"elo": 1612, "p4p_rank": 3, "elo_peak": 1650})
+    store.save_fighters(fighters)
+    before = store.fighters_path.read_text()
+    assert main(["--data", str(root), "score", "--model-dir", str(model_dir), "--no-history", "--now", NOW]) == 0
+    assert store.fighters_path.read_text() == before
+    assert tiers(store, "future") == {"ok": "medium", "rookie": None, "unknown": None}
+
+
+def test_no_history_and_history_db_are_exclusive(data, model_dir, tmp_path):
+    root, _ = data
+    with pytest.raises(SystemExit) as e:
+        main(["--data", str(root), "score", "--model-dir", str(model_dir), "--no-history",
+              "--history-db", str(tmp_path / "h.sqlite")])
+    assert e.value.code == 2
+
+
+def test_default_history_store_is_beside_the_data_dir_not_in_the_cwd(data, model_dir, veterans, tmp_path,
+                                                                     monkeypatch):
+    """Default `--history-db`: <--data>/../history/history.sqlite, whatever the cwd."""
+    root, store = data
+    assert history(root.parent, veterans) == root.parent / "history" / "history.sqlite"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert main(["--data", str(root), "score", "--model-dir", str(model_dir), "--now", NOW]) == 0
+    assert store.load_fighters()[veterans[0]["fighter_id"]].elo is not None
+
+
+def test_the_model_exports_rating_file_is_not_read(data, model_dir, tmp_path):
+    root, store = data
+    pd.DataFrame([{"fighter_id": fid, "rating": 2000.0, "peak": 2000.0, "n_bouts": 12, "n_ufc_bouts": 8,
+                   "last_bout_date": "2026-10-01", "gender": "M"} for fid in store.load_fighters()]
                  ).to_parquet(model_dir / "fighter_rating.parquet")
-    score_with(root, model_dir, tmp_path / "nope.sqlite")
+    assert score_with(root, model_dir, history(tmp_path, unrelated())) == 0
     assert all(f.elo is None for f in store.load_fighters().values())
 
 
