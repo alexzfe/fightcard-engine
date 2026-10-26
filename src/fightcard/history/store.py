@@ -8,7 +8,7 @@ Tables (keyed upserts, so re-ingesting the same pages changes nothing):
 - `pages`: the raw HTML each row came from (url, path under the HTML dir, sha256, fetched_at).
 - `backfill_skips`: `fightcard scrape`'s bookkeeping, not history: events its backfill skipped (page gone, or a
   bout without an outcome), when it last tried and why; retried after a while. Not in `TABLES` (not dumped, and
-  `score` doesn't need it).
+  `score` doesn't require it; it reads it, when there, to warn instead of fail on a skipped event).
 Round stats are deferred.
 
 The raw HTML stays the source of truth: a parser fix means re-ingesting, not re-crawling. `dump` writes each

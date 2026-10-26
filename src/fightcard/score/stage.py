@@ -17,8 +17,10 @@
   cwd). A missing, empty, non-SQLite or never-ingested store is an error: exit
   1 before writing anything, so the last good generation stays live. So is a
   stale store: a completed event in data/ dated up to `--now` the store doesn't
-  have in full (a completed row with no bouts, or with a bout with a result). Each run logs the store's newest completed event and
-  last page fetch against `--now`.
+  have in full (a completed row with no bouts, or with a bout with a result).
+  An event scrape's backfill skipped (in the store's `backfill_skips`, when the
+  table is there) is a WARNING naming it and the reason instead. Each run logs
+  the store's newest completed event and last page fetch against `--now`.
   `--no-history` scores tiers only and leaves the rating fields as they are.
 """
 
@@ -127,6 +129,14 @@ def _missing_events(conn: sqlite3.Connection, events: list[Event], as_of: str) -
     return [eid for eid in want if eid not in have]
 
 
+def _backfill_skips(conn: sqlite3.Connection, tables: set[str]) -> dict[str, str]:
+    """scrape's `backfill_skips`: event id -> why its backfill gave up on it. Empty when the table isn't there (a
+    store made by `history ingest` before it existed)."""
+    if "backfill_skips" not in tables:
+        return {}
+    return dict(conn.execute("SELECT event_id, reason FROM backfill_skips"))
+
+
 def _history_ratings(db: Path, now: datetime, events: list[Event]) -> pd.DataFrame:
     """The full-history pass up to `now`'s date (read-only: score never writes the store), after checking the
     store is usable and has every completed event in `events` up to then."""
@@ -142,7 +152,14 @@ def _history_ratings(db: Path, now: datetime, events: list[Event]) -> pd.DataFra
             if not set(TABLES) <= tables or conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0:
                 raise unusable
             print(f"score: {_store_line(conn, db, now)}", file=sys.stderr)
-            missing = _missing_events(conn, events, as_of)
+            skips = _backfill_skips(conn, tables)
+            missing = []
+            for eid in _missing_events(conn, events, as_of):
+                if eid in skips:
+                    print(f"score: WARNING: completed event {eid} is not in the history store (scrape's backfill "
+                          f"skipped it: {skips[eid]}); the ratings leave it out", file=sys.stderr)
+                else:
+                    missing.append(eid)
             if missing:
                 raise HistoryUnavailable(f"completed events with no bouts in the history store: {', '.join(missing)}; "
                                          f"run `fightcard history ingest`")
