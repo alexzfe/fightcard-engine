@@ -1,8 +1,8 @@
-"""`fightcard-service health`, the image's HEALTHCHECK: healthy while nginx answers, what it serves is fresh, and no
-run is stuck.
+"""`fightcard-service health`, the image's HEALTHCHECK: healthy while nginx answers and no run is stuck.
 
-nginx's own /healthz (infra's public smoke test) stays a plain 200, and so does this check on a volume with nothing
-published yet: the first deploy comes before seeding and must not be rolled back."""
+It ignores the data's age: deploy-app rolls back an unhealthy container, so a check that failed while ufcstats was
+down would block every deploy until an external site recovered. `health --staleness` reports the age instead, for
+alerting. nginx's own /healthz (infra's public smoke test) stays a plain 200."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from fightcard.service.runner import Config
 
 URL = "http://127.0.0.1:8080/healthz"
-STALE_AFTER = timedelta(hours=26)  # the daily 06:00 run always scrapes; 2 h of slack for it to finish
+STALE_AFTER = timedelta(hours=26)  # --staleness: the daily 06:00 run always scrapes; 2 h of slack for it to finish
 BUSY_LIMIT = timedelta(hours=2)  # above serve's RUN_TIMEOUT, so only a run that cap failed to stop trips it
 
 
@@ -28,6 +28,29 @@ def _alive(pid: int) -> bool:
     return True
 
 
+def _hours(age: timedelta) -> str:
+    minutes = int(age.total_seconds()) // 60
+    return f"{minutes // 60} h {minutes % 60:02d} min"
+
+
+def _generated_at(cfg: Config) -> tuple[str, datetime]:
+    text = json.loads((cfg.root / "current" / "index.json").read_text())["generated_at"]
+    return text, datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+
+
+def staleness(cfg: Config, *, now: datetime) -> list[str]:
+    """What's wrong with the age of what's served, if anything. A volume with nothing published passes."""
+    if not (cfg.root / "current").exists():
+        return []
+    try:
+        text, generated = _generated_at(cfg)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return [f"current/index.json: no readable generated_at: {e}"]
+    if now - generated > STALE_AFTER:
+        return [f"stale: generated_at {text}, age {_hours(now - generated)}, over {_hours(STALE_AFTER)}"]
+    return []
+
+
 def check(cfg: Config, *, now: datetime, url: str | None = None) -> list[str]:
     """What's wrong, if anything."""
     url = url or URL
@@ -38,18 +61,6 @@ def check(cfg: Config, *, now: datetime, url: str | None = None) -> list[str]:
         return [f"nginx: {url}: {e}"]
 
     problems = []
-    if (cfg.root / "current").exists():
-        index = cfg.root / "current" / "index.json"
-        try:
-            text = json.loads(index.read_text())["generated_at"]
-            generated = datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
-        except (OSError, ValueError, KeyError, TypeError) as e:
-            problems.append(f"current/index.json: no readable generated_at: {e}")
-        else:
-            # Only where this env scrapes: staging rescores the same data forever.
-            if cfg.fetch and now - generated > STALE_AFTER:
-                problems.append(f"stale: generated_at {text} is over {STALE_AFTER} old")
-
     try:
         marker = json.loads(cfg.run_marker.read_text())
         pid, started = int(marker["pid"]), datetime.fromisoformat(marker["started"])
@@ -61,7 +72,12 @@ def check(cfg: Config, *, now: datetime, url: str | None = None) -> list[str]:
     return problems
 
 
-def main(cfg: Config) -> int:
-    problems = check(cfg, now=datetime.now(UTC))
+def main(cfg: Config, *, stale: bool = False) -> int:
+    now = datetime.now(UTC)
+    problems = staleness(cfg, now=now) if stale else check(cfg, now=now)
+    if stale and not problems and (cfg.root / "current").exists():
+        text, generated = _generated_at(cfg)
+        print(f"ok: generated_at {text}, age {_hours(now - generated)}")
+        return 0
     print("\n".join(problems) or "ok")
     return 1 if problems else 0

@@ -97,15 +97,21 @@ nginx maps only `/v1/<documented resource>` to `current/`, so nothing under `sta
 ## Health
 
 `fightcard-service health` (`src/fightcard/service/health.py`) is the image's `HEALTHCHECK`, every 10 s; deploy-app
-rolls a deploy back if it doesn't pass. It fails when:
+rolls a deploy back if it doesn't pass. It fails only when:
 
 - nginx doesn't answer `/healthz`;
-- `current` exists but its `index.json` has no readable `generated_at`, or, where this env scrapes (prod), the
-  `generated_at` is over **26 h** old (the daily run always scrapes; staging never does, so its age isn't checked);
 - a live run's `state/run.json` says it started over **2 h** ago (above `RUN_TIMEOUT`, so only a run the supervisor
   failed to stop).
 
-A volume with nothing published yet passes: the first deploy comes before seeding and must not be rolled back.
+It ignores the data's age. A container that went unhealthy because ufcstats had been down for a day would make
+deploy-app roll back every deploy, so no fix could ship until an external site recovered. A volume with nothing
+published yet passes too: the first deploy comes before seeding.
+
+`fightcard-service health --staleness` reports the age instead, for alerting (nothing runs it yet). It prints the
+`generated_at` and its age, and exits 1 when `current` exists and its `generated_at` is over **26 h** old (the daily
+run always scrapes, plus slack for it to finish) or unreadable. Only prod scrapes, so on staging it always fails a
+day after seeding; alert on prod's.
+
 nginx's own `/healthz`, which infra's public smoke test hits, stays a plain 200 whatever the data.
 
 ## Backups
