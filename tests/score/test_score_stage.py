@@ -147,7 +147,9 @@ def test_index_model_from_manifest(data, model_dir):
     root, store = data
     score(root, model_dir)
     m = json.loads((model_dir / "manifest.json").read_text())
-    assert store.load_index().model.model_dump() == {"as_of": m["as_of"], "version": m["version"]}
+    info = store.load_index().model
+    assert (info.as_of, info.version) == (m["as_of"], m["version"])
+    assert info.trees == 300 and len(info.importance) == 7  # the how-it-works summary (test_score_summary.py)
 
 
 def test_missing_model_dir_fails(data, tmp_path, capsys):
