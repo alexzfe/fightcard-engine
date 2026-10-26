@@ -116,7 +116,7 @@ def _history_ratings(db: Path, as_of: str) -> pd.DataFrame:
                                  f"or pass --no-history for tiers only")
     unusable = HistoryUnavailable(f"history store {db} is unusable (not an ingested history store); "
                                   f"run `fightcard history ingest`")
-    with closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as conn:
+    with closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
         try:
             tables = {name for (name,) in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
             if not set(TABLES) <= tables or conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 0:
