@@ -51,7 +51,10 @@ One implementation, in this repo, over the full bout history (since 2026-10-26, 
    as of 2026-10-14) exactly.
 3. **Display** (`src/fightcard/history/display.py`): decay to now, anchor, P4P rank, tags, best win on the
    display scale. `score --history-db <path>` runs 2 and 3 over the bouts up to `--now` and writes the `Fighter`
-   fields. Without a store, every fighter is unrated and tiers still score.
+   fields. The store defaults to `<--data>/../history/history.sqlite`. `score` exits 1 and writes nothing when the
+   store is missing, unusable (empty, not SQLite, never ingested) or behind data/ (a completed event up to `--now`
+   with no bout with a result in it), so the live ratings stay instead of going null. `--no-history` scores tiers
+   only and leaves the rating fields as they are.
 
 There's no roll-forward and no `null` for "too many unseen bouts": every bout in the store counts. The ratings
 are as fresh as the store, so the store has to be ingested before `score`. `model/fighter_rating.parquet` isn't
@@ -61,7 +64,12 @@ read any more. The finish model's own `elo` column in `fighter_snapshot.parquet`
 
 Exact semantics. `src/fightcard/history/rating.py` implements them. `tests/score/fixtures/rating_cases.json` holds the
 golden cases: it's the generator's own output (`uv run python -m fightcard.history.rating <path>`), byte for byte,
-and research's copy is identical.
+and research's copy is identical. The golden cases are a regression pin, not independent evidence: the same `rate`
+wrote them. The independent evidence is parity with research's export: all 4,146 rows with the full store
+(`-m seed`), and, in the default suite, `tests/fixtures/history/rating_parity.json`, which holds 50 fighters'
+export rows (CNC, Overturned, NC, draws, split/majority/DQ wins, non-UFC bouts, same-day bouts, 3-year layoffs,
+women, unknown gender, peak / no peak, no win, two long careers) and the 623 bouts they depend on. It's rebuilt
+byte for byte under `-m seed` (`uv run python tests/history/history_helpers.py` regenerates it).
 
 - **n** = all prior bouts in scope, **including** NC and draws. K for a bout = `275 / (n + 5)^0.4`, with n taken
   before the bout.
