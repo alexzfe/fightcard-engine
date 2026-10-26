@@ -115,6 +115,16 @@ def _switch(root: Path, version: str) -> None:
     os.replace(link, root / "current")
 
 
+def _stage_seed(root: Path, seed_dir: Path) -> Path:
+    staging = root / f"{_STAGING}seed"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir()
+    for name in (*BUNDLE_FILES, *OPTIONAL_FILES):
+        if (seed_dir / name).is_file():
+            shutil.copy2(seed_dir / name, staging / name)
+    return staging
+
+
 def _seed(root: Path, seed_dir: Path, log: Log) -> bool:
     """Ensure `current` is a usable kept version, seeding the baked model when it isn't. False: it still isn't."""
     version = _kept_current(root)
@@ -127,16 +137,42 @@ def _seed(root: Path, seed_dir: Path, log: Log) -> bool:
     except Exception as e:  # noqa: BLE001
         log(f"can't seed current from {seed_dir}: {e}")
         return False
-    staging = root / f"{_STAGING}seed"
-    shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir()
-    for name in (*BUNDLE_FILES, *OPTIONAL_FILES):
-        if (seed_dir / name).is_file():
-            shutil.copy2(seed_dir / name, staging / name)
+    staging = _stage_seed(root, seed_dir)
     _install(root, baked, staging)
     _switch(root, baked)
     log(f"seeded current with the baked model {baked} from {seed_dir}")
     return True
+
+
+def _newer_baked(root: Path, seed_dir: Path, was: str, switch: bool, log: Log) -> None:
+    """An image with a newer baked model than `current` (an upgrade; the cut points may be new) makes it the kept
+    version, through the pull's gates except the cut-point check; `switch` False (a pin) only keeps it."""
+    try:
+        manifest = json.loads((seed_dir / "manifest.json").read_text())
+        baked, as_of = manifest["version"], _as_of(manifest.get("as_of"))
+    except (OSError, ValueError, KeyError, TypeError):
+        return  # _seed already said so, when there was nothing else to run
+    if not _is_version(baked) or baked == was:
+        return
+    running = _running_as_of(root, was)
+    if as_of is None or (running is not None and as_of <= running):
+        log(f"baked model {baked} (as_of {as_of}) is not newer than current {was} (as_of {running}); keeping current")
+        return
+    try:
+        if baked not in _versions(root) or not _usable(root, baked):
+            staging = _stage_seed(root, seed_dir)
+            try:
+                _gate(root, baked, staging, was, cut_points=False)
+                _install(root, baked, staging)
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
+        if switch:
+            _switch(root, baked)
+            log(f"adopted the baked model {baked} (was {was}): the image's is newer")
+        else:
+            log(f"kept the baked model {baked}: the image's is newer than {was}, and a pin is set")
+    except Held as e:
+        log(f"held baked {e.label}: {e}; keeping {was}")
 
 
 def _versions(root: Path) -> list[str]:
@@ -260,10 +296,10 @@ def _download(base: str, latest: Latest, staging: Path) -> None:
             raise Held(latest.version, f"{name}: sha256 {digest.hexdigest()[:12]}… is not the published {want[:12]}…")
 
 
-def _gate(root: Path, latest: Latest, staging: Path, was: str) -> None:
-    """The candidate in `staging` (every checksum already matched) must be the version it says, load, keep the
-    running model's tier cut points, and re-score its own examples."""
-    label = latest.version
+def _gate(root: Path, label: str, staging: Path, was: str, *, cut_points: bool = True) -> None:
+    """The candidate `label` in `staging` (every checksum already matched) must be the version it says, load, keep
+    the running model's tier cut points (the image's own baked model is exempt: it defines them), and re-score its
+    own examples."""
     try:
         manifest = json.loads((staging / "manifest.json").read_text())
         listed = manifest["version"]
@@ -276,10 +312,11 @@ def _gate(root: Path, latest: Latest, staging: Path, was: str) -> None:
         bundle = load_bundle(staging)
     except Exception as e:  # noqa: BLE001 - lightgbm, pyarrow and json each raise their own
         raise Held(label, f"load_bundle failed: {type(e).__name__}: {e}") from e
-    running = load_bundle(root / was).thresholds
-    for cut in CUT_POINTS:
-        if bundle.thresholds.get(cut) != running[cut]:
-            raise Held(label, f"{cut} moved from {running[cut]!r} to {bundle.thresholds.get(cut)!r}")
+    if cut_points:
+        running = load_bundle(root / was).thresholds
+        for cut in CUT_POINTS:
+            if bundle.thresholds.get(cut) != running[cut]:
+                raise Held(label, f"{cut} moved from {running[cut]!r} to {bundle.thresholds.get(cut)!r}")
     try:
         examples = json.loads((staging / EXAMPLES).read_text())
     except ValueError as e:
@@ -298,7 +335,7 @@ def _adopt(root: Path, base: str, latest: Latest, was: str, log: Log) -> None:
         _download(base, latest, staging)  # a checksum mismatch is no verdict (the transfer may be what broke): no note
         _note(root, latest, was, "the pull ended inside the gate (a crash?)")  # stays if the process doesn't come back
         try:
-            _gate(root, latest, staging, was)
+            _gate(root, latest.version, staging, was)
         except Held as e:
             _note(root, latest, was, str(e))
             raise
@@ -340,6 +377,8 @@ def pull(root: Path, *, url: str | None, pin: str | None, seed_dir: Path, keep: 
         leftover.unlink(missing_ok=True)
     if not _seed(root, seed_dir, log):
         return
+    was = _kept_current(root)
+    _newer_baked(root, seed_dir, was, switch=not pin, log=log)
     was = _kept_current(root)
     if pin:
         _pin(root, pin, was, log)
