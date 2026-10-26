@@ -129,3 +129,42 @@ Decisions:
 - actionlint 1.7.12 clean, run as `mise exec shellcheck@0.11.0 -- uvx --from actionlint-py==1.7.12.25 actionlint`,
   because the local shellcheck shim has no version.
 - infra: `terraform fmt -check` OK, `terraform validate` OK, `ansible-lint site.yml` 0 failures.
+
+## Review fixes round 2
+
+Source: the orchestrator's decisions on the round 1 report ("Decisions that may want the owner's opinion"), plus
+one doc request after PR #3 merged. Commit SHAs are after the rebase onto `origin/main` (`aaaefa7`); before the
+rebase, #1's RED/GREEN were `c1f9107`/`3dffeeb`.
+
+| # | Change | RED | GREEN | RED evidence | GREEN evidence |
+|---|---|---|---|---|---|
+| 1 | The HEALTHCHECK fails only on nginx not answering `/healthz` or a live run busy > 2 h. Stale or unreadable data no longer fails it, because deploy-app would roll back every deploy while ufcstats is down. `health --staleness` prints `generated_at` and its age, and exits 1 when `current` exists and is > 26 h old or unreadable (not in the HEALTHCHECK) | `9b850f9` | `82ee48e` | `pytest tests/service/test_health.py tests/test_docs.py`: 9 failed (no `health.staleness`, `--staleness` rejected with exit 2, stale/unreadable data → problems), 78 passed; `-m docker -k stale`: 1 failed | 640 passed; `-m docker` 54/54; actionlint 0 |
+| 2 | SERVICE.md's seeding step: seed the store fully with `fightcard history ingest` before the first run, because scrape backfills at most 20 (`BACKFILL_PER_RUN`) old events a run and score exits 1 on each missing one (`backfill_skips` aside) until it's in | `9559185` | `fc93f64` | `pytest tests/test_docs.py`: 1 failed (`before the first run` missing), 72 passed | 696 passed |
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| S1 | Stale (30 days old) or unreadable data leaves `health` passing, with fetch on or off | `test_health.py::test_stale_or_unreadable_data_does_not_fail_the_healthcheck[2]` | unit | PASS |
+| S2 | `staleness`: 25 h 59 min passes; 26 h 01 min fails and states `age 26 h 01 min`; unseeded passes; unreadable index fails | `test_staleness_*` (4) | unit | PASS |
+| S3 | CLI `health`: 0 when stale, 1 when a run is busy > 2 h, 1 when nginx is down | `test_cli_health_exits_0_or_1` | unit | PASS |
+| S4 | CLI `health --staleness`: 0 unseeded or fresh (prints the age), 1 on 2020 data, without asking nginx | `test_cli_health_staleness_exits_1_on_stale_data_and_prints_the_age` | unit | PASS |
+| S5 | In the image, stale data with `FIGHTCARD_FETCH=on` keeps `health` at 0; `health --staleness` exits 1 | `test_image.py::test_stale_data_keeps_the_healthcheck_healthy_and_staleness_reports_it` | e2e (docker) | PASS |
+| S6 | SERVICE.md mentions `--staleness`; its seeding section says to seed before the first run and states the backfill cap and `backfill_skips` | `test_docs.py` | static | PASS |
+
+Infra (decision 2, not TDD: config only). `add-ufc-data` `fed27d4` removes ufc-data's `backup:` line, lists Backups
+as Settle again, and marks ufc-data's timer and restore notes as applying once the line lands. The new branch
+`ufc-data-backup` (worktree `~/Projects/infra-ufc-data-backup`, one commit `a9440f6` on top of `fed27d4`) puts it
+back. Its `sites.yml` and `README.md` are byte-identical to `1120daf`. Merge it once the engine with `fightcard
+history backup` is on prod. Both branches pass `terraform fmt -check`, `terraform validate` and `ansible-lint` (0
+failures).
+
+Rebase (decision 3). `origin/main` moved to `aaaefa7` (PR #3) during this round, so `feat/service` was rebased onto
+it. There was one conflict, in README.md's quick-start block: kept main's `history ingest` seed and `scrape` keeps
+the store current lines, plus this branch's `-m docker` comment. The pre-rebase head is kept as
+`backup/feat-service-pre-rebase-r2`.
+
+### Verification (after the rebase)
+
+- `uv run pytest -q`: **696 passed, 1 skipped** (the actionlint test without `ACTIONLINT` set), 61 deselected.
+- `uv run pytest -q -m docker`: **54 passed**. `uv run pytest -q -m seed`: **6 passed**.
+- actionlint 1.7.12: exit 0 (`mise exec shellcheck@0.11.0 -- uvx --from actionlint-py==1.7.12.25 actionlint`).
+- Coverage `pytest tests/service --cov=fightcard.service`: 95% total, health 97%.
