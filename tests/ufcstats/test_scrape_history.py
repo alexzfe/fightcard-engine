@@ -590,10 +590,10 @@ def test_a_skipped_backfill_event_is_retried_only_after_seven_days(tmp_path, db,
     assert db.execute("SELECT tried_at FROM backfill_skips WHERE event_id = ?", (OLD_ID,)).fetchone() == (
         stage.iso(NOW),)
     c.urls.clear()
-    assert run(tmp_path, db, c, now=NOW + timedelta(days=6, hours=23)) == 0
+    assert run(tmp_path, db, c, now=NOW + timedelta(days=6, hours=23), recent=0) == 0
     assert OLD_URL not in c.urls
     c.pages[OLD_URL] = read_fixture("event_detail_completed.html")
-    assert run(tmp_path, db, c, now=NOW + timedelta(days=7)) == 0
+    assert run(tmp_path, db, c, now=NOW + timedelta(days=7), recent=0) == 0
     assert OLD_URL in c.urls
     assert db.execute("SELECT COUNT(*) FROM backfill_skips").fetchone() == (0,)  # in the store now
     assert db.execute("SELECT status FROM events WHERE event_id = ?", (OLD_ID,)).fetchone() == ("completed",)

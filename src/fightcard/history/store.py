@@ -6,6 +6,9 @@ Tables (keyed upserts, so re-ingesting the same pages changes nothing):
 - `fights`: one row per bout in card order. `outcome` is "win" / "draw" / "nc", null until there's a result.
 - `fighters`: name from the cards, bio and record from the fighter page when it was ingested.
 - `pages`: the raw HTML each row came from (url, path under the HTML dir, sha256, fetched_at).
+- `backfill_skips`: `fightcard scrape`'s bookkeeping, not history: events its backfill skipped (page gone, or a
+  bout without an outcome), when it last tried and why; retried after a while. Not in `TABLES` (not dumped, and
+  `score` doesn't need it).
 Round stats are deferred.
 
 The raw HTML stays the source of truth: a parser fix means re-ingesting, not re-crawling. `dump` writes each
@@ -70,6 +73,11 @@ CREATE TABLE IF NOT EXISTS pages (
     path TEXT NOT NULL,
     sha256 TEXT NOT NULL,
     fetched_at TEXT
+);
+CREATE TABLE IF NOT EXISTS backfill_skips (
+    event_id TEXT PRIMARY KEY,
+    tried_at TEXT NOT NULL,
+    reason TEXT NOT NULL
 );
 """
 
@@ -173,6 +181,17 @@ def rating_bouts(conn: sqlite3.Connection, as_of: str | None = None) -> list[dic
         out.append({"date": day, "fight_id": fight_id, "fighter_a": a, "fighter_b": b, "result": result,
                     "method": method, "ufc": bool(is_ufc), "weight_class": weight_class})
     return out
+
+
+def complete_events(conn: sqlite3.Connection, event_ids: list[str]) -> set[str]:
+    """Those of `event_ids` the store has in full: a completed row with no bouts (all cancelled) or with a bout
+    with an outcome. A completed row whose bouts have no outcome yet is not complete: its results aren't in."""
+    return {eid for (eid,) in conn.execute(
+        "SELECT e.event_id FROM events e WHERE e.status = 'completed' "
+        "AND e.event_id IN (SELECT value FROM json_each(?)) "
+        "AND (NOT EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.event_id) "
+        "OR EXISTS (SELECT 1 FROM fights f WHERE f.event_id = e.event_id AND f.outcome IS NOT NULL))",
+        (json.dumps(list(event_ids)),))}
 
 
 def names(conn: sqlite3.Connection) -> dict[str, str]:

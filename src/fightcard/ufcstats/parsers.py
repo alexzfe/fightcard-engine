@@ -37,6 +37,7 @@ class EventStub:
     date: str | None
     location: str | None
     url: str
+    next: bool = False  # the completed listing's next-upcoming row (next.png), not a completed event
 
 
 @dataclass(frozen=True)
@@ -105,8 +106,8 @@ def parse_reach(text: str) -> float | None:
 def parse_event_list(html: str) -> list[EventStub]:
     """Rows of /statistics/events/upcoming or /completed, in page order.
 
-    The completed listing's first row can be the next upcoming event (next.png);
-    callers filter by date.
+    The completed listing's first row can be the next upcoming event (next.png,
+    `next`); callers filter by date or by `next`.
     """
     soup = BeautifulSoup(html, "lxml")
     table = soup.find("table", class_="b-statistics__table-events")
@@ -128,6 +129,7 @@ def parse_event_list(html: str) -> list[EventStub]:
                 date=parse_date(_text(date_span)) if date_span else None,
                 location=(_text(cols[1]) or None) if len(cols) > 1 else None,
                 url=link["href"].strip(),
+                next=any("next.png" in img.get("src", "") for img in row.find_all("img")),
             )
         )
     return events

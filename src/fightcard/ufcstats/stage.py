@@ -18,6 +18,7 @@ saying so; the store being ahead of data/ is harmless, and the next run rewrites
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sqlite3
 import sys
@@ -27,6 +28,7 @@ from pathlib import Path
 from fightcard.history.ingest import (
     LISTING_URL,
     MissingOutcome,
+    completed_ids,
     listed_ids,
     page_path,
     record_page,
@@ -34,7 +36,7 @@ from fightcard.history.ingest import (
     upsert_fighter_page,
     without_outcome,
 )
-from fightcard.history.store import connect
+from fightcard.history.store import complete_events, connect
 from fightcard.models import Event, Fighter, Index
 from fightcard.store import Store
 from fightcard.ufcstats.client import Client, Halt, HttpError
@@ -53,6 +55,7 @@ UPCOMING_URL = f"{BASE_URL}/statistics/events/upcoming"
 COMPLETED_URL = LISTING_URL  # ?page=all: the whole listing, as `history ingest` reads it
 FIGHTER_MAX_AGE = timedelta(days=30)
 BACKFILL_PER_RUN = 20  # completed events refetched per run for the history store (~1 request each)
+BACKFILL_RETRY = timedelta(days=7)  # a skipped backfill event is tried again after this
 BUSY_TIMEOUT_MS = 30_000  # how long to wait for another writer to release the history store
 
 
@@ -167,11 +170,13 @@ class _Run:
         self.refresh: set[str] = set()  # fighters whose record just changed
         self.upcoming_ids: list[str] = []
         self.backfilled: set[str] = set()  # completed events refetched only for the history store
+        self.skipped: dict[str, str] = {}  # backfill events skipped this run -> why (`backfill_skips`)
         # for the history store: pages as fetched (url -> html) and as parsed
         self.pages: dict[str, str] = {}
         self.parsed: dict[str, ParsedEvent] = {}
         self.fighter_pages: dict[str, Fighter] = {}
         self.listed: set[str] = set()
+        self.completed: set[str] = set()  # completed per the listing (`completed_ids`): settles empty cards
 
     def _get(self, url: str) -> str:
         html = self.client.get(url)
@@ -220,7 +225,7 @@ class _Run:
         targets = {e.id: event_url(e.id) for e in stale}
         if self.recent > 0 or self.history is not None:
             listing = self._get(COMPLETED_URL)
-            self.listed = listed_ids(listing)
+            self.listed, self.completed = listed_ids(listing), completed_ids(listing)
             past = [s for s in parse_event_list(listing) if s.date and s.date < self.today]
             for stub in past[: self.recent]:
                 targets.setdefault(stub.id, stub.url)
@@ -230,14 +235,19 @@ class _Run:
             self.backfill()
 
     def backfill(self) -> None:
-        """Completed events in data/ the store lacks, up to BACKFILL_PER_RUN, oldest first. They're not on this
-        run's cards, so one that 404s or has a bout without an outcome is skipped with a warning (left out of the
-        store and data/) instead of failing every run. Their fighters are fetched only when fighters.json lacks
-        them."""
-        rated = {eid for (eid,) in self.history.execute(
-            "SELECT DISTINCT event_id FROM fights WHERE outcome IS NOT NULL")}
-        todo = [e.id for e in sorted(self.existing.values(), key=lambda e: e.date)
-                if e.status == "completed" and e.id not in rated and e.id not in self.scraped]
+        """Completed events in data/ the store lacks (`complete_events`), up to BACKFILL_PER_RUN, oldest first.
+        They're not on this run's cards, so one that 404s or has a bout without an outcome is skipped with a
+        warning (left out of the store and data/) instead of failing every run, and tried again only after
+        BACKFILL_RETRY (`backfill_skips`), so it doesn't take a slot every run. Their fighters are fetched only
+        when fighters.json lacks them."""
+        candidates = [e.id for e in sorted(self.existing.values(), key=lambda e: e.date)
+                      if e.status == "completed" and e.id not in self.scraped]
+        have = complete_events(self.history, candidates)
+        waiting = {eid for (eid,) in self.history.execute(
+            "SELECT event_id FROM backfill_skips WHERE tried_at > ?", (iso(self.now - BACKFILL_RETRY),))}
+        todo = [eid for eid in candidates if eid not in have and eid not in waiting]
+        if waiting & set(candidates):
+            log.info("backfill: %d skipped events wait to be retried", len(waiting & set(candidates)))
         if len(todo) > BACKFILL_PER_RUN:
             log.info("backfill: %d of %d events missing from the history store this run, %d in later runs",
                      BACKFILL_PER_RUN, len(todo), len(todo) - BACKFILL_PER_RUN)
@@ -248,18 +258,24 @@ class _Run:
             except HttpError as exc:
                 if exc.status != 404:
                     raise
-                log.warning("backfill: skipping event %s: %s", event_id, exc)
+                self._skip(event_id, str(exc))
                 continue
             no_outcome = without_outcome(self.parsed[event_id])
             if no_outcome:
-                log.warning("backfill: skipping event %s: %s", event_id, MissingOutcome(no_outcome))
+                self._skip(event_id, str(MissingOutcome(no_outcome)))
                 self._forget(url, event_id)
                 self.scraped.pop(event_id)
                 continue
             self.backfilled.add(event_id)
 
+    def _skip(self, event_id: str, why: str) -> None:
+        log.warning("backfill: skipping event %s (retried after %d days): %s", event_id, BACKFILL_RETRY.days, why)
+        self.skipped[event_id] = why
+
     def _result(self, url: str, event_id: str) -> Event:
         event = self._detail(url, event_id)
+        if event_id in self.completed and not event.fights:  # all cancelled: the listing says it took place
+            event = event.model_copy(update={"status": "completed"})
         prev = self.existing.get(event_id)
         if event.status == "completed" and (prev is None or prev.status != "completed"):
             self.refresh |= {fid for f in event.fights for fid in (f.red, f.blue)}
@@ -318,9 +334,15 @@ class _Run:
         for url, html in self.pages.items():  # pages skipped for the store were taken out by `_forget`
             record_page(self.history, url, page_path(url), html.encode("utf-8"), stamp)
         for event_id in sorted(self.parsed):
-            upsert_card(self.history, self.parsed[event_id], self.listed)
+            upsert_card(self.history, self.parsed[event_id], self.listed, self.completed)
         for fid in sorted(self.fighter_pages):
             upsert_fighter_page(self.history, self.fighter_pages[fid], stamp)
+        self.history.execute("DELETE FROM backfill_skips WHERE event_id IN (SELECT value FROM json_each(?))",
+                             (json.dumps(sorted(self.backfilled)),))
+        self.history.executemany(
+            "INSERT INTO backfill_skips (event_id, tried_at, reason) VALUES (?, ?, ?) "
+            "ON CONFLICT (event_id) DO UPDATE SET tried_at = excluded.tried_at, reason = excluded.reason",
+            [(eid, stamp, why) for eid, why in sorted(self.skipped.items())])
 
     def _write_data(self) -> dict[str, int]:
         merged = {eid: merge_event(self.existing.get(eid), e) for eid, e in self.scraped.items()}
