@@ -259,15 +259,49 @@ def test_cli_without_a_store_fails_before_fetching_or_writing(tmp_path, fake_sit
 
 
 def test_cli_no_history_scrapes_without_a_store(tmp_path, fake_site):
-    assert cli(tmp_path, "--history-db", str(tmp_path / "nope.sqlite"), "--no-history") == 0
+    assert cli(tmp_path, "--no-history") == 0
     assert (tmp_path / "data" / "index.json").exists()
-    assert not (tmp_path / "nope.sqlite").exists()
+    assert not (tmp_path / "history").exists()
 
 
-def test_cli_history_db_defaults_to_score_s_default():
+def test_cli_no_history_and_history_db_are_exclusive(tmp_path, fake_site):
+    with pytest.raises(SystemExit) as exc:
+        cli(tmp_path, "--history-db", str(tmp_path / "x.sqlite"), "--no-history")
+    assert exc.value.code == 2
+
+
+def test_cli_default_store_sits_beside_data_like_score_s(tmp_path, db, fake_site, monkeypatch):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)  # not the cwd: <--data>/../history/history.sqlite
+    assert cli(tmp_path) == 0
+    assert len(card_rows(db)) == len(CARD.fights)
+    assert not (elsewhere / "history").exists()
+
+
+def test_cli_flags_match_score_s():
     scrape_parser, score_parser = argparse.ArgumentParser(), argparse.ArgumentParser()
     stage.add_arguments(scrape_parser)
     score_stage.add_arguments(score_parser)
-    args = scrape_parser.parse_args([])
-    assert args.history_db == score_parser.parse_args([]).history_db
-    assert args.no_history is False
+    ours, theirs = scrape_parser.parse_args([]), score_parser.parse_args([])
+    assert (ours.history_db, ours.no_history) == (theirs.history_db, theirs.no_history) == (None, False)
+
+
+# --- a result without an outcome --------------------------------------------------------------------------------
+
+
+def without_flags(html: str) -> str:
+    """The completed card with the W/L flags gone but methods kept: results the rating would silently drop."""
+    soup = BeautifulSoup(html, "lxml")
+    for row in soup.select("tbody.b-fight-details__table-body tr.b-fight-details__table-row"):
+        row.find_all("td")[0].clear()
+    return str(soup)
+
+
+def test_a_completed_bout_with_a_method_but_no_outcome_fails_and_writes_nothing(tmp_path, db, capsys):
+    before = dump_bytes(db, tmp_path / "before")
+    assert run(tmp_path, db, client(card=without_flags(read_fixture("event_detail_completed.html")))) == 1
+    assert dump_bytes(db, tmp_path / "after") == before
+    assert not (tmp_path / "data" / "index.json").exists()
+    err = capsys.readouterr().err
+    assert "nothing written" in err and CARD.fights[0].id in err
