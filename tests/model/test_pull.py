@@ -115,6 +115,94 @@ def test_a_missing_baked_model_is_logged_and_does_not_fail(root, bucket, tmp_pat
     assert "seed" in capsys.readouterr().err
 
 
+
+# An image with a newer baked model: it replaces an older current (through the gate, minus the cut-point check).
+
+NEWER_BAKED = "2026-11-04+bake0001"
+
+
+@pytest.fixture
+def newer_image(tmp_path) -> Path:
+    """The baked model dir of a later image: a newer export whose tier cut points moved."""
+    image = tmp_path / "image-model"
+    shutil.copytree(MODEL_DIR, image)
+    edit_json("manifest.json", version=NEWER_BAKED, as_of="2026-11-04")(image)
+    thresholds = json.loads((image / "thresholds.json").read_text())
+    edit_json("thresholds.json", low_max=thresholds["low_max"] + 1e-6)(image)
+    return image
+
+
+def test_a_newer_baked_model_replaces_an_older_current(root, bucket, newer_image, capsys):
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url)
+    assert current(root) == NEW
+    capsys.readouterr()
+    assert pull(root, url=bucket.url, seed=newer_image) == 0  # the cut points moved: the image defines them
+    assert current(root) == NEWER_BAKED
+    assert sha256(root / "current" / "thresholds.json") == sha256(newer_image / "thresholds.json")
+    assert NEW in kept(root)
+    assert "baked" in capsys.readouterr().err
+    assert not list(root.glob(".tmp-*"))
+
+
+def test_a_version_with_the_new_cut_points_is_pulled_after_the_image_moved_them(root, bucket, newer_image):
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url, seed=newer_image)
+    later = "2026-11-11+cccccccc"
+    bucket.publish(later, as_of="2026-11-11", edit=lambda d: shutil.copy2(newer_image / "thresholds.json", d))
+    pull(root, url=bucket.url, seed=newer_image)
+    assert current(root) == later
+
+
+def test_an_older_latest_than_the_newer_baked_model_is_held(root, bucket, newer_image, capsys):
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url, seed=newer_image)
+    bucket.publish(NEW)  # as_of 2026-10-21, older than the image's model
+    capsys.readouterr()
+    pull(root, url=bucket.url, seed=newer_image)
+    err = capsys.readouterr().err
+    assert current(root) == NEWER_BAKED and f"held {NEW}" in err and "older" in err
+
+
+def test_a_newer_baked_model_that_fails_its_examples_is_not_adopted(root, bucket, newer_image, capsys):
+    pull(root, url=bucket.url)
+    edit_examples(p_finish=0.123456)(newer_image)
+    capsys.readouterr()
+    assert pull(root, url=bucket.url, seed=newer_image) == 0
+    err = capsys.readouterr().err
+    assert current(root) == BAKED_VERSION and NEWER_BAKED not in kept(root)
+    assert f"held baked {NEWER_BAKED}" in err and "example 3" in err, err
+
+
+def test_an_older_baked_model_is_kept_out_and_the_difference_is_logged(root, bucket, capsys):
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url)
+    capsys.readouterr()
+    assert pull(root, url=bucket.url) == 0
+    err = capsys.readouterr().err
+    assert current(root) == NEW
+    assert f"baked model {BAKED_VERSION}" in err and f"current {NEW}" in err, err
+
+
+def test_a_baked_model_that_is_the_current_is_not_mentioned(root, bucket, capsys):
+    pull(root, url=bucket.url)
+    capsys.readouterr()
+    pull(root, url=bucket.url)
+    assert "baked" not in capsys.readouterr().err
+
+
+def test_a_pin_still_wins_over_a_newer_baked_model(root, bucket, newer_image):
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url)
+    pull(root, "--pin", NEW, url=bucket.url, seed=newer_image)
+    assert current(root) == NEW and NEWER_BAKED in kept(root)  # kept, so it can be pinned next
+    pull(root, "--pin", NEWER_BAKED, url=bucket.url, seed=newer_image)
+    assert current(root) == NEWER_BAKED
+
+
 # A newer version: downloaded, checked, and swapped in.
 
 def test_a_new_version_is_adopted_and_the_previous_one_kept(root, bucket, capsys):
