@@ -399,7 +399,8 @@ def test_run_builds_client_and_scrapes(tmp_path, monkeypatch):
         return make_client()
 
     monkeypatch.setattr(stage, "make_client", fake_client)
-    args = argparse.Namespace(data=tmp_path, recent=0, cookie_file=tmp_path / "c.json")
+    args = argparse.Namespace(data=tmp_path, recent=0, cookie_file=tmp_path / "c.json",
+                              history_db=tmp_path / "none.sqlite", no_history=True)
     assert stage.run(args) == 0
     assert seen["cookie_file"] == tmp_path / "c.json"
     assert (tmp_path / "index.json").exists()
@@ -409,7 +410,7 @@ def test_cli_dispatches_scrape(tmp_path, monkeypatch):
     from fightcard import cli
 
     monkeypatch.setattr(stage, "make_client", lambda cookie_file: make_client())
-    assert cli.main(["--data", str(tmp_path), "scrape", "--recent", "0"]) == 0
+    assert cli.main(["--data", str(tmp_path), "scrape", "--recent", "0", "--no-history"]) == 0
 
 
 def test_make_client_uses_cookie_file(tmp_path):
