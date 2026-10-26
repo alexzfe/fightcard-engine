@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import os
-import shutil
 from pathlib import Path
 
 import pytest
-from model_bucket import BAKED_VERSION, BUNDLE, MODEL_DIR, sha256
+from model_bucket import BAKED_VERSION, BUNDLE, MODEL_DIR, sha256, write_latest
 
 from fightcard.cli import main
+from fightcard.model import pull as pull_module
 from fightcard.score.bundle import load_bundle
 
 NEW = "2026-10-21+aaaaaaaa"
@@ -192,3 +193,214 @@ def test_nothing_is_left_behind_in_the_state_dir(root, bucket):
     bucket.publish(NEW)
     pull(root, url=bucket.url)
     assert sorted(p.name for p in root.iterdir()) == sorted(["current", BAKED_VERSION, NEW])
+
+
+# A version that fails a gate is held: current stays, the reason is logged, the run goes on (exit 0).
+
+@pytest.fixture
+def seeded(root, bucket):
+    """The first boot, done against an empty bucket: the version a test publishes is the first the pull sees."""
+    pull(root, url=bucket.url)
+
+
+def edit_json(name: str, **changes):
+    def edit(directory: Path) -> None:
+        doc = json.loads((directory / name).read_text())
+        doc.update(changes)
+        (directory / name).write_text(json.dumps(doc))
+    return edit
+
+
+def edit_examples(**changes):
+    def edit(directory: Path) -> None:
+        examples = json.loads((directory / "examples.json").read_text())
+        examples[3].update(changes(examples[3]) if callable(changes) else changes)
+        (directory / "examples.json").write_text(json.dumps(examples))
+    return edit
+
+
+def assert_kept_out(root: Path, version: str = NEW, keeping: str = BAKED_VERSION) -> None:
+    assert current(root) == keeping
+    assert version not in kept(root)
+    assert sorted(p.name for p in root.iterdir()) == sorted(["current", *kept(root)])  # no staging left behind
+
+
+def held(root: Path, bucket, capsys, reason: str, version: str = NEW) -> None:
+    capsys.readouterr()
+    assert pull(root, url=bucket.url) == 0
+    err = capsys.readouterr().err
+    assert f"held {version}" in err and reason in err, err
+    assert_kept_out(root, version)
+
+
+@pytest.mark.parametrize("name", ["model.txt", "examples.json", "fighter_snapshot.parquet", "thresholds.json"])
+@pytest.mark.usefixtures("seeded")
+def test_a_file_that_fails_its_checksum_holds_the_version(root, bucket, capsys, name):
+    bucket.publish(NEW, corrupt=name)
+    held(root, bucket, capsys, f"{name}: sha256")
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_checksum_in_latest_that_is_not_a_digest_is_held(root, bucket, capsys):
+    doc = bucket.publish(NEW, latest=False)
+    write_latest(bucket.root, {**doc, "files": {**doc["files"], "model.txt": "abc"}})
+    held(root, bucket, capsys, "model.txt")
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_bundle_that_does_not_load_is_held(root, bucket, capsys):
+    bucket.publish(NEW, edit=lambda d: (d / "model.txt").write_text("not a booster"))  # hashed after: checksum ok
+    held(root, bucket, capsys, "load")
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_manifest_for_another_version_is_held(root, bucket, capsys):
+    bucket.publish(NEW, edit=edit_json("manifest.json", version="2026-10-22+bbbbbbbb"))
+    held(root, bucket, capsys, "manifest.json")
+
+
+@pytest.mark.usefixtures("seeded")
+def test_an_example_whose_p_finish_moved_holds_the_version(root, bucket, capsys):
+    bucket.publish(NEW, edit=edit_examples(p_finish=0.123456))
+    held(root, bucket, capsys, "example 3")
+
+
+@pytest.mark.usefixtures("seeded")
+def test_an_example_whose_tier_moved_holds_the_version(root, bucket, capsys):
+    bucket.publish(NEW, edit=edit_examples(tier="nonsense"))
+    held(root, bucket, capsys, "example 3")
+
+
+@pytest.mark.parametrize("cut", ["low_max", "medium_max"])
+@pytest.mark.usefixtures("seeded")
+def test_moved_tier_cut_points_hold_the_version(root, bucket, capsys, cut):
+    old = json.loads((MODEL_DIR / "thresholds.json").read_text())[cut]
+    bucket.publish(NEW, edit=edit_json("thresholds.json", **{cut: old + 1e-6}))
+    held(root, bucket, capsys, cut)
+
+
+@pytest.mark.usefixtures("seeded")
+def test_equal_cut_points_with_other_evidence_are_adopted(root, bucket):
+    bucket.publish(NEW, edit=edit_json("thresholds.json", oos={"n": 1, "log_loss": 0.6, "constant_log_loss": 0.69}))
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url)
+    assert current(root) == NEW
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_held_version_is_judged_against_the_model_that_is_running_not_the_baked_one(root, bucket, capsys):
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    assert current(root) == NEW
+    bucket.publish("2026-10-28+bbbbbbbb", as_of="2026-10-28", edit=edit_examples(p_finish=0.123456))
+    capsys.readouterr()
+    assert pull(root, url=bucket.url) == 0
+    assert current(root) == NEW and "held 2026-10-28+bbbbbbbb" in capsys.readouterr().err
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_good_version_after_a_held_one_is_adopted(root, bucket):
+    bucket.publish("2026-10-21+aaaaaaaa", edit=edit_examples(p_finish=0.123456))
+    pull(root, url=bucket.url)
+    bucket.publish("2026-10-28+bbbbbbbb", as_of="2026-10-28")
+    pull(root, url=bucket.url)
+    assert current(root) == "2026-10-28+bbbbbbbb"
+    assert kept(root) == sorted([BAKED_VERSION, "2026-10-28+bbbbbbbb"])
+
+
+# A latest.json that isn't a plain, known bundle is held before any file is fetched.
+
+def bad_latest(bucket, **changes) -> dict:
+    doc = bucket.publish(NEW, latest=False)
+    write_latest(bucket.root, {**doc, **changes})
+    return doc
+
+
+@pytest.mark.parametrize("changes,reason", [
+    ({"format_version": 2}, "format_version"),
+    ({"format_version": None}, "format_version"),
+    ({"version": "../escape"}, "version"),
+    ({"version": "a/b"}, "version"),
+    ({"version": ""}, "version"),
+    ({"version": 5}, "version"),
+    ({"files": []}, "files"),
+    ({"files": None}, "files"),
+])
+@pytest.mark.usefixtures("seeded")
+def test_a_latest_that_is_not_the_published_shape_is_held(root, bucket, capsys, changes, reason):
+    bad_latest(bucket, **changes)
+    capsys.readouterr()
+    bucket.requests.clear()
+    assert pull(root, url=bucket.url) == 0
+    assert "held" in capsys.readouterr().err
+    assert bucket.requests == ["/latest.json"]
+    assert_kept_out(root)
+    assert not (root.parent / "escape").exists()
+
+
+@pytest.mark.parametrize("name", ["../escape.txt", "sub/model.txt", "evil.sh", "README.md", ""])
+@pytest.mark.usefixtures("seeded")
+def test_a_file_name_outside_the_bundle_is_held_unfetched(root, bucket, capsys, name):
+    doc = bucket.publish(NEW, latest=False)
+    write_latest(bucket.root, {**doc, "files": {**doc["files"], name: "0" * 64}})
+    capsys.readouterr()
+    bucket.requests.clear()
+    pull(root, url=bucket.url)
+    assert "held" in capsys.readouterr().err
+    assert bucket.requests == ["/latest.json"]
+    assert_kept_out(root)
+
+
+@pytest.mark.parametrize("missing", ["model.txt", "thresholds.json", "fighter_snapshot.parquet", "feature_spec.json",
+                                     "manifest.json", "examples.json"])
+@pytest.mark.usefixtures("seeded")
+def test_a_bundle_without_a_required_file_is_held(root, bucket, capsys, missing):
+    doc = bucket.publish(NEW, latest=False)
+    write_latest(bucket.root, {**doc, "files": {n: h for n, h in doc["files"].items() if n != missing}})
+    held(root, bucket, capsys, missing)
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_bundle_without_the_optional_rating_file_is_adopted(root, bucket):
+    doc = bucket.publish(NEW, latest=False)
+    write_latest(bucket.root, {**doc, "files": {n: h for n, h in doc["files"].items() if n != "fighter_rating.parquet"}})
+    pull(root, url=bucket.url)
+    pull(root, url=bucket.url)
+    assert current(root) == NEW and not (root / NEW / "fighter_rating.parquet").exists()
+
+
+# A bucket that can't be read is not a verdict on any model: log it, keep going.
+
+@pytest.mark.parametrize("break_it", [
+    lambda b: b.stop(),                                                  # connection refused
+    lambda b: (b.root / "latest.json").unlink(),                         # 404
+    lambda b: (b.root / "latest.json").write_text("{not json"),
+    lambda b: (b.root / "latest.json").write_text("[]"),
+    lambda b: (b.root / NEW / "model.txt").unlink(),                     # a file missing: 404 mid-download
+])
+@pytest.mark.usefixtures("seeded")
+def test_an_unreachable_or_unreadable_bucket_keeps_the_current_model(root, bucket, capsys, break_it):
+    bucket.publish(NEW)
+    break_it(bucket)
+    capsys.readouterr()
+    assert pull(root, url=bucket.url) == 0
+    assert "failed, keeping" in capsys.readouterr().err
+    assert_kept_out(root)
+
+
+@pytest.mark.usefixtures("seeded")
+def test_a_file_over_the_size_cap_is_a_failure(root, bucket, capsys, monkeypatch):
+    bucket.publish(NEW)
+    monkeypatch.setattr(pull_module, "FILE_MAX", 1000)
+    capsys.readouterr()
+    assert pull(root, url=bucket.url) == 0
+    assert "failed, keeping" in capsys.readouterr().err
+    assert_kept_out(root)
+
+
+@pytest.mark.parametrize("url", ["file:///etc", "ftp://example.com/models", "not a url", "models.xlobax.com"])
+@pytest.mark.usefixtures("seeded")
+def test_only_http_urls_are_fetched(root, capsys, url):
+    assert pull(root, url=url) == 0
+    assert "http" in capsys.readouterr().err
+    assert current(root) == BAKED_VERSION  # the seed was still made
