@@ -97,9 +97,10 @@ def test_build_workflow_pushes_the_sha_tagged_image():
     assert "push: true" in text
 
 
+# deploy-app smoke-tests `url`; nginx answers 404 for `/`, so it must be the health path.
 @pytest.mark.parametrize("name,env,url,condition", [
-    ("staging", "staging", "https://ufc-data-staging.xlobax.com", "needs: build"),
-    ("prod", "prod", "https://ufc-data.xlobax.com", "if: github.ref_type == 'tag'"),
+    ("staging", "staging", "https://ufc-data-staging.xlobax.com/healthz", "needs: build"),
+    ("prod", "prod", "https://ufc-data.xlobax.com/healthz", "if: github.ref_type == 'tag'"),
 ])
 def test_deploys_go_through_infras_deploy_app(name, env, url, condition):
     body = job(read("release.yml"), name)
