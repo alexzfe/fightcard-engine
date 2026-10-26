@@ -236,11 +236,11 @@ def _pin(root: Path, pin: str, was: str, log: Log) -> None:
     """Run the kept version `pin`: no gates, since it passed them when it was adopted (or is the baked model)."""
     versions = _versions(root)
     if pin not in versions:
-        log(f"held pin {pin!r}: not a kept version (kept: {', '.join(versions)}); keeping {was}")
+        log(f"ERROR FIGHTCARD_MODEL_PIN {pin!r} is not a kept version (kept: {', '.join(versions)}); keeping {was}")
     elif pin == was:
         log(f"pin {pin} is already current")
     elif not _usable(root, pin):
-        log(f"held pin {pin!r}: the kept version is unusable (it doesn't load); keeping {was}")
+        log(f"ERROR FIGHTCARD_MODEL_PIN {pin!r} is an unusable kept version (it doesn't load); keeping {was}")
     else:
         _switch(root, pin)
         log(f"pinned {pin} (was {was})")
