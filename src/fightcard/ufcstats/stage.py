@@ -315,9 +315,8 @@ class _Run:
         if no_outcome:
             raise MissingOutcome(no_outcome)  # like `history ingest`: the rating would drop these silently
         stamp = iso(self.now)
-        for url, html in self.pages.items():
-            if "/fighter-details/" not in url or url.endswith(tuple(self.fighter_pages)):
-                record_page(self.history, url, page_path(url), html.encode("utf-8"), stamp)
+        for url, html in self.pages.items():  # pages skipped for the store were taken out by `_forget`
+            record_page(self.history, url, page_path(url), html.encode("utf-8"), stamp)
         for event_id in sorted(self.parsed):
             upsert_card(self.history, self.parsed[event_id], self.listed)
         for fid in sorted(self.fighter_pages):
