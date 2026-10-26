@@ -9,22 +9,28 @@
   is already in keeps its stored tier (its fighters' records moved because of
   that bout) and its fighters are not reported as stale.
 - `index.model` is the export summary the how-it-works page quotes (`fightcard.score.summary`).
-- Each fighter's rating fields (`elo`, `elo_peak`, `p4p_rank`, the tags) come
-  from model/fighter_rating.parquet rolled forward over results since the
-  export and decayed to `--now` (see `fightcard.score.elo`). Without that file
-  every fighter is unrated.
+- Each fighter's rating fields (`elo`, `elo_peak`, `p4p_rank`, the tags, the
+  best win) come from the full-history pass over the bout-history store
+  (`--history-db`, filled by `fightcard history ingest`), counting bouts up to
+  `--now` and decayed to it (`fightcard.history.rating` / `.display`). Without
+  the store every fighter is unrated; tiers still score.
 """
 
 from __future__ import annotations
 
 import argparse
+import sqlite3
 import sys
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pandas as pd
+
+from fightcard.history.display import fighter_ratings
+from fightcard.history.rating import history_ratings
 from fightcard.models import BestWin, Event, Fight, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
-from fightcard.score.elo import fighter_ratings
 from fightcard.score.features import bout_context, bout_row
 from fightcard.score.summary import model_summary
 from fightcard.store import Store, write_json
@@ -33,6 +39,8 @@ from fightcard.store import Store, write_json
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--model-dir", type=Path, default=Path("model"), help="vendored model export")
     parser.add_argument("--now", default=None, help="ISO 8601 UTC time to act as (default: now)")
+    parser.add_argument("--history-db", type=Path, default=Path("history/history.sqlite"),
+                        help="bout-history store (fightcard history ingest); without it every fighter is unrated")
 
 
 def _record(row) -> tuple[int, int, int, int]:
@@ -90,6 +98,15 @@ def _now(arg: str | None) -> datetime:
     return datetime.fromisoformat(arg.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
+def _history_ratings(db: Path, as_of: str) -> pd.DataFrame | None:
+    """The full-history pass up to `as_of`, or None when there's no store (read-only: score never writes it)."""
+    if not db.is_file():
+        print(f"score: no history store at {db}; every fighter is unrated", file=sys.stderr)
+        return None
+    with closing(sqlite3.connect(f"file:{db}?mode=ro", uri=True)) as conn:
+        return history_ratings(conn, as_of)
+
+
 def _rating_fields(r: dict) -> dict:
     """`fighter_ratings` output as Fighter field values (model_copy doesn't validate, so build BestWin here)."""
     return r | {"best_win": None if r["best_win"] is None else BestWin(**r["best_win"])}
@@ -104,7 +121,7 @@ def run(args: argparse.Namespace) -> int:
     store = Store(args.data)
     now = _now(args.now)
     fighters = store.load_fighters()
-    rating = fighter_ratings(fighters, bundle.ratings, bundle.snapshot, bundle.manifest["as_of"], now.date())
+    rating = fighter_ratings(fighters, _history_ratings(args.history_db, now.date().isoformat()), now.date())
     fighters = {fid: f.model_copy(update=_rating_fields(rating[fid])) for fid, f in fighters.items()}
     store.save_fighters(fighters)
     events, stale = score_events(list(store.load_events().values()), fighters, bundle, now)
