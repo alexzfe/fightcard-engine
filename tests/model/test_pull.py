@@ -111,3 +111,84 @@ def test_a_missing_baked_model_is_logged_and_does_not_fail(root, bucket, tmp_pat
     assert pull(root, url=bucket.url, seed=tmp_path / "nowhere") == 0
     assert not (root / "current").exists()
     assert "seed" in capsys.readouterr().err
+
+
+# A newer version: downloaded, checked, and swapped in.
+
+def test_a_new_version_is_adopted_and_the_previous_one_kept(root, bucket, capsys):
+    pull(root, url=bucket.url)
+    bucket.publish(NEW)
+    assert pull(root, url=bucket.url) == 0
+    assert current(root) == NEW
+    assert kept(root) == sorted([BAKED_VERSION, NEW])
+    for name in BUNDLE:
+        assert sha256(root / "current" / name) == sha256(bucket.root / NEW / name), name
+    assert load_bundle(root / "current").manifest["version"] == NEW
+    err = capsys.readouterr().err
+    assert f"adopted {NEW}" in err and BAKED_VERSION in err
+
+
+def test_the_plus_in_a_version_is_url_encoded(root, bucket):
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    files = [r for r in bucket.requests if r != "/latest.json"]
+    assert files and all(r.startswith("/2026-10-21%2Baaaaaaaa/") for r in files), files
+    assert sorted(r.rsplit("/", 1)[1] for r in files) == sorted(BUNDLE)
+
+
+def test_a_url_with_a_trailing_slash_or_a_path_works(root, bucket):
+    bucket.publish(NEW)
+    assert pull(root, url=bucket.url + "/") == 0
+    assert current(root) == NEW
+
+
+def test_an_unchanged_version_downloads_no_files(root, bucket, capsys):
+    bucket.publish(BAKED_VERSION)
+    pull(root, url=bucket.url)
+    capsys.readouterr()
+    bucket.requests.clear()
+    assert pull(root, url=bucket.url) == 0
+    assert bucket.requests == ["/latest.json"]
+    assert current(root) == BAKED_VERSION
+    assert "up to date" in capsys.readouterr().err
+
+
+def test_a_repeat_after_adopting_downloads_nothing_either(root, bucket):
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    bucket.requests.clear()
+    pull(root, url=bucket.url)
+    assert bucket.requests == ["/latest.json"]
+
+
+def test_a_latest_that_points_back_at_an_older_version_rolls_back(root, bucket):
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    assert current(root) == NEW
+    bucket.publish(BAKED_VERSION)  # research re-pointed latest.json at the previous version
+    assert pull(root, url=bucket.url) == 0
+    assert current(root) == BAKED_VERSION
+
+
+def test_only_the_last_three_versions_are_kept(root, bucket):
+    versions = ["2026-10-21+aaaaaaaa", "2026-10-28+bbbbbbbb", "2026-11-04+cccccccc", "2026-11-11+dddddddd"]
+    for v in versions:
+        bucket.publish(v, as_of=v[:10])
+        pull(root, url=bucket.url)
+    assert current(root) == versions[-1]
+    assert kept(root) == versions[1:]  # the baked 2026-10-14 and the first pulled one are pruned
+
+
+def test_keep_is_configurable_and_the_current_is_never_pruned(root, bucket):
+    bucket.publish("2026-10-21+aaaaaaaa", as_of="2026-10-21")
+    pull(root, "--keep", "1", url=bucket.url)
+    assert kept(root) == ["2026-10-21+aaaaaaaa"]
+    assert current(root) == "2026-10-21+aaaaaaaa"
+
+
+def test_nothing_is_left_behind_in_the_state_dir(root, bucket):
+    (root / ".tmp-leftover").mkdir(parents=True)  # a crashed pull's staging dir
+    (root / ".tmp-leftover" / "model.txt").write_text("half")
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    assert sorted(p.name for p in root.iterdir()) == sorted(["current", BAKED_VERSION, NEW])
