@@ -81,5 +81,22 @@ def test_service_doc_covers(term):
     assert term in service_doc(), term
 
 
+@pytest.mark.parametrize("term", [
+    # Review fixes: timeouts and process groups, signals, the queued slot, staging's minute, health, backups, restart.
+    "status=timeout", "process group", "nice", "SIGTERM", "STOP_GRACE", "status=queued", "FIGHTCARD_SCHEDULE_MINUTE",
+    ":47", "fightcard-service health", "26 h", "2 h", "fightcard history backup", "pull-backup@ufc-data",
+    "next slot",
+])
+def test_service_doc_covers_the_supervision(term):
+    assert term in service_doc(), term
+
+
+def test_service_doc_states_the_stage_timeouts():
+    from fightcard.service.runner import TIMEOUTS
+    doc = service_doc()
+    for stage, seconds in TIMEOUTS.items():
+        assert f"| {stage} | {seconds // 60} min |" in doc, stage
+
+
 def test_readme_links_the_service_doc():
     assert "(docs/SERVICE.md)" in README
