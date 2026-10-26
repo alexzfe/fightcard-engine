@@ -64,11 +64,20 @@ def step_lines(lines: list[str]) -> dict[str, dict[str, str]]:
 
 # Order and arguments.
 
+def html_cache(cfg: Config) -> None:
+    """What scrape leaves once it keeps ufcstats' HTML (feat/scrape-history): the listing history ingest needs."""
+    from fightcard.history.ingest import LISTING
+    (cfg.html / LISTING).parent.mkdir(parents=True, exist_ok=True)
+    (cfg.html / LISTING).write_text("<html></html>")
+
+
 def test_runs_every_stage_in_order(tmp_path):
+    cfg = config(tmp_path)
+    html_cache(cfg)
     rec = Recorder()
-    code, _ = go(config(tmp_path), rec)
+    code, _ = go(cfg, rec)
     assert code == 0
-    assert rec.stages == ["scrape", "segments", "images", "score", "publish"]  # history isn't wired yet
+    assert rec.stages == ORDER
 
 
 def test_stages_share_the_state_data_dir_and_publish_to_the_root(tmp_path):
@@ -80,7 +89,8 @@ def test_stages_share_the_state_data_dir_and_publish_to_the_root(tmp_path):
         assert argv[:3] == ["fightcard", "--data", data], argv
     by_stage = {stage_of(a): a for a in rec.calls}
     assert by_stage["publish"][3:] == ["publish", "--out", str(cfg.root)]
-    assert by_stage["score"][3:] == ["score", "--model-dir", "/app/model"]
+    assert by_stage["score"][3:] == ["score", "--model-dir", "/app/model", "--history-db",
+                                     str(cfg.root / "state" / "history" / "history.sqlite")]
     assert by_stage["scrape"][3:] == ["scrape", "--cookie-file",
                                       str(cfg.root / "state" / "cache" / "fightcard" / "ufcstats_cookie.json")]
 
@@ -91,20 +101,46 @@ def test_publish_root_matches_the_nginx_config(tmp_path):
     assert Config.from_env({}).root == Path(runner.ROOT)
 
 
-def test_history_is_a_logged_seam_between_scrape_and_segments(tmp_path):
-    code, lines = go(config(tmp_path))
+def test_history_ingests_the_html_cache_into_the_store_between_scrape_and_segments(tmp_path):
+    cfg = config(tmp_path)
+    html_cache(cfg)
+    rec = Recorder()
+    go(cfg, rec)
+    argv = rec.calls[rec.stages.index("history")]
+    assert argv[3:] == ["history", "ingest", "--html-dir", str(cfg.root / "state" / "html"),
+                        "--db", str(cfg.root / "state" / "history" / "history.sqlite")]
+
+
+def test_the_history_store_is_where_score_looks_by_default(tmp_path):
+    cfg = config(tmp_path)
+    assert cfg.history_db == cfg.data.parent / "history" / "history.sqlite"  # score's <--data>/../history/
+
+
+def test_history_is_skipped_until_scrape_keeps_an_html_cache(tmp_path):
+    rec = Recorder()
+    code, lines = go(config(tmp_path), rec)
     steps = step_lines(lines)
-    assert list(steps) == ORDER
-    assert steps["history"]["status"] == "skipped"
-    assert steps["history"]["reason"] == "not-wired"
+    assert code == 0 and list(steps) == ORDER
+    assert "history" not in rec.stages and rec.stages[-1] == "publish"
+    assert (steps["history"]["status"], steps["history"]["reason"]) == ("skipped", "no-html-cache")
+
+
+def test_history_runs_with_fetch_off(tmp_path):
+    cfg = config(tmp_path, fetch=False)
+    html_cache(cfg)
+    rec = Recorder()
+    go(cfg, rec)
+    assert rec.stages == ["history", "score", "publish"]  # ingest reads local files only
 
 
 # Failures.
 
-@pytest.mark.parametrize("failing", ["scrape", "segments", "images", "score", "publish"])
+@pytest.mark.parametrize("failing", ["scrape", "history", "segments", "images", "score", "publish"])
 def test_stops_at_the_first_failing_stage_and_returns_its_code(tmp_path, failing):
+    cfg = config(tmp_path)
+    html_cache(cfg)
     rec = Recorder({failing: 3})
-    code, lines = go(config(tmp_path), rec)
+    code, lines = go(cfg, rec)
     assert code == 3
     assert rec.stages[-1] == failing
     assert "publish" not in rec.stages or failing == "publish"
@@ -215,7 +251,8 @@ def test_config_reads_paths_from_the_environment(tmp_path):
                            "FIGHTCARD_GATE_SCRIPT": "/g.py"})
     assert (cfg.root, cfg.model_dir, cfg.gate_script) == (tmp_path, Path("/m"), Path("/g.py"))
     assert cfg.lock == tmp_path / "state" / "run.lock"
-    assert cfg.history_db == tmp_path / "state" / "history.db"
+    assert cfg.history_db == tmp_path / "state" / "history" / "history.sqlite"
+    assert cfg.html == tmp_path / "state" / "html"
 
 
 # Lock.
