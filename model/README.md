@@ -97,7 +97,9 @@ Bout context on the site (`fightcard.score.features.bout_context`):
 
 ## Re-exporting
 
-Do this when the "Re-export finish model" issue opens or the model changes.
+This is automated: fight-auto-research's **Export model** workflow (`.github/workflows/export.yml`) runs these
+steps when the site's refresh finds stale fighters, and every Monday, then opens a `model-export` PR here that
+auto-merges once checks pass (it waits for review if the tier thresholds moved). By hand, when needed:
 
 1. Refresh the research data: `cd ~/Projects/fight-auto-research`, scrape, then `uv run python -m build`.
 2. Export from the research checkout or a worktree that has `export/`:
@@ -112,7 +114,9 @@ Do this when the "Re-export finish model" issue opens or the model changes.
    - the tier finish rates aren't strictly increasing
 3. `cp /tmp/finish-model/* model/`
 4. Update the numbers in this README, run `uv run --project pipeline pytest pipeline/tests/score`, then commit `model/`.
-5. Update `site/src/lib/finish-model.ts`, which the how-it-works page quotes; `cd site && npm test` fails until it
-   matches. Recompute its `importance` from `model.txt` as `docs/tdd/elo-ui.tdd.md` describes.
+5. Nothing to update on the site: `score` writes the numbers the how-it-works page quotes into `index.model`
+   (`pipeline/src/fightcard/score/summary.py`, importance by theme from the booster's gain). A model with a new
+   feature fails `score` and the pipeline tests until the feature is given a theme in `summary.GROUPS`; a new
+   theme also needs a label in `site/src/lib/finish-model.ts`.
 
 The next refresh re-scores every unfrozen bout. Tiers already frozen (past events) never change.

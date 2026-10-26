@@ -17,6 +17,7 @@ data/
 - `finish_tier`: `"high" | "medium" | "low" | null`. `null` renders as "—".
 - `segment`: `"main" | "prelims" | "early_prelims" | null`, from ESPN's fightcenter (`main`, `prelims1`, `prelims2`). `null` means unknown; the site shows no segment header for it. Scrape keeps it for fights still on the card.
 - Once `tier_frozen_at` is set, nothing may change `finish_tier` again.
+- `index.model`: the vendored export's `as_of` and `version`, plus the summary the how-it-works page quotes (`train_rows`, `trees`, `low_max`, `medium_max`, `oos`, `tiers`, `importance` by theme). Written by `score`; the summary fields are null in data written before it.
 - Fighter rating (`docs/ELO.md`), all written by `score`; the site shows it next to the record. When the rating is unknown (no `model/fighter_rating.parquet`, not in it and no newer bouts, or results since the export are missing) every field is `null` / `false`.
   - `Fighter.elo`: integer displayed current rating (decayed to now, anchored so active established fighters average 1500), or `null`.
   - `Fighter.elo_peak`: integer career peak on the same displayed scale (from the 5th UFC bout on, undecayed), or `null`.

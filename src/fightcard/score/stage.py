@@ -8,7 +8,7 @@
   `tier_frozen_at` once and never touch `finish_tier` again. A bout whose result
   is already in keeps its stored tier (its fighters' records moved because of
   that bout) and its fighters are not reported as stale.
-- `index.model` comes from model/manifest.json.
+- `index.model` is the export summary the how-it-works page quotes (`fightcard.score.summary`).
 - Each fighter's rating fields (`elo`, `elo_peak`, `p4p_rank`, the tags) come
   from model/fighter_rating.parquet rolled forward over results since the
   export and decayed to `--now` (see `fightcard.score.elo`). Without that file
@@ -26,6 +26,7 @@ from fightcard.models import BestWin, Event, Fight, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
 from fightcard.score.elo import fighter_ratings
 from fightcard.score.features import bout_context, bout_row
+from fightcard.score.summary import model_summary
 from fightcard.store import Store, write_json
 
 
@@ -116,7 +117,7 @@ def run(args: argparse.Namespace) -> int:
         stale_path.unlink(missing_ok=True)
     index = store.load_index()
     if index is not None:
-        index.model = ModelInfo(as_of=bundle.manifest["as_of"], version=bundle.manifest["version"])
+        index.model = ModelInfo(**model_summary(bundle))
         store.save_index(index)
     scored = sum(f.finish_tier is not None for ev in events for f in ev.fights)
     rated = sum(r["elo"] is not None for r in rating.values())

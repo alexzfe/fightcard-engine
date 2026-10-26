@@ -95,9 +95,34 @@ class Event(BaseModel):
     fights: list[Fight]  # card order: main event first
 
 
+class OosEvidence(BaseModel):
+    bouts: int
+    log_loss: float
+    constant_log_loss: float  # a constant base-rate prediction, for comparison
+
+
+class TierStats(BaseModel):
+    bouts: int
+    finish_rate: float
+    mean_predicted: float
+
+
+class ImportanceShare(BaseModel):
+    group: str  # a theme key from fightcard.score.summary.GROUPS
+    share: float  # % of the booster's total split gain, rounded to 0.1
+
+
 class ModelInfo(BaseModel):
     as_of: str  # export date YYYY-MM-DD
     version: str
+    # The export summary the how-it-works page quotes (fightcard.score.summary); None before `score` writes it.
+    train_rows: int | None = None
+    trees: int | None = None
+    low_max: float | None = None
+    medium_max: float | None = None
+    oos: OosEvidence | None = None
+    tiers: dict[Literal["low", "medium", "high"], TierStats] | None = None
+    importance: list[ImportanceShare] | None = None
 
 
 class Index(BaseModel):
