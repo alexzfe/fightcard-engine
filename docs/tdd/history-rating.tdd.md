@@ -114,3 +114,56 @@ Adjustments to this run's own RED tests during GREEN (wrong assumptions about th
 The SHAs above are the rebased ones. The counts in the task report are from before the rebase (Phase 2 on `c1efe63`).
 After the rebase: `uv run pytest -q` → `466 passed, 1 skipped, 49 deselected`; `-m seed` → `4 passed`; `-m docker` →
 `44 passed`. `tests/test_layout.py` now lists both `publish` and `history` among the CLI stages.
+
+## Review fixes (PR #2 code review)
+
+Six findings from an ecc code review. Context: `score` runs hourly and a non-zero exit means "don't publish", so the
+last good `/v1/` stays live. Failing is safer than writing degraded data with exit 0. One RED → GREEN pair per
+finding (or tight group). #5 changes no code, so it's a pin.
+
+| # | Finding | RED | GREEN | RED output (excerpt) |
+|---|---|---|---|---|
+| 1+2 | Missing store → every rating null with exit 0; an empty / never-ingested store → traceback | `047a18d` | `4c966d4` | `assert 0 == 1` (missing, schema-only), `sqlite3.OperationalError: no such table: fights` (0-byte), `sqlite3.DatabaseError: file is not a database`, `SystemExit 2` (unknown `--no-history`): 16 failed |
+| 6 | `f"file:{db}?mode=ro"` URI | `3df37a5` | `8afc197` | `a#b` → exit 1; `50%20off` → `unable to open database file`; `x?mode=rw` → `no such access mode: rw/history/history.sqlite?mode=ro`: 3 failed |
+| 3 | No staleness signal | `df1f174` | `8e44678` | exit 0 with completed `e-late` missing from the store or there without results; no store line: 4 failed (the in-store / after-`--now` case passes, as it should) |
+| 4 | Method but no W/L flag drops out silently | `98b601d` | `254f18f` | `history ingest` exit 0 with two flags stripped: 1 failed |
+| 5 | Golden-case test is self-referential | (pin) `047c7c4` | n/a | passes as written (no rating change); mutation check: `W_MAJORITY` 0.79 → `1c2f2571b18791b6 rating: 1492.747… != 1493.527…`; `DAYS_PER_YEAR` 365.0 → `00b490982afd1b17 rating: 1527.851… != 1527.840…` |
+
+Choices (#1):
+- **Default `--history-db`** = `<--data>/../history/history.sqlite`, resolved from `--data`, not the cwd. `data/` and
+  `history/` sit side by side in the repo and on the VPS, and `--data data` from the repo root gives the same path as
+  before. An explicit `--history-db` is used as given.
+- **Opt-out `--no-history`** (exclusive with `--history-db`): tiers only. The store isn't read, fighters.json isn't
+  rewritten, and every rating field stays **as it is** (the last good values), not null.
+- **Unusable** = not a file → "no history store at …"; `sqlite3.DatabaseError` on open/read, missing any of
+  `events`/`fights`/`fighters`/`pages`, or 0 events → "history store … is unusable (not an ingested history store)".
+  Either way it's one line on stderr, exit 1, nothing written, and the store is opened read-only via
+  `Path.resolve().as_uri() + "?mode=ro"`.
+- **Stale** (#3): a data/ event with `status == "completed"` dated up to `--now` that has no bout with an outcome in
+  the store fails the run, with the events named. Each run also logs `history store <db>: newest completed event
+  <date>, last page fetched <ts|unknown> (now <ts>)`. The line is informational. It has no threshold, because a
+  threshold would be a product call.
+- #4: `ingest` raises `MissingOutcome` inside its one transaction, so the store is unchanged. The stage prints the
+  sorted fight ids and exits 1. The full research cache has 0 such bouts (checked: 1,288 events, 11,694 fights).
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 22 | Missing store: exit 1, message names the path and `--no-history`, data/ byte-identical, store not created | `test_a_missing_history_store_fails_and_writes_nothing` | integration | PASS |
+| 23 | 0-byte / garbage file: exit 1, exactly one line, no traceback, data/ unchanged; schema-only store: exit 1 | `test_an_unreadable_history_store_fails_with_one_line[empty,garbage]`, `test_a_never_ingested_history_store_fails` | integration | PASS |
+| 24 | `--no-history`: tiers score, fighters.json byte-identical (existing ratings kept); exclusive with `--history-db` | `test_no_history_scores_tiers_and_leaves_rating_fields_as_they_are`, `test_no_history_and_history_db_are_exclusive` | integration | PASS |
+| 25 | Default store is beside `--data`, whatever the cwd | `test_default_history_store_is_beside_the_data_dir_not_in_the_cwd` | integration | PASS |
+| 26 | Store paths with `#`, `%`, `?mode=rw` open read-only and stay byte-identical | `test_a_history_store_path_with_uri_characters_is_opened_read_only[*]` | integration | PASS |
+| 27 | A completed event up to `--now` missing from the store, or there without results: exit 1, named, nothing written; in store or after `--now`: exit 0 | `test_a_completed_event_*` | integration | PASS |
+| 28 | Store line: newest *completed* event, max `pages.fetched_at` (or `unknown`), `--now` | `test_score_logs_the_stores_newest_completed_event_and_last_fetch_against_now`, `test_the_store_line_says_unknown_without_fetch_times` | integration | PASS |
+| 29 | Ingest with a method but no outcome: exit 1, fight ids named, store dump unchanged | `tests/history/test_history_stage.py::test_a_completed_bout_with_a_method_but_no_outcome_fails_the_whole_ingest` | integration | PASS |
+| 30 | 50 fighters' research export rows reproduced to 1e-9 from 623 frozen bouts, by default (no seed, no parquet); fixture covers 17 edge-case kinds | `test_rate_reproduces_research_export_rows_for_the_frozen_fighters`, `test_frozen_parity_covers_the_edge_cases` | parity | PASS |
+| 31 | The frozen fixture is exactly what the seed store + export give | `test_frozen_parity_fixture_is_what_the_seed_store_and_the_export_give` (`-m seed`) | parity | PASS |
+
+Existing tests changed: in `tests/score/test_score_stage.py`, the `score()` helper and `test_default_model_dir_and_now`
+pass `--no-history` (tier tests, no store). Row 21's `test_without_a_history_store_fighters_are_unrated_and_tiers_still_score`
+is **replaced** by #22–24 (behaviour reversed on purpose). `test_the_model_exports_rating_file_is_not_read` now uses a
+store with unrelated fighters instead of a missing one.
+
+Final runs: `uv run pytest -q` → `483 passed, 1 skipped, 50 deselected`; `-m seed` → `5 passed`; `-m docker` →
+`44 passed`. Coverage (`--cov=fightcard.score.stage --cov=fightcard.history`): score/stage 99%, history 98–100%,
+total 99%.
