@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from fightcard.score.bundle import load_bundle
 from fightcard.score.features import bout_row
@@ -28,3 +29,33 @@ def test_bundle_metadata():
     assert bundle.manifest["as_of"] and bundle.manifest["version"]
     assert bundle.thresholds["low_max"] < bundle.thresholds["medium_max"]
     assert bundle.snapshot.index.name == "fighter_id" and bundle.snapshot.index.is_unique
+
+
+# fightcard.score.parity: the same check, as a function a model pull can run on a candidate bundle.
+
+def test_parity_failures_is_empty_for_the_vendored_model():
+    from fightcard.score.parity import parity_failures
+    examples = json.loads((MODEL_DIR / "examples.json").read_text())
+    assert parity_failures(load_bundle(MODEL_DIR), examples) == []
+
+
+def test_parity_failures_names_an_example_whose_probability_moved():
+    from fightcard.score.parity import parity_failures
+    examples = json.loads((MODEL_DIR / "examples.json").read_text())
+    examples[2]["p_finish"] += 0.01
+    failures = parity_failures(load_bundle(MODEL_DIR), examples)
+    assert len(failures) == 1 and "example 2" in failures[0] and "p_finish" in failures[0]
+
+
+def test_parity_failures_names_an_example_whose_tier_moved():
+    from fightcard.score.parity import parity_failures
+    examples = json.loads((MODEL_DIR / "examples.json").read_text())
+    examples[0]["tier"] = {"low": "high"}.get(examples[0]["tier"], "low")
+    failures = parity_failures(load_bundle(MODEL_DIR), examples)
+    assert len(failures) == 1 and "example 0" in failures[0] and "tier" in failures[0]
+
+
+@pytest.mark.parametrize("examples", [[], [{"red": "x"}], "nope"])
+def test_parity_failures_rejects_an_unusable_examples_file(examples):
+    from fightcard.score.parity import parity_failures
+    assert parity_failures(load_bundle(MODEL_DIR), examples)
