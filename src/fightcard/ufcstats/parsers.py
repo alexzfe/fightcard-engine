@@ -62,10 +62,13 @@ def slugify(name: str) -> str:
 
 
 def parse_date(value: str) -> str | None:
-    try:
-        return datetime.strptime(value.strip(), "%B %d, %Y").date().isoformat()
-    except ValueError:
-        return None
+    """"May 21, 1989" (event pages, listings) or "Jul 09, 1985" (fighter-page DOBs) -> ISO date."""
+    for fmt in ("%B %d, %Y", "%b %d, %Y"):
+        try:
+            return datetime.strptime(value.strip(), fmt).date().isoformat()
+        except ValueError:
+            pass
+    return None
 
 
 def parse_record(text: str) -> Record:
