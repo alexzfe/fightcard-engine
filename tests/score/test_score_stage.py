@@ -361,3 +361,14 @@ def test_best_win_is_written_as_a_json_object(data, model_dir, veterans, tmp_pat
     assert raw[veterans[0]["fighter_id"]]["best_win"]["opponent_id"] == veterans[1]["fighter_id"]
     assert set(raw[veterans[0]["fighter_id"]]["best_win"]) == {"date", "elo", "opponent", "opponent_id"}
     assert raw["nobody"]["best_win"] is None
+
+
+@pytest.mark.parametrize("folder", ["a#b", "50%20off", "x?mode=rw"])
+def test_a_history_store_path_with_uri_characters_is_opened_read_only(data, model_dir, veterans, tmp_path, folder):
+    """The path goes into a `file:` URI: `#`, `%` and `?` in it must be quoted, not read as URI syntax."""
+    root, store = data
+    db = history(tmp_path / folder, veterans)
+    before = db.read_bytes()
+    assert score_with(root, model_dir, db) == 0
+    assert store.load_fighters()[veterans[0]["fighter_id"]].elo is not None
+    assert db.read_bytes() == before
