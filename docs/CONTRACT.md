@@ -66,7 +66,8 @@ timestamps are ISO 8601 UTC with `Z`.
 
 1. Validates `data/` with the pydantic models, and refuses (exit 1, nothing written, the live generation stays)
    when any file is unreadable or invalid, an event is filed under another id, a fighter is keyed under another
-   id, `index.json` names an event with no `events/<id>.json`, or `generated_at` isn't UTC with `Z`.
+   id, `index.json` names an event with no `events/<id>.json`, a fight names a fighter missing from
+   `fighters.json`, or `generated_at` isn't UTC with `Z`.
 2. Writes the whole generation to `<out>/generations/.tmp-<id>/`, renames it to `<out>/generations/<id>/`, then
    points `<out>/current` at it by renaming a new relative symlink over the old one. Each rename is atomic, so a
    reader sees the old generation or the new one, never a half-written tree. A failed write exits 1 and leaves

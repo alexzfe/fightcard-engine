@@ -52,7 +52,7 @@ etags before {index "6adf9fa0-93", f1.webp "6adf9fa0-20", snapshot "6adf9fa0-9c8
 | 3 | JSON follows the formatting rule | `test_json_follows_the_formatting_rule` | integration | PASS |
 | 4 | Schema has `$defs` Index (with `contract_version`), Event, Fighter, Fighters | `test_schema_describes_the_top_level_types` | unit | PASS |
 | 5 | Snapshot = every other file; byte-identical for identical input; mtime/uid/gid 0, gzip mtime 0, sorted | `test_snapshot_holds_every_other_file`, `test_snapshot_is_deterministic` | unit | PASS |
-| 6 | Invalid data → exit 1, nothing published (8 cases) | `test_refuses_*` | integration | PASS |
+| 6 | Invalid data → exit 1, nothing published (9 cases, incl. a fight naming a fighter not in `fighters.json`: RED `54094bd` `assert 0 == 1`, GREEN `3f372a3`) | `test_refuses_*` | integration | PASS |
 | 7 | `current` is a relative symlink to a complete generation; a new one switches it | `test_current_is_a_relative_symlink_…`, `test_a_new_generation_switches_…` | integration | PASS |
 | 8 | Identical content: no new generation, same inode and mtime (same ETag) | `test_identical_content_publishes_nothing` | integration | PASS |
 | 9 | Unchanged files shared, changed files get a later mtime | `test_unchanged_files_are_shared_…`, `test_a_changed_file_gets_a_later_mtime_…` | integration | PASS |
