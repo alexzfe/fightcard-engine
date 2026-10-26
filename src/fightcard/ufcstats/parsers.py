@@ -137,6 +137,9 @@ def _first_p(cell: Tag) -> str:
     return _text(cell.find("p") or cell)
 
 
+_OUTCOME = {"win": "win", "loss": "win", "draw": "draw", "nc": "nc"}  # W/L flag -> Result.outcome
+
+
 def _parse_result(cols: list[Tag], red: str, blue: str) -> Result | None:
     """Outcome columns: 0 W/L flag, 7 method (first <p>), 8 round, 9 time."""
     if len(cols) < 10 or not _first_p(cols[7]):
@@ -146,6 +149,7 @@ def _parse_result(cols: list[Tag], red: str, blue: str) -> Result | None:
     round_text = _first_p(cols[8])
     return Result(
         winner=winner,
+        outcome=_OUTCOME.get(flag),
         method=_first_p(cols[7]),
         round=int(round_text) if round_text.isdigit() else None,
         time=_first_p(cols[9]) or None,

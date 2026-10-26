@@ -14,6 +14,7 @@ FinishTier = Literal["high", "medium", "low"]
 CardSegment = Literal["main", "prelims", "early_prelims"]
 EventStatus = Literal["upcoming", "completed"]
 PastResult = Literal["win", "loss", "draw", "nc"]
+Outcome = Literal["win", "draw", "nc"]
 
 
 class Record(BaseModel):
@@ -68,6 +69,7 @@ class Fighter(BaseModel):
 
 class Result(BaseModel):
     winner: str | None = None  # fighter id; None for draw / no contest
+    outcome: Outcome | None = None  # tells a draw from a no contest; None = not parsed (older data, no flag)
     method: str | None = None  # e.g. "KO/TKO", "SUB", "U-DEC"
     round: int | None = None
     time: str | None = None  # "4:12"
