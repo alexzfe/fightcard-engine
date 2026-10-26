@@ -2,8 +2,8 @@
 
 Called as `fightcard --data <dir> <stage> …`. FAKE_DIR is where it writes `<stage>.json` (its pid, process group,
 niceness, and whether state/run.lock was free). Per stage, upper-cased: FAKE_SLEEP_<STAGE> seconds to sleep,
-FAKE_EXIT_<STAGE> its exit code, FAKE_IGNORE_TERM_<STAGE>=1 to ignore SIGTERM, FAKE_CHILD_<STAGE>=1 to start a
-`sleep` grandchild in its process group first (its pid goes in the json as `child`)."""
+FAKE_EXIT_<STAGE> its exit code, FAKE_IGNORE_TERM_<STAGE>=1 to ignore SIGTERM, FAKE_CHILD_<STAGE>=<seconds> to start a
+`sleep <seconds>` grandchild in its process group first (its pid goes in the json as `child`)."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def main() -> int:
             except BlockingIOError:
                 report["lock"] = "held"
     if env("CHILD"):
-        report["child"] = subprocess.Popen(["sleep", "300"]).pid
+        report["child"] = subprocess.Popen(["sleep", env("CHILD")]).pid
     (Path(os.environ["FAKE_DIR"]) / f"{stage}.json").write_text(json.dumps(report))
     time.sleep(float(env("SLEEP", "0")))
     return int(env("EXIT", "0"))
