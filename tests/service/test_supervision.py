@@ -270,12 +270,11 @@ def test_a_slot_that_fires_mid_run_starts_when_the_real_run_ends(fake, monkeypat
     monkeypatch.setenv("FAKE_SLEEP_SCRAPE", "2")
     (fake.root / "generations" / "x").mkdir(parents=True)
     (fake.root / "current").symlink_to("generations/x")
-    times = iter(["05:59:59", "06:00:00", "06:17:30"])
-    clock = {"now": None}
+    slept = []  # the clock moves with serve's ticks: 05:59:59, then 06:00:00, then 06:17:30 from the third on
 
     def now():
-        clock["now"] = next(times, None) or clock["now"]
-        return datetime.fromisoformat(f"2026-10-26 {clock['now']}").replace(tzinfo=UTC)
+        return datetime.fromisoformat(f"2026-10-26 {['05:59:59', '06:00:00', '06:17:30'][min(len(slept), 2)]}") \
+            .replace(tzinfo=UTC)
 
     runs: list[subprocess.Popen] = []
 
@@ -290,6 +289,7 @@ def test_a_slot_that_fires_mid_run_starts_when_the_real_run_ends(fake, monkeypat
     ticks = iter(range(100))  # 10 s at most
 
     def sleep(seconds):
+        slept.append(seconds)
         time.sleep(0.1)
         if next(ticks, None) is None or len(runs) == 2 and runs[1].poll() is not None:
             stop.set()
