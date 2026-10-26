@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 from datetime import date
 from pathlib import Path
@@ -177,6 +178,40 @@ def test_index_model_from_manifest(data, model_dir):
 def test_missing_model_dir_fails(data, tmp_path, capsys):
     root, _ = data
     assert score(root, tmp_path / "nope") == 1
+    assert "model" in capsys.readouterr().err
+
+
+def test_score_says_which_model_it_scores_with(data, model_dir, capsys):
+    root, _ = data
+    score(root, model_dir)
+    manifest = json.loads((model_dir / "manifest.json").read_text())
+    assert f"score: model {manifest['version']} (as_of {manifest['as_of']}) from {model_dir}" in capsys.readouterr().err
+
+
+def test_a_model_dir_that_does_not_load_gives_way_to_the_fallback_and_says_so(data, model_dir, tmp_path, capsys):
+    root, store = data
+    broken = tmp_path / "current"
+    shutil.copytree(model_dir, broken)
+    (broken / "model.txt").write_text("not a booster")
+    assert main(["--data", str(root), "score", "--model-dir", str(broken), "--fallback-model-dir", str(model_dir),
+                 "--no-history", "--now", NOW]) == 0
+    err = capsys.readouterr().err
+    assert "ERROR" in err and str(broken) in err and f"from {model_dir}" in err, err
+    assert tiers(store, "future")["ok"] in ("low", "medium", "high")
+    assert store.load_index().model.version == json.loads((model_dir / "manifest.json").read_text())["version"]
+
+
+def test_a_model_dir_that_loads_ignores_the_fallback(data, model_dir, tmp_path, capsys):
+    root, _ = data
+    main(["--data", str(root), "score", "--model-dir", str(model_dir), "--fallback-model-dir", str(tmp_path / "nope"),
+          "--no-history", "--now", NOW])
+    assert "ERROR" not in capsys.readouterr().err
+
+
+def test_a_missing_model_dir_and_a_missing_fallback_still_fail(data, tmp_path, capsys):
+    root, _ = data
+    assert main(["--data", str(root), "score", "--model-dir", str(tmp_path / "a"),
+                 "--fallback-model-dir", str(tmp_path / "b"), "--no-history", "--now", NOW]) == 1
     assert "model" in capsys.readouterr().err
 
 

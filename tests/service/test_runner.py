@@ -126,25 +126,43 @@ def test_the_url_and_the_pin_come_from_the_environment(env, url, pin):
     assert (cfg.model_url, cfg.model_pin) == (url, pin)
 
 
-def test_score_reads_the_state_model_once_there_is_one(tmp_path):
-    cfg = config(tmp_path)
+def with_current(cfg: Config) -> Config:
     (cfg.state / "model" / "2026-10-14+5006318a").mkdir(parents=True)
     (cfg.state / "model" / "current").symlink_to("2026-10-14+5006318a")
+    return cfg
+
+
+def score_args(rec: Recorder) -> list[str]:
+    return rec.calls[rec.stages.index("score")][3:]
+
+
+@pytest.mark.parametrize("pull", [dict(model_url="https://models.example"), dict(model_pin="2026-10-14+5006318a")])
+def test_score_reads_the_state_model_when_a_pull_is_configured_and_there_is_one(tmp_path, pull):
+    cfg = with_current(config(tmp_path, **pull))
     rec = Recorder()
     go(cfg, rec)
-    score = rec.calls[rec.stages.index("score")]
-    assert score[score.index("--model-dir") + 1] == str(cfg.state / "model" / "current")
+    args = score_args(rec)
+    assert args[args.index("--model-dir") + 1] == str(cfg.state / "model" / "current")
+    assert args[args.index("--fallback-model-dir") + 1] == "/app/model"  # a current that won't load is as good as none
+
+
+def test_score_reads_the_baked_model_when_no_pull_is_configured_whatever_state_holds(tmp_path):
+    rec = Recorder()
+    go(with_current(config(tmp_path)), rec)  # a leftover state/model/current from an earlier configuration
+    assert score_args(rec)[:3] == ["score", "--model-dir", "/app/model"]
+    assert "--fallback-model-dir" not in score_args(rec)
 
 
 def test_score_falls_back_to_the_baked_model_with_no_state_model(tmp_path):
     rec = Recorder()
-    go(config(tmp_path, model_dir=Path("/baked")), rec)
+    go(config(tmp_path, model_dir=Path("/baked"), model_url="https://models.example"), rec)
     score = rec.calls[rec.stages.index("score")]
     assert score[score.index("--model-dir") + 1] == "/baked"
+    assert "--fallback-model-dir" not in score
 
 
 def test_a_current_the_pull_makes_during_the_run_is_what_score_reads(tmp_path):
-    cfg = config(tmp_path)
+    cfg = config(tmp_path, model_url="https://models.example")
 
     class SeedingPull(Recorder):
         def __call__(self, argv, **kw):
