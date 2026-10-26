@@ -4,7 +4,8 @@
     <root>/current         relative symlink -> <version>; `score --model-dir` reads it
 
 The first run with a pull enabled seeds the first version from the image's baked model/. A new version replaces
-`current` only after every gate in `adopt` passes; `current` is switched by renaming a new symlink over it (the
+`current` only after every gate in `_gate` passes; one that is held (or ends the process in the gate) leaves
+`.held-<version>`, a note of the verdict, so later runs don't fetch and load it again until something changes; `current` is switched by renaming a new symlink over it (the
 way `publish` switches its own), so a reader sees the old model or the new one. Any failure keeps `current`.
 """
 
@@ -35,7 +36,7 @@ OPTIONAL_FILES = ("fighter_rating.parquet",)  # and may have these
 VERSION = re.compile(r"[0-9A-Za-z][0-9A-Za-z._+-]{0,63}")  # a directory name: never a path
 RESERVED = "current"  # the symlink's name: no version may take it
 SHA256 = re.compile(r"[0-9a-f]{64}")
-_STAGING, _LINK = ".tmp-", ".current-"
+_STAGING, _LINK, _HELD = ".tmp-", ".current-", ".held-"
 _SCHEMES = ("http", "https")
 TIMEOUT = 30  # seconds, per socket operation
 LATEST_MAX = 1 << 20
@@ -222,6 +223,30 @@ def _no_downgrade(label: str, as_of: date | None, running: date | None, was: str
                           f"set FIGHTCARD_MODEL_PIN to a kept version")
 
 
+def _note(root: Path, latest: Latest, was: str, reason: str) -> None:
+    """Record that `latest` is held (or went into the gate and didn't come out) while `was` is running."""
+    note = root / f"{_HELD}{latest.version}"
+    tmp = root / f"{_STAGING}held-{latest.version}"
+    tmp.write_text(json.dumps({"version": latest.version, "files": latest.files, "running": was, "reason": reason}))
+    os.replace(tmp, note)
+
+
+def _held_reason(root: Path, latest: Latest, was: str) -> str | None:
+    """Why `latest` was held before, when nothing it was judged on has changed since: same files, same running model."""
+    try:
+        note = json.loads((root / f"{_HELD}{latest.version}").read_text())
+        same = (note["version"], note["files"], note["running"]) == (latest.version, latest.files, was)
+        return note["reason"] if same and isinstance(note["reason"], str) else None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _forget(root: Path, *, except_version: str | None = None) -> None:
+    for note in root.glob(f"{_HELD}*"):
+        if note.name != f"{_HELD}{except_version}":
+            note.unlink(missing_ok=True)
+
+
 def _download(base: str, latest: Latest, staging: Path) -> None:
     quoted = urllib.parse.quote(latest.version, safe="")
     for name, want in sorted(latest.files.items()):
@@ -265,11 +290,23 @@ def _gate(root: Path, latest: Latest, staging: Path, was: str) -> None:
 
 def _adopt(root: Path, base: str, latest: Latest, was: str, log: Log) -> None:
     _no_downgrade(latest.version, latest.as_of, _running_as_of(root, was), was, "latest.json")
+    if reason := _held_reason(root, latest, was):
+        raise Held(latest.version, f"{reason} (not fetched again: same files, same running model)")
     staging = root / f"{_STAGING}{latest.version}"
     try:
         staging.mkdir()
-        _download(base, latest, staging)
-        _gate(root, latest, staging, was)
+        _download(base, latest, staging)  # a checksum mismatch is no verdict (the transfer may be what broke): no note
+        _note(root, latest, was, "the pull ended inside the gate (a crash?)")  # stays if the process doesn't come back
+        try:
+            _gate(root, latest, staging, was)
+        except Held as e:
+            _note(root, latest, was, str(e))
+            raise
+        except Exception as e:  # noqa: BLE001 - whatever a candidate makes the gate raise is a verdict on it
+            reason = f"the gate raised {type(e).__name__}: {e}"
+            _note(root, latest, was, reason)
+            raise Held(latest.version, reason) from e
+        _forget(root)
         _install(root, latest.version, staging)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
@@ -311,6 +348,7 @@ def pull(root: Path, *, url: str | None, pin: str | None, seed_dir: Path, keep: 
     base = url.rstrip("/")
     try:
         latest = _latest(base)
+        _forget(root, except_version=latest.version)  # a verdict on a version latest.json has moved on from
         if latest.version == was:
             log(f"up to date: {was}")
         else:
