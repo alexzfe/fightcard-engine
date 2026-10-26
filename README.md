@@ -41,4 +41,5 @@ uv run fightcard history ingest --html-dir <ufcstats cache> --db history/history
 uv run fightcard --data data scrape      # keeps the store current (--no-history to skip); then segments, images, score
 ```
 
-The data layout and what each field means are in [docs/CONTRACT.md](docs/CONTRACT.md).
+The data layout and what each field means are in [docs/CONTRACT.md](docs/CONTRACT.md). On the VPS the engine runs as
+one container that serves the API and refreshes it on a schedule: [docs/SERVICE.md](docs/SERVICE.md).
