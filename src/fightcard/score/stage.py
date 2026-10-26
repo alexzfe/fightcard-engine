@@ -48,6 +48,9 @@ from fightcard.store import Store, write_json
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--model-dir", type=Path, default=Path("model"), help="vendored model export")
+    parser.add_argument("--fallback-model-dir", type=Path, default=None,
+                        help="the model to use instead when --model-dir is there but won't load (the service passes "
+                             "its pulled model as --model-dir and the baked one here)")
     parser.add_argument("--now", default=None, help="ISO 8601 UTC time to act as (default: now)")
     ratings = parser.add_mutually_exclusive_group()
     ratings.add_argument("--history-db", type=Path, default=None,
@@ -175,11 +178,22 @@ def _rating_fields(r: dict) -> dict:
 
 
 def run(args: argparse.Namespace) -> int:
+    model_dir = args.model_dir
     try:
-        bundle = load_bundle(args.model_dir)
+        try:
+            bundle = load_bundle(model_dir)
+        except Exception as e:  # noqa: BLE001 - lightgbm, pyarrow and json each raise their own
+            if args.fallback_model_dir is None:
+                raise
+            print(f"score: ERROR can't load the model in {model_dir} ({type(e).__name__}: {e}); "
+                  f"using {args.fallback_model_dir}", file=sys.stderr)
+            model_dir = args.fallback_model_dir
+            bundle = load_bundle(model_dir)
     except FileNotFoundError as e:
         print(f"score: {e}", file=sys.stderr)
         return 1
+    print(f"score: model {bundle.manifest['version']} (as_of {bundle.manifest.get('as_of')}) from {model_dir}",
+          file=sys.stderr)
     store = Store(args.data)
     now = _now(args.now)
     fighters = store.load_fighters()

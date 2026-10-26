@@ -84,11 +84,13 @@ class Config:
         # `fightcard model pull` keeps its versions here, and `current` -> the one score reads
         return self.state / "model"
 
-    @property
-    def scoring_model(self) -> Path:
-        """What score reads: the pulled model once there is one, else the image's baked model."""
+    def model_args(self) -> tuple[str, ...]:
+        """What score is told about the model: the pulled one (`current`) when a pull is configured and there is
+        one, with the baked model behind it in case it won't load; else just the baked model, whatever state holds."""
         current = self.model_state / "current"
-        return current if current.is_dir() else self.model_dir
+        if (self.model_url or self.model_pin) and current.is_dir():
+            return ("--model-dir", str(current), "--fallback-model-dir", str(self.model_dir))
+        return ("--model-dir", str(self.model_dir))
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> Config:
@@ -133,7 +135,7 @@ def steps(cfg: Config) -> list[Step]:
                        *(("--url", cfg.model_url) if cfg.model_url else ()),
                        *(("--pin", cfg.model_pin) if cfg.model_pin else ())), fatal=False),
         # The pull may have just made state/model/current, so which model is only known when score starts.
-        Step("score", lambda: ("score", "--model-dir", str(cfg.scoring_model), "--history-db", str(cfg.history_db))),
+        Step("score", lambda: ("score", *cfg.model_args(), "--history-db", str(cfg.history_db))),
         Step("publish", ("publish", "--out", str(cfg.root))),
     ]
 
