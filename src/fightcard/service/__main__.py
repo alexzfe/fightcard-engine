@@ -19,12 +19,14 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--event", default="manual", help="schedule runs ask scripts/should_run.py; others always run")
     run.add_argument("--cron", default="", help="the schedule slot that fired")
     sub.add_parser("serve", help="the container's PID 1: nginx and the scheduler")
-    sub.add_parser("health", help="the container's health check: exit 1 if nginx, the data or a run is unhealthy")
+    health_cmd = sub.add_parser("health", help="the container's health check: exit 1 if nginx or a run is unhealthy")
+    health_cmd.add_argument("--staleness", action="store_true",
+                            help=f"instead, exit 1 if what's served is over {health.STALE_AFTER} old (for alerting)")
     args = parser.parse_args(argv)
     if args.command == "serve":
         return serve.main()
     if args.command == "health":
-        return health.main(Config.from_env(os.environ))
+        return health.main(Config.from_env(os.environ), stale=args.staleness)
     signal.signal(signal.SIGTERM, runner.terminate)
     return runner.run_once(Config.from_env(os.environ), event=args.event, cron=args.cron)
 

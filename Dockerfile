@@ -33,8 +33,8 @@ ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 \
     XDG_CACHE_HOME=/srv/fightcard/state/cache
 WORKDIR /app
 EXPOSE 8080
-# infra's sites.yml says `healthcheck: image`. The supervisor's check: nginx answers /healthz, the data it serves is
-# under 26 h old where this env scrapes, and no run is stuck (docs/SERVICE.md). nginx's /healthz stays a plain 200.
+# infra's sites.yml says `healthcheck: image`. The supervisor's check: nginx answers /healthz and no run is stuck;
+# stale data doesn't fail it, or an outage upstream would block deploys (docs/SERVICE.md). /healthz stays a plain 200.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
     CMD ["fightcard-service", "health"]
 # The supervisor handles SIGTERM (the nginx base image stops with SIGQUIT) and passes nginx its own graceful stop.

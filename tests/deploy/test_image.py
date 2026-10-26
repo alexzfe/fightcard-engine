@@ -68,7 +68,7 @@ def test_serves_the_repo_nginx_config_on_8080_with_a_healthz_check():
     text = dockerfile().replace("\\\n", " ")  # join continuation lines
     assert "COPY deploy/nginx/fightcard-engine.conf /etc/nginx/conf.d/default.conf" in text
     assert re.search(r"^EXPOSE 8080$", text, re.M)
-    # The container's check is the supervisor's (nginx up, data fresh, no stuck run); nginx's /healthz stays a
+    # The container's check is the supervisor's (nginx up, no stuck run); nginx's /healthz stays a
     # plain 200 for infra's public smoke test.
     assert re.search(r'^HEALTHCHECK .*CMD \["fightcard-service", "health"\]$', text, re.M)
 
