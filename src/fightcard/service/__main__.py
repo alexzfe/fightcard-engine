@@ -1,4 +1,4 @@
-"""`fightcard-service run|serve` (also `python -m fightcard.service`). Settings come from the environment:
+"""`fightcard-service run|serve|health` (also `python -m fightcard.service`). Settings come from the environment:
 FIGHTCARD_ROOT, FIGHTCARD_FETCH, FIGHTCARD_HOST, FIGHTCARD_FETCH_HOST, FIGHTCARD_MODEL_DIR, FIGHTCARD_GATE_SCRIPT."""
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ import os
 import signal
 import sys
 
-from fightcard.service import runner, serve
+from fightcard.service import health, runner, serve
 from fightcard.service.runner import Config
 
 
@@ -19,9 +19,12 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--event", default="manual", help="schedule runs ask scripts/should_run.py; others always run")
     run.add_argument("--cron", default="", help="the schedule slot that fired")
     sub.add_parser("serve", help="the container's PID 1: nginx and the scheduler")
+    sub.add_parser("health", help="the container's health check: exit 1 if nginx, the data or a run is unhealthy")
     args = parser.parse_args(argv)
     if args.command == "serve":
         return serve.main()
+    if args.command == "health":
+        return health.main(Config.from_env(os.environ))
     signal.signal(signal.SIGTERM, runner.terminate)
     return runner.run_once(Config.from_env(os.environ), event=args.event, cron=args.cron)
 

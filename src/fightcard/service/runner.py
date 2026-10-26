@@ -11,6 +11,7 @@ the stage's process group first, then the run. Every step logs one line to stdou
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import signal
 import subprocess
@@ -63,6 +64,11 @@ class Config:
     @property
     def lock(self) -> Path:
         return self.state / "run.lock"
+
+    @property
+    def run_marker(self) -> Path:
+        # {"pid", "started"} while a run holds the lock; `fightcard-service health` reads it
+        return self.state / "run.json"
 
     @property
     def history_db(self) -> Path:
@@ -202,6 +208,7 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
             return end("locked", LOCKED)
 
         step_name = "gate"
+        cfg.run_marker.write_text(json.dumps({"pid": os.getpid(), "started": datetime.now(UTC).isoformat()}))
         try:
             if event == "schedule":
                 try:
@@ -235,4 +242,6 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
                     return end("failed", code, failed_step=step.name, exit=code)
         except Terminated:
             return end("terminated", TERMINATED, failed_step=step_name)
+        finally:
+            cfg.run_marker.unlink(missing_ok=True)
     return end("ok", 0)

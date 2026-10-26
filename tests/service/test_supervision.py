@@ -181,7 +181,9 @@ SERVE = """
 import ctypes, os, sys
 ctypes.CDLL(None, use_errno=True).prctl(36, 1)  # PR_SET_CHILD_SUBREAPER: stand in for PID 1
 from fightcard.service import serve
-NGINX = "import os, signal, time\\nif os.environ.get('FAKE_NGINX_IGNORE_QUIT'): signal.signal(signal.SIGQUIT, signal.SIG_IGN)\\ntime.sleep(300)"
+NGINX = ("import os, signal, time\\n"
+         "if os.environ.get('FAKE_NGINX_IGNORE_QUIT'): signal.signal(signal.SIGQUIT, signal.SIG_IGN)\\n"
+         "time.sleep(300)")
 serve.NGINX = [sys.executable, "-c", NGINX]
 if "FAKE_RUN_TIMEOUT" in os.environ:
     serve.RUN_TIMEOUT = float(os.environ["FAKE_RUN_TIMEOUT"])
