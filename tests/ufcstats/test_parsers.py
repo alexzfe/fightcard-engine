@@ -119,15 +119,16 @@ def test_parse_completed_event_detail_has_results(fixture_html):
     main = event.fights[0]
     assert main.id == "7db1a3dac7e343e7"
     assert main.weight_class == "Middleweight"
-    assert main.result == Result(winner=main.red, method="SUB", round=5, time="2:46")
-    assert event.fights[1].result == Result(winner=event.fights[1].red, method="U-DEC", round=3, time="5:00")
+    assert main.result == Result(winner=main.red, outcome="win", method="SUB", round=5, time="2:46")
+    assert event.fights[1].result == Result(winner=event.fights[1].red, outcome="win", method="U-DEC", round=3,
+                                             time="5:00")
     assert event.fights[3].result.method == "KO/TKO"
 
 
-def test_draw_has_no_winner(fixture_html):
+def test_draw_has_no_winner_and_a_draw_outcome(fixture_html):
     event = parse_event_detail(fixture_html("event_detail_completed.html"), "x").event
     draw = event.fights[-1]
-    assert draw.result == Result(winner=None, method="M-DEC", round=3, time="5:00")
+    assert draw.result == Result(winner=None, outcome="draw", method="M-DEC", round=3, time="5:00")
 
 
 ROW = """
@@ -178,11 +179,11 @@ def test_empty_location_is_none():
     assert parse_event_detail(event_html(), "e1").event.location is None
 
 
-def test_no_contest_has_no_winner():
+def test_no_contest_has_no_winner_and_an_nc_outcome():
     flag = '<p><a><i class="b-flag__inner"><i class="b-flag__text">nc</i></i></a></p>'
     html = event_html(flag=flag, method="Overturned", round="2", time="1:10")
     assert parse_event_detail(html, "e1").event.fights[0].result == Result(
-        winner=None, method="Overturned", round=2, time="1:10"
+        winner=None, outcome="nc", method="Overturned", round=2, time="1:10"
     )
 
 
@@ -190,7 +191,31 @@ def test_loss_flag_means_second_fighter_won():
     flag = '<p><a><i class="b-flag__inner"><i class="b-flag__text">loss</i></i></a></p>'
     html = event_html(flag=flag, method="DQ", round="x", time="")
     result = parse_event_detail(html, "e1").event.fights[0].result
-    assert result == Result(winner="bbbbbbbbbbbbbbbb", method="DQ", round=None, time=None)
+    assert result == Result(winner="bbbbbbbbbbbbbbbb", outcome="win", method="DQ", round=None, time=None)
+
+
+@pytest.mark.parametrize("flag, winner, outcome", [
+    ("win", "aaaaaaaaaaaaaaaa", "win"),
+    ("loss", "bbbbbbbbbbbbbbbb", "win"),
+    ("draw", None, "draw"),
+    ("nc", None, "nc"),
+])
+def test_result_outcome_tells_a_draw_from_a_no_contest(flag, winner, outcome):
+    html = event_html(flag=f'<p><a><i class="b-flag__inner"><i class="b-flag__text">{flag}</i></i></a></p>',
+                      method="U-DEC", round="3", time="5:00")
+    result = parse_event_detail(html, "e1").event.fights[0].result
+    assert (result.winner, result.outcome) == (winner, outcome)
+
+
+def test_result_without_a_flag_has_no_outcome():
+    result = parse_event_detail(event_html(method="Other", round="1", time="0:10"), "e1").event.fights[0].result
+    assert (result.winner, result.outcome, result.method) == (None, None, "Other")
+
+
+def test_result_outcome_is_optional_so_older_data_still_validates():
+    old = Result.model_validate({"winner": None, "method": "M-DEC", "round": 3, "time": "5:00"})
+    assert old.outcome is None
+    assert "outcome" in Result.model_json_schema()["properties"]
 
 
 def test_event_detail_without_fights():
