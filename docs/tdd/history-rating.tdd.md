@@ -31,15 +31,15 @@
 
 | Step | Command | Result |
 |---|---|---|
-| Baseline (`c1efe63`) | `uv run pytest -q` | 357 tests (356 passed, 1 skipped), 1 deselected |
-| RED 1 (`80d877b`) | `uv run pytest -q tests/ufcstats/test_parsers.py` | `6 failed, 32 passed`, all `AttributeError: 'Result' object has no attribute 'outcome'` |
-| GREEN 1 (`cf4e582`) | `uv run pytest -q` | `362 passed, 1 skipped, 1 deselected` |
-| RED 2 (`3d6d305`) | `uv run pytest -q` | `13 failed, 361 passed, 21 errors`: `NotImplementedError` from the `history` stubs (fixture `connect`, `is_ufc_event`), and `history` not yet a CLI stage. `-m seed`: 3 errors (same stub) |
-| GREEN 2 (`bc17909`) | `uv run pytest -q`; `uv run pytest -q -m seed tests/history` | `395 passed, 1 skipped, 4 deselected`; seed `3 passed` (25.5 s) |
-| RED 3 (`6f3a2be`) | `uv run pytest -q tests/history` | `60 failed, 33 passed`: 59 × `NotImplementedError` (rating/display stubs), 1 × `assert 1 == None` (`FORMAT_VERSION` stub). Seed parity: 1 failed |
-| GREEN 3 (`4b061bf`) | `uv run pytest -q`; `-m seed` | `455 passed, 1 skipped, 5 deselected`; seed `4 passed` |
-| RED 4 (`a66c5c2`) | `uv run pytest -q` | `7 failed, 381 passed`: 6 score-stage tests with `SystemExit: 2` (unknown `--history-db`), plus `test_layout.py::test_score_tests_find_the_vendored_model_at_the_repo_root`, which runs the same file |
-| GREEN 4 (`bbfc905`) | `uv run pytest -q`; `uv run pytest -q -m seed` | `388 passed, 1 skipped, 5 deselected`; seed `4 passed, 390 deselected` (26 s) |
+| Baseline (`c1efe63`, before the rebase onto `5c0eabe`) | `uv run pytest -q` | 357 tests (356 passed, 1 skipped), 1 deselected |
+| RED 1 (`5716a0d`) | `uv run pytest -q tests/ufcstats/test_parsers.py` | `6 failed, 32 passed`, all `AttributeError: 'Result' object has no attribute 'outcome'` |
+| GREEN 1 (`db0fc19`) | `uv run pytest -q` | `362 passed, 1 skipped, 1 deselected` |
+| RED 2 (`c7939ba`) | `uv run pytest -q` | `13 failed, 361 passed, 21 errors`: `NotImplementedError` from the `history` stubs (fixture `connect`, `is_ufc_event`), and `history` not yet a CLI stage. `-m seed`: 3 errors (same stub) |
+| GREEN 2 (`a0da475`) | `uv run pytest -q`; `uv run pytest -q -m seed tests/history` | `395 passed, 1 skipped, 4 deselected`; seed `3 passed` (25.5 s) |
+| RED 3 (`e0e08e9`) | `uv run pytest -q tests/history` | `60 failed, 33 passed`: 59 × `NotImplementedError` (rating/display stubs), 1 × `assert 1 == None` (`FORMAT_VERSION` stub). Seed parity: 1 failed |
+| GREEN 3 (`bd7f719`) | `uv run pytest -q`; `-m seed` | `455 passed, 1 skipped, 5 deselected`; seed `4 passed` |
+| RED 4 (`90dd8d6`) | `uv run pytest -q` | `7 failed, 381 passed`: 6 score-stage tests with `SystemExit: 2` (unknown `--history-db`), plus `test_layout.py::test_score_tests_find_the_vendored_model_at_the_repo_root`, which runs the same file |
+| GREEN 4 (`123db51`) | `uv run pytest -q`; `uv run pytest -q -m seed` | `388 passed, 1 skipped, 5 deselected`; seed `4 passed, 390 deselected` (26 s) |
 | Coverage | `uv run pytest -q --cov=fightcard` | `history/` store 100%, stage 100%, display 100%, ingest 98% (a blank fetch-log line), rating 98% (the `__main__` block, which runs in a subprocess test). `score/stage.py` 99%. Total 99% |
 | Seed ingest | `fightcard history ingest --html-dir ~/Projects/fight-auto-research/data/raw_html/ufcstats --db <scratch>` | `1288 events, 11694 fights, 4628 fighters, 5917 pages`, about 25 s |
 
@@ -108,3 +108,9 @@ Adjustments to this run's own RED tests during GREEN (wrong assumptions about th
 - **Pre-existing parser bug, not fixed here:** `parsers.parse_date` uses `%B`, so fighter-page DOBs with abbreviated months ("Jul 09, 1985") parse to `None`. Only fully spelled months ("May") work. That affects `Fighter.dob` on the site and `fighters.dob` in the store.
 - Round stats (`rounds` table) are deferred, as the recon proposed.
 - fight-card-website's `site/src/lib/schema.ts` can add the optional `outcome` to its `Result` schema. A non-strict zod object strips unknown keys, so it keeps validating without it (not checked from here).
+
+## Rebase onto main (`5c0eabe`, Phase 3 publisher)
+
+The SHAs above are the rebased ones. The counts in the task report are from before the rebase (Phase 2 on `c1efe63`).
+After the rebase: `uv run pytest -q` → `466 passed, 1 skipped, 49 deselected`; `-m seed` → `4 passed`; `-m docker` →
+`44 passed`. `tests/test_layout.py` now lists both `publish` and `history` among the CLI stages.
