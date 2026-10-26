@@ -110,3 +110,56 @@ def test_service_doc_states_the_stage_timeouts():
 
 def test_readme_links_the_service_doc():
     assert "(docs/SERVICE.md)" in README
+
+
+# Phase 5: the engine pulls the model research publishes.
+
+def model_section() -> str:
+    return service_doc().split("## The model")[1].split("\n## ")[0]
+
+
+@pytest.mark.parametrize("term", [
+    "FIGHTCARD_MODEL_URL", "FIGHTCARD_MODEL_PIN", "FIGHTCARD_MODEL_DIR", "fightcard model pull", "latest.json",
+    "sha256", "load_bundle", "examples.json", "low_max", "medium_max", "held", "rollback", "state/model/current",
+    "last 3", "first boot", "%2B", "unreachable", "exit 0", "models.xlobax.com", "no-op", "does not fail",
+    "model.stale_fighters",
+])
+def test_service_doc_covers_the_model_pull(term):
+    assert term in model_section(), term
+
+
+def test_service_doc_shows_the_pull_in_the_run_and_the_volume():
+    doc = service_doc()
+    assert "gate → scrape → segments → images → model pull → score → publish" in doc
+    assert any(line.startswith("| `state/model/") for line in doc.splitlines())
+
+
+def test_service_doc_tells_how_to_pin_and_roll_back():
+    section = model_section()
+    assert "FIGHTCARD_MODEL_PIN=<version>" in section
+    assert "kept" in section and "ls /srv/fightcard/state/model" in section
+
+
+def test_contract_documents_the_model_fields_and_the_pull():
+    assert "`index.model.stale_fighters`" in CONTRACT
+    for field in ("model.version", "model.as_of"):
+        assert field in CONTRACT, field
+    row = next((line for line in CONTRACT.splitlines() if line.startswith("| `model pull`")), None)
+    assert row is not None and "FIGHTCARD_MODEL_URL" in row and "state/model" in row
+
+
+def test_api_doc_names_the_model_fields():
+    for field in ("model.version", "model.as_of", "model.stale_fighters"):
+        assert field in api_doc(), field
+
+
+def test_model_readme_says_re_exporting_is_automated_and_hand_export_still_works():
+    section = MODEL_README.split("## Re-exporting")[1]
+    for term in ("research", "R2", "latest.json", "FIGHTCARD_MODEL_URL", "docs/SERVICE.md", "by hand"):
+        assert term in section, term
+    assert "By hand for now" not in section
+    assert "A later phase stops vendoring" not in section
+
+
+def test_readme_mentions_the_model_pull():
+    assert "fightcard model pull" in README
