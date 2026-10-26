@@ -82,6 +82,21 @@ def test_unchanged_files_are_shared_with_the_previous_generation(tmp_path):
     assert os.stat(old / "index.json").st_ino != os.stat(new / "index.json").st_ino
 
 
+def test_a_changed_file_gets_a_later_mtime_than_the_one_it_replaces(tmp_path):
+    # nginx's ETag is "<mtime in seconds>-<size>": a same-size change written in the same second as (or, after a
+    # clock step, before) the live file would keep its ETag and clients would get 304 for stale content.
+    root = tmp_path / "srv"
+    publish(variant(tmp_path, 1), root)
+    live_index = root / "current" / "index.json"
+    future = int(os.stat(live_index).st_mtime) + 100
+    os.utime(live_index, (future, future))
+    size = live_index.stat().st_size
+    publish(variant(tmp_path, 2), root)  # index.json: same size, new content
+    new = os.stat(root / "current" / "index.json")
+    assert new.st_size == size
+    assert int(new.st_mtime) > future
+
+
 def test_keeps_the_last_n_generations(tmp_path):
     root = tmp_path / "srv"
     ids = [publish(variant(tmp_path, n), root, keep=2).id for n in range(4)]
