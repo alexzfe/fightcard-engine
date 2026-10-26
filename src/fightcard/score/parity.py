@@ -19,13 +19,12 @@ def parity_failures(bundle: Bundle, examples: object) -> list[str]:
         rows = [bout_row(bundle.snapshot, bundle.spec, e["red"], e["blue"], e["date"], e["context"])
                 for e in examples]
         p = bundle.predict(rows)
-        expected = [(e["p_finish"], e["tier"]) for e in examples]
-    except (KeyError, TypeError, ValueError, AttributeError) as e:
+        failures = []
+        for i, (got, e) in enumerate(zip(p, examples)):
+            if not np.isclose(got, e["p_finish"], rtol=0, atol=ATOL):
+                failures.append(f"example {i}: p_finish {float(got)!r} != exported {e['p_finish']!r}")
+            elif bundle.tier(float(got)) != e["tier"]:
+                failures.append(f"example {i}: tier {bundle.tier(float(got))} != exported {e['tier']}")
+    except Exception as e:  # noqa: BLE001 - a candidate's own data decides what raises (lightgbm, numpy, pandas)
         return [f"examples.json can't be scored: {type(e).__name__}: {e}"]
-    failures = []
-    for i, (got, (want_p, want_tier)) in enumerate(zip(p, expected)):
-        if not np.isclose(got, want_p, rtol=0, atol=ATOL):
-            failures.append(f"example {i}: p_finish {float(got)!r} != exported {want_p!r}")
-        elif bundle.tier(float(got)) != want_tier:
-            failures.append(f"example {i}: tier {bundle.tier(float(got))} != exported {want_tier}")
     return failures
