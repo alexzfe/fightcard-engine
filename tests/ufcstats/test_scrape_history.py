@@ -305,3 +305,101 @@ def test_a_completed_bout_with_a_method_but_no_outcome_fails_and_writes_nothing(
     assert not (tmp_path / "data" / "index.json").exists()
     err = capsys.readouterr().err
     assert "nothing written" in err and CARD.fights[0].id in err
+
+
+# --- all or nothing: the store commits first, then data/ ------------------------------------------------------------
+
+
+class CommitFails:
+    """A store connection whose COMMIT fails, as with another writer holding the lock past the busy timeout."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+    def commit(self):
+        raise sqlite3.OperationalError("database is locked")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, *_):
+        if exc_type is None:
+            self.commit()
+        else:
+            self.conn.rollback()
+
+
+def test_a_store_commit_failing_leaves_data_untouched(tmp_path, db, capsys):
+    before = dump_bytes(db, tmp_path / "before")
+    assert run(tmp_path, CommitFails(db), client()) == 1
+    assert not (tmp_path / "data").exists()
+    assert dump_bytes(db, tmp_path / "after") == before
+    assert "nothing written" in capsys.readouterr().err
+
+
+def test_the_store_write_lock_is_taken_with_a_busy_timeout(tmp_path, db, db_path, monkeypatch, capsys):
+    """Another writer holds the store: the run waits `BUSY_TIMEOUT_MS`, then fails before writing anything."""
+    monkeypatch.setattr(stage, "BUSY_TIMEOUT_MS", 50)
+    before = dump_bytes(db, tmp_path / "before")
+    with closing(sqlite3.connect(db_path, isolation_level=None)) as other:
+        other.execute("BEGIN IMMEDIATE")
+        assert run(tmp_path, db, client()) == 1
+        assert db.execute("PRAGMA busy_timeout").fetchone() == (50,)
+        other.execute("ROLLBACK")
+    assert not (tmp_path / "data").exists()
+    assert dump_bytes(db, tmp_path / "after") == before
+    err = capsys.readouterr().err
+    assert "nothing written" in err and "locked" in err
+
+
+def test_the_default_busy_timeout_is_thirty_seconds():
+    assert stage.BUSY_TIMEOUT_MS == 30_000
+
+
+def seeded(path: Path) -> sqlite3.Connection:
+    conn = connect(path)
+    ingest(conn, HISTORY_HTML)
+    return conn
+
+
+def tree(root: Path) -> dict[str, bytes]:
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+def test_a_data_write_failing_after_the_commit_says_so_and_the_next_run_converges(tmp_path, db, monkeypatch,
+                                                                                  capsys):
+    real, saved = Store.save_event, []
+
+    def fails_on_the_second(self, event):
+        saved.append(event.id)
+        if len(saved) == 2:
+            raise OSError(28, "No space left on device")
+        return real(self, event)
+
+    monkeypatch.setattr(Store, "save_event", fails_on_the_second)
+    assert run(tmp_path, db, client()) == 1
+    err = capsys.readouterr().err
+    assert "store updated" in err and "data/ may be partially written" in err and "next run rewrites it" in err
+    assert "nothing written" not in err
+    assert len(card_rows(db)) == len(CARD.fights)  # committed before data/
+    assert not (tmp_path / "data" / "index.json").exists()
+
+    monkeypatch.setattr(Store, "save_event", real)
+    assert run(tmp_path, db, client()) == 0
+    with closing(seeded(tmp_path / "clean" / "history.sqlite")) as clean:
+        assert run(tmp_path / "clean", clean, client()) == 0
+        assert dump_bytes(db, tmp_path / "a") == dump_bytes(clean, tmp_path / "b")
+    assert tree(tmp_path / "data") == tree(tmp_path / "clean" / "data")
+
+
+def test_without_a_store_a_data_write_failing_exits_1_without_a_traceback(tmp_path, monkeypatch, capsys):
+    def fails(self, fighters):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(Store, "save_fighters", fails)
+    assert stage.scrape(Store(tmp_path / "data"), client(), now=NOW) == 1
+    err = capsys.readouterr().err
+    assert "data/ may be partially written" in err and "next run rewrites it" in err
