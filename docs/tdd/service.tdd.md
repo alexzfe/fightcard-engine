@@ -168,3 +168,12 @@ the store current lines, plus this branch's `-m docker` comment. The pre-rebase 
 - `uv run pytest -q -m docker`: **54 passed**. `uv run pytest -q -m seed`: **6 passed**.
 - actionlint 1.7.12: exit 0 (`mise exec shellcheck@0.11.0 -- uvx --from actionlint-py==1.7.12.25 actionlint`).
 - Coverage `pytest tests/service --cov=fightcard.service`: 95% total, health 97%.
+
+## Fix: deploy smoke URLs (after the first staging deploy)
+
+The first staging deploy pulled and started fine, but deploy-app's smoke test fetched the bare host, which nginx
+answers with 404 by design. Both deploy jobs now smoke-test `/healthz`.
+
+| RED | GREEN | Evidence |
+|---|---|---|
+| `test_deploys_go_through_infras_deploy_app` expects `…/healthz` (2 failed) | `release.yml` urls end in `/healthz` | `uv run pytest -q` → 696 passed, 1 skipped |

@@ -69,7 +69,7 @@ jobs:
       app: ufc-data
       env: staging
       tag: ${{ github.sha }}
-      url: https://ufc-data-staging.xlobax.com
+      url: https://ufc-data-staging.xlobax.com/healthz
     secrets: inherit
 
   prod:
@@ -79,7 +79,7 @@ jobs:
       app: ufc-data
       env: prod
       tag: ${{ github.sha }}
-      url: https://ufc-data.xlobax.com
+      url: https://ufc-data.xlobax.com/healthz
     secrets: inherit
 
   release:
