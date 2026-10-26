@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from fightcard.service.runner import Config
+from fightcard.service.runner import Config, logfmt
 from fightcard.service.schedule import next_fire
 
 NGINX = ["nginx", "-g", "daemon off;"]
@@ -22,7 +22,7 @@ STOP_TIMEOUT = 20  # seconds; Docker's default stop grace period is 10s, compose
 
 
 def _log(out: Callable[[str], None], **fields: object) -> None:
-    out(" ".join(["fightcard-serve", *(f'{k}="{v}"' if " " in str(v) else f"{k}={v}" for k, v in fields.items())]))
+    out(logfmt("fightcard-serve", **fields))
 
 
 def _stop(proc, sig: int) -> None:
