@@ -98,8 +98,9 @@ Bout context on the site (`fightcard.score.features.bout_context`):
 ## Re-exporting
 
 This is automated: fight-auto-research's **Export model** workflow (`.github/workflows/export.yml`) runs these
-steps when the site's refresh finds stale fighters, and every Monday, then opens a `model-export` PR here that
-auto-merges once checks pass (it waits for review if the tier thresholds moved). By hand, when needed:
+steps daily when this repo's `data/stale_fighters.json` exists, and every Monday, then pushes branch
+`model-export` here with a deploy key. `release.yml` tests it, and `model-export.yml` opens the PR, merges it if
+the tests passed and the tier thresholds didn't move, and runs a refresh to re-score and deploy. By hand, when needed:
 
 1. Refresh the research data: `cd ~/Projects/fight-auto-research`, scrape, then `uv run python -m build`.
 2. Export from the research checkout or a worktree that has `export/`:
