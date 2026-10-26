@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
-from model_bucket import BAKED_VERSION, BUNDLE, MODEL_DIR, sha256, write_latest
+from model_bucket import BAKED_VERSION, BUNDLE, MODEL_DIR, Redirector, sha256, write_latest
 
 from fightcard.cli import main
 from fightcard.model import pull as pull_module
@@ -414,6 +414,34 @@ def test_only_http_urls_are_fetched(root, capsys, url):
     assert pull(root, url=url) == 0
     assert "http" in capsys.readouterr().err
     assert current(root) == BAKED_VERSION  # the seed was still made
+
+
+@pytest.mark.parametrize("target", ["ftp://127.0.0.1:9/latest.json", "file:///etc/hostname", "gopher://127.0.0.1:9/"])
+@pytest.mark.usefixtures("seeded")
+def test_a_redirect_to_a_scheme_other_than_http_is_refused(root, capsys, monkeypatch, target):
+    import urllib.request
+    opened = []
+    monkeypatch.setattr(urllib.request.FTPHandler, "ftp_open", lambda self, req: opened.append(req.full_url))
+    redirector = Redirector(target)
+    try:
+        capsys.readouterr()
+        assert pull(root, url=redirector.url) == 0
+    finally:
+        redirector.stop()
+    err = capsys.readouterr().err
+    assert opened == []  # never followed
+    assert "failed, keeping" in err and "not an http(s) url" in err, err
+    assert current(root) == BAKED_VERSION
+
+
+def test_a_redirect_to_another_http_url_is_followed(root, bucket):
+    bucket.publish(NEW)
+    redirector = Redirector(bucket.url + "/latest.json")
+    try:
+        pull(root, url=redirector.url)  # the redirector sends latest.json (and so every file) to the real one
+    finally:
+        redirector.stop()
+    assert any(r == "/latest.json" for r in bucket.requests)
 
 
 # FIGHTCARD_MODEL_PIN: run a kept version and pull nothing, which is also how a bad model is rolled back.
