@@ -372,3 +372,68 @@ def test_a_history_store_path_with_uri_characters_is_opened_read_only(data, mode
     assert score_with(root, model_dir, db) == 0
     assert store.load_fighters()[veterans[0]["fighter_id"]].elo is not None
     assert db.read_bytes() == before
+
+
+def completed(eid: str, day: str, winner: str, loser: str) -> Event:
+    return event(eid, day, [Fight(id=f"{eid}-1", red=winner, blue=loser, weight_class="Lightweight",
+                                  result=Result(winner=winner, outcome="win", method="U-DEC", round=3))],
+                 status="completed")
+
+
+def test_a_completed_event_missing_from_the_history_store_fails(data, model_dir, veterans, tmp_path, capsys):
+    """The store wasn't updated after the card: ratings would silently miss it."""
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    store.save_event(completed("e-late", "2026-10-31", v0, v1))
+    before = snapshot_files(root)
+    assert score_with(root, model_dir, history(tmp_path, veterans)) == 1
+    err = capsys.readouterr().err
+    assert "completed events with no bouts in the history store: e-late" in err
+    assert snapshot_files(root) == before
+
+
+def test_a_completed_event_in_the_store_without_results_fails(data, model_dir, veterans, tmp_path):
+    """Ingested before the results were in (the card page still showed it upcoming)."""
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    store.save_event(completed("e-late", "2026-10-31", v0, v1))
+    db = history(tmp_path, veterans)
+    conn = connect(db)
+    with conn:
+        upsert_event(conn, event("e-late", "2026-10-31", [Fight(id="e-late-1", red=v0, blue=v1)]),
+                     is_ufc=True, source="listing")
+    conn.close()
+    assert score_with(root, model_dir, db) == 1
+
+
+def test_a_completed_event_in_the_store_passes_and_events_after_now_are_not_checked(data, model_dir, veterans,
+                                                                                     tmp_path):
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    store.save_event(completed("e-late", "2026-10-31", v0, v1))
+    store.save_event(completed("e-later", "2026-11-08", v0, v1))  # after --now: not in this run's ratings
+    db = history(tmp_path, veterans, [("2026-10-31", "late", v0, v1)])
+    assert score_with(root, model_dir, db) == 0
+
+
+def test_score_logs_the_stores_newest_completed_event_and_last_fetch_against_now(data, model_dir, veterans,
+                                                                                tmp_path, capsys):
+    root, _ = data
+    db = history(tmp_path, veterans)
+    conn = connect(db)
+    with conn:
+        upsert_event(conn, event("e-next", "2026-12-12", []), is_ufc=True, source="listing")  # upcoming: not newest
+        conn.execute("INSERT INTO pages (url, path, sha256, fetched_at) VALUES "
+                     "('u1', 'p1', 's', '2026-10-02T03:00:00Z'), ('u2', 'p2', 's', '2026-10-05T04:00:00Z'), "
+                     "('u3', 'p3', 's', NULL)")
+    conn.close()
+    assert score_with(root, model_dir, db) == 0
+    assert (f"score: history store {db}: newest completed event 2026-10-01, last page fetched "
+            f"2026-10-05T04:00:00Z (now {NOW})") in capsys.readouterr().err.splitlines()
+
+
+def test_the_store_line_says_unknown_without_fetch_times(data, model_dir, veterans, tmp_path, capsys):
+    root, _ = data
+    db = history(tmp_path, veterans)
+    assert score_with(root, model_dir, db) == 0
+    assert "newest completed event 2026-10-01, last page fetched unknown" in capsys.readouterr().err
