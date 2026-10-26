@@ -320,3 +320,8 @@ def test_console_script_is_installed():
     result = subprocess.run([str(exe), "--help"], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert "run" in result.stdout and "serve" in result.stdout
+
+
+def test_html_listing_is_the_one_history_ingest_needs():
+    from fightcard.history.ingest import LISTING
+    assert Path(runner.HTML_LISTING) == Path(LISTING)
