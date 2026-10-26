@@ -74,3 +74,46 @@
 ## Rebase onto main
 
 The branch was rebased onto `origin/main` at `ff716bc`, after PR #2 merged. The RED/GREEN SHAs above are the rebased ones; the commit messages of the first four still quote the pre-rebase SHAs (`fbea58d`, `c0ceb72`, `cb94ea2`, `072ee6b`) and the pre-rebase counts. Final counts are in GREEN 3's row.
+
+## Review fixes (PR #3)
+
+Findings from an ecc code review, fixed with one RED → GREEN pair per finding or tight group. Principle: data/
+ahead of the store is the dangerous direction (`score`'s staleness check fails on data/ events the store lacks);
+a store ahead of data/ is harmless, since the next run rewrites data/.
+
+| Step | Command | Result |
+|---|---|---|
+| RED 1 (`fe84849`) | `uv run pytest -q tests/ufcstats/test_scrape_history.py` | `5 failed, 18 passed`: data/ written before a failed COMMIT; no `BUSY_TIMEOUT_MS`; `OSError: [Errno 28]` escaped `scrape()` (traceback) with and without a store |
+| GREEN 1 (`b3f8ea3`) | `uv run pytest -q` | `513 passed, 1 skipped`. `write()`: `PRAGMA busy_timeout`, `BEGIN IMMEDIATE`, store upserts, commit (rollback on any error), then data/; `OSError` there → `DataWriteFailed`, exit 1, "store updated, data/ may be partially written; the next run rewrites it" |
+| RED 2 (`b09b5ae`) | same file | `3 failed, 25 passed`: exit 1 on a backfill 404 and on a backfill page without outcomes; no `BACKFILL_PER_RUN` |
+| RED 2b (`ef8a5f9`) | same file | `1 failed, 28 passed`: a backfilled card refetched its stale known fighters. Run on top of the uncommitted backfill split in stage.py (test-only commit) |
+| GREEN 2 (`c557ba2`) | `uv run pytest -q` | `519 passed, 1 skipped`. `results()` fetches this run's cards loudly, then `backfill()`: oldest first, ≤ 20, 404 / `MissingOutcome` → WARNING + `_forget` (no page, no card, data/ file kept); backfilled cards fetch only fighters missing from fighters.json |
+| RED 6 (`7b4c454`) | same file | `1 failed, 29 passed`: a 0-fight upcoming event's `events` row was upserted |
+| GREEN 6 (`5bb9dc5`) | `uv run pytest -q` | `520 passed, 1 skipped`. The skip calls `_forget` |
+| Refactor 5 (`5005168`) | `uv run pytest -q` | `520 passed, 1 skipped`. The `url.endswith(tuple(self.fighter_pages))` filter is gone: every page left in `self.pages` is recorded |
+| Docs 7, 8 (`58d13d7`) | — | CONTRACT.md: `?page=all` (also with `--no-history` when `--recent` > 0), store-first commit, backfill cap and skip, 0-fight events, the accepted fresh-fighter gap. ELO.md in brief |
+| Coverage test (`41807e5`) | `uv run pytest -q tests/ufcstats` | `151 passed`. A backfill 503 still fails the run (passes on the GREEN code; not a RED) |
+| Final | `uv run pytest -q`; `-m seed`; `-m docker` | `521 passed, 1 skipped, 51 deselected`; seed `6 passed`; docker `44 passed` |
+| Coverage | `uv run pytest -q --cov=fightcard --cov-report=term-missing` | `ufcstats/stage.py` 99% (72 `utcnow`, 212 all-upcoming-empty, both uncovered before), `history/ingest.py` 100%, `history/store.py` 100%, `score/stage.py` 99%. Total 99% |
+
+| # | What is guaranteed | Test (`tests/ufcstats/test_scrape_history.py`) |
+|---|---|---|
+| R1 | A failed COMMIT leaves data/ untouched and the store as it was; exit 1, "nothing written" | `test_a_store_commit_failing_leaves_data_untouched` |
+| R2 | Another writer holding the store: the run waits `busy_timeout`, fails before writing anything, says "locked"; the default wait is 30 s | `test_the_store_write_lock_is_taken_with_a_busy_timeout`, `test_the_default_busy_timeout_is_thirty_seconds` |
+| R3 | `OSError` writing data/ after the commit: exit 1 with the true message, store committed; the next clean run gives the same store dump and data/ tree as a clean run from scratch | `test_a_data_write_failing_after_the_commit_says_so_and_the_next_run_converges` |
+| R4 | Without a store, the same `OSError` exits 1 with the message, no traceback | `test_without_a_store_a_data_write_failing_exits_1_without_a_traceback` |
+| R5 | Backfill page 404 / without outcomes: skipped, WARNING names the event (and the fights), no store rows or page, data/ file unchanged, the rest goes in, exit 0 | `test_a_backfill_page_that_404s_is_skipped_with_a_warning`, `test_a_backfill_page_without_outcomes_is_skipped_with_a_warning` |
+| R6 | This run's cards still fail loudly: the `--recent` card 404 (with a backfill pending), a past-upcoming card without outcomes, a backfill non-404 HTTP error | `test_a_current_card_that_404s_still_fails_the_run`, `test_a_past_upcoming_card_without_outcomes_still_fails_the_run`, `test_a_backfill_page_failing_with_another_http_error_still_fails_the_run` |
+| R7 | 25 events to backfill: 20 this run (oldest first, INFO says 5 wait), the other 5 next run | `test_backfill_refetches_are_capped_per_run_and_the_rest_come_next_run` |
+| R8 | A backfilled card fetches only fighters missing from fighters.json | `test_backfill_cards_fetch_only_fighters_missing_from_data` |
+| R9 | A 0-fight upcoming event: no data/ file, no store event or page row | `test_an_upcoming_event_skipped_for_0_fights_stays_out_of_the_store_as_out_of_data` |
+
+### Finding 3 (refetch loop for empty completed cards): not done, needs a decision
+
+The decided fix ("a store event row with status `completed` satisfies the check") can't take effect: the parser
+sets `status = "completed" if any(f.result for f in fights) else "upcoming"` (`ufcstats/parsers.py:201`), so a card
+with no bouts is always parsed, and stored, as `upcoming`. The backfill also rewrites the data/ file from that
+parse as `upcoming`, which then puts it in the past-upcoming path (refetched every run as a current card). The
+RED tests written for it (scrape: backfilled once; score: an empty completed store row passes) are kept outside
+the repo. Choosing where "completed" comes from for an empty card (the completed listing, data/'s status, or
+the date) changes data/ (published as `/v1/`) and `history ingest`, so it's left for a decision.
