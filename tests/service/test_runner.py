@@ -15,7 +15,7 @@ from fightcard.service import runner
 from fightcard.service.runner import Config
 
 REPO = Path(__file__).resolve().parents[2]
-ORDER = ["scrape", "history", "segments", "images", "score", "publish"]
+ORDER = ["scrape", "segments", "images", "score", "publish"]
 
 
 def config(tmp_path: Path, **overrides) -> Config:
@@ -64,20 +64,12 @@ def step_lines(lines: list[str]) -> dict[str, dict[str, str]]:
 
 # Order and arguments.
 
-def html_cache(cfg: Config) -> None:
-    """What scrape leaves once it keeps ufcstats' HTML (feat/scrape-history): the listing history ingest needs."""
-    from fightcard.history.ingest import LISTING
-    (cfg.html / LISTING).parent.mkdir(parents=True, exist_ok=True)
-    (cfg.html / LISTING).write_text("<html></html>")
-
-
 def test_runs_every_stage_in_order(tmp_path):
-    cfg = config(tmp_path)
-    html_cache(cfg)
     rec = Recorder()
-    code, _ = go(cfg, rec)
+    code, lines = go(config(tmp_path), rec)
     assert code == 0
     assert rec.stages == ORDER
+    assert list(step_lines(lines)) == ORDER  # no separate history step: scrape upserts the store itself
 
 
 def test_stages_share_the_state_data_dir_and_publish_to_the_root(tmp_path):
@@ -101,46 +93,22 @@ def test_publish_root_matches_the_nginx_config(tmp_path):
     assert Config.from_env({}).root == Path(runner.ROOT)
 
 
-def test_history_ingests_the_html_cache_into_the_store_between_scrape_and_segments(tmp_path):
+def test_scrape_and_score_share_the_history_store_beside_data(tmp_path):
     cfg = config(tmp_path)
-    html_cache(cfg)
+    assert cfg.history_db == cfg.data.parent / "history" / "history.sqlite"  # scrape's and score's default
     rec = Recorder()
     go(cfg, rec)
-    argv = rec.calls[rec.stages.index("history")]
-    assert argv[3:] == ["history", "ingest", "--html-dir", str(cfg.root / "state" / "html"),
-                        "--db", str(cfg.root / "state" / "history" / "history.sqlite")]
-
-
-def test_the_history_store_is_where_score_looks_by_default(tmp_path):
-    cfg = config(tmp_path)
-    assert cfg.history_db == cfg.data.parent / "history" / "history.sqlite"  # score's <--data>/../history/
-
-
-def test_history_is_skipped_until_scrape_keeps_an_html_cache(tmp_path):
-    rec = Recorder()
-    code, lines = go(config(tmp_path), rec)
-    steps = step_lines(lines)
-    assert code == 0 and list(steps) == ORDER
-    assert "history" not in rec.stages and rec.stages[-1] == "publish"
-    assert (steps["history"]["status"], steps["history"]["reason"]) == ("skipped", "no-html-cache")
-
-
-def test_history_runs_with_fetch_off(tmp_path):
-    cfg = config(tmp_path, fetch=False)
-    html_cache(cfg)
-    rec = Recorder()
-    go(cfg, rec)
-    assert rec.stages == ["history", "score", "publish"]  # ingest reads local files only
+    scrape = rec.calls[rec.stages.index("scrape")]
+    assert "--no-history" not in scrape and "history" not in rec.stages
+    assert cfg.history_db.parent.is_dir()
 
 
 # Failures.
 
-@pytest.mark.parametrize("failing", ["scrape", "history", "segments", "images", "score", "publish"])
+@pytest.mark.parametrize("failing", ["scrape", "segments", "images", "score", "publish"])
 def test_stops_at_the_first_failing_stage_and_returns_its_code(tmp_path, failing):
-    cfg = config(tmp_path)
-    html_cache(cfg)
     rec = Recorder({failing: 3})
-    code, lines = go(cfg, rec)
+    code, lines = go(config(tmp_path), rec)
     assert code == 3
     assert rec.stages[-1] == failing
     assert "publish" not in rec.stages or failing == "publish"
@@ -252,7 +220,6 @@ def test_config_reads_paths_from_the_environment(tmp_path):
     assert (cfg.root, cfg.model_dir, cfg.gate_script) == (tmp_path, Path("/m"), Path("/g.py"))
     assert cfg.lock == tmp_path / "state" / "run.lock"
     assert cfg.history_db == tmp_path / "state" / "history" / "history.sqlite"
-    assert cfg.html == tmp_path / "state" / "html"
 
 
 # Lock.
@@ -321,7 +288,3 @@ def test_console_script_is_installed():
     assert result.returncode == 0, result.stderr
     assert "run" in result.stdout and "serve" in result.stdout
 
-
-def test_html_listing_is_the_one_history_ingest_needs():
-    from fightcard.history.ingest import LISTING
-    assert Path(runner.HTML_LISTING) == Path(LISTING)

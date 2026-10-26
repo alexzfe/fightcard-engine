@@ -74,7 +74,7 @@ def service_doc() -> str:
 
 @pytest.mark.parametrize("term", [
     "one container", "compose.yml.j2", "06:00 UTC", "should_run.py", "flock", "FIGHTCARD_FETCH", "staging",
-    "mem_limit", "stdout", "last good generation", "/srv/fightcard", "state/history/history.sqlite", "state/cache", "state/html",
+    "mem_limit", "stdout", "last good generation", "/srv/fightcard", "state/history/history.sqlite", "state/cache", "history ingest",
     "state/data", "seed", "history", "healthcheck: image",
 ])
 def test_service_doc_covers(term):
