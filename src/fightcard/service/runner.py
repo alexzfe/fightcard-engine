@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from fightcard.service.schedule import MINUTE
+
 ROOT = "/srv/fightcard"  # the volume, and the publish root deploy/nginx/fightcard-engine.conf serves
 LOCKED = 75  # EX_TEMPFAIL: another run holds the lock
 _OFF = {"off", "0", "false", "no"}
@@ -44,6 +46,7 @@ class Config:
     model_dir: Path
     gate_script: Path
     python: str
+    schedule_minute: int = MINUTE  # the hourly slot's; off the fetch host (staging) half an hour later
 
     @property
     def state(self) -> Path:
@@ -72,6 +75,12 @@ class Config:
         if fetch_host := env.get("FIGHTCARD_FETCH_HOST"):
             fetch = fetch and env.get("FIGHTCARD_HOST") == fetch_host
         repo = Path(__file__).resolve().parents[3]
+        minute = env.get("FIGHTCARD_SCHEDULE_MINUTE")
+        if minute is None:
+            # Off the fetch host (staging), half an hour after prod, so the two envs never score at once.
+            minute = str(MINUTE if env.get("FIGHTCARD_HOST", fetch_host) == fetch_host else (MINUTE + 30) % 60)
+        if not (minute.isdigit() and int(minute) < 60):
+            raise ValueError(f"FIGHTCARD_SCHEDULE_MINUTE must be 0-59, not {minute!r}")
         return cls(
             root=Path(env.get("FIGHTCARD_ROOT", ROOT)),
             fetch=fetch,
@@ -79,6 +88,7 @@ class Config:
             model_dir=Path(env.get("FIGHTCARD_MODEL_DIR", "model")),
             gate_script=Path(env.get("FIGHTCARD_GATE_SCRIPT", repo / "scripts" / "should_run.py")),
             python=sys.executable,
+            schedule_minute=int(minute),
         )
 
 
