@@ -183,6 +183,7 @@ ctypes.CDLL(None, use_errno=True).prctl(36, 1)  # PR_SET_CHILD_SUBREAPER: stand 
 from fightcard.service import serve
 NGINX = ("import os, signal, time\\n"
          "if os.environ.get('FAKE_NGINX_IGNORE_QUIT'): signal.signal(signal.SIGQUIT, signal.SIG_IGN)\\n"
+         "else: signal.signal(signal.SIGQUIT, lambda *_: os._exit(0))\\n"  # like nginx; the default dumps core
          "time.sleep(300)")
 serve.NGINX = [sys.executable, "-c", NGINX]
 if "FAKE_RUN_TIMEOUT" in os.environ:

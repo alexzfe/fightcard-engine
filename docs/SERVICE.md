@@ -152,4 +152,11 @@ docker compose exec -T app sh -c 'mkdir -p /srv/fightcard/state && tar -xzf - -C
 docker compose exec app fightcard-service run     # publish now instead of waiting for the next slot
 ```
 
+Seed the store fully with `fightcard history ingest` before the first run, from a cache that covers every completed
+event in the seed's `data/`. Scrape backfills the store's missing completed events itself, but at most 20 a run
+(`BACKFILL_PER_RUN`, oldest first, [CONTRACT.md](CONTRACT.md)), and until each one is in, score exits 1 on it as a
+stale store (the only exception is an event the backfill skipped, which `backfill_skips` records and score warns
+on). A store that's hundreds of events short fails run after run, publishing nothing new, until the backfill
+catches up.
+
 The container test does exactly this. Nothing in the image or the release workflow seeds; it's run by hand.
