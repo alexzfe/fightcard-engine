@@ -239,6 +239,18 @@ def test_seeding_then_a_manual_run_publishes_the_api(container):
     assert get(container.port, "/v1/snapshot.tar.gz")[0] == 200
 
 
+# infra's sites.yml `backup:` for ufc-data; backup.j2 runs it as `docker compose exec -T app <command>`.
+BACKUP = ["fightcard", "history", "backup", "--db", "/srv/fightcard/state/history/history.sqlite"]
+
+
+@pytest.mark.docker
+def test_the_history_backup_streams_a_tgz_the_way_infra_runs_it(container):
+    out = subprocess.run(["docker", "exec", container.name, *BACKUP], capture_output=True)
+    assert out.returncode == 0, out.stderr
+    with tarfile.open(fileobj=io.BytesIO(out.stdout), mode="r:gz") as tar:
+        assert tar.getnames() == ["history/history.sqlite"]
+
+
 @pytest.mark.docker
 def test_a_failed_run_leaves_the_last_good_generation_live(container):
     before = get(container.port, "/v1/index.json")
