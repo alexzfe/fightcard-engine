@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from history_helpers import SEED_CSV, cross_check, read_csv
 
@@ -35,3 +37,11 @@ def test_ufc_rule_agrees_with_research_is_ufc_on_every_event(seed_db):
     assert len(source) == 1_280
     ours = {r[0]: r[1:] for r in seed_db.execute("SELECT event_id, is_ufc, source FROM events")}
     assert [r["event_id"] for r in source if (int(r["is_ufc"]), r["source"]) != ours[r["event_id"]]] == []
+
+
+def test_fighter_dobs_agree_with_research_fighter_data(seed_db):
+    research = {r["fighter_id"]: r["fighter_dob"] or None for r in read_csv(SEED_CSV / "fighter_data.csv")}
+    ours = dict(seed_db.execute("SELECT fighter_id, dob FROM fighters WHERE fighter_id IN "
+                                "(SELECT value FROM json_each(?))", (json.dumps(list(research)),)))
+    assert sum(d is not None for d in research.values()) > 4_000
+    assert [fid for fid, dob in research.items() if ours.get(fid) != dob] == []

@@ -8,6 +8,7 @@ from fightcard.ufcstats.parsers import (
     parse_fighter,
     parse_height,
     parse_history_date,
+    parse_date,
     parse_record,
     slugify,
 )
@@ -241,6 +242,17 @@ def test_parse_fighter_page(fixture_html):
     assert fighter.dob == "1989-05-21"
     assert fighter.image is None
     assert fighter.details_fetched_at is None
+
+
+@pytest.mark.parametrize("text, iso", [
+    ("May 21, 1989", "1989-05-21"),   # event pages and listings spell the month out
+    ("Jul 09, 1985", "1985-07-09"),   # fighter-page DOBs abbreviate it
+    (" Sep 3, 1990 ", "1990-09-03"),
+    ("--", None),
+    ("", None),
+])
+def test_parse_date_reads_full_and_abbreviated_month_names(text, iso):
+    assert parse_date(text) == iso
 
 
 def test_parse_fighter_with_nickname_nc_and_missing_values():
