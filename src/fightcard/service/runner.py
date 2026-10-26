@@ -3,7 +3,9 @@
 Each stage is a `fightcard` process over <root>/state/data, in its own session (so its process group holds it and
 anything it starts) at nice NICE. The run stops at the first stage that exits non-zero or outlives its TIMEOUTS
 entry; stages write nothing on failure and only publish switches what nginx serves, so the last good generation
-stays live. A flock on <root>/state/run.lock keeps two runs from overlapping. Every step logs one line to stdout.
+stays live. A flock on <root>/state/run.lock keeps two runs from overlapping; each stage inherits the locked fd,
+so the lock is held until the stage is gone too, even if the run itself is killed. SIGTERM (see `terminate`) ends
+the stage's process group first, then the run. Every step logs one line to stdout.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ _OFF = {"off", "0", "false", "no"}
 TIMEOUTS = {"scrape": 30 * 60, "segments": 15 * 60, "images": 15 * 60, "score": 10 * 60, "publish": 10 * 60}
 KILL_GRACE = 3
 TIMED_OUT = 124
+TERMINATED = 128 + signal.SIGTERM
 NICE = 10  # stages yield the box's 2 vCPUs to nginx and to the other env
 
 
@@ -101,6 +104,17 @@ class StageTimeout(Exception):
     pass
 
 
+class Terminated(BaseException):
+    """Raised by `terminate`, so a SIGTERM unwinds through `execute`, which ends the stage's group on its way out."""
+
+
+def terminate(signum: int, frame: object) -> None:
+    """The SIGTERM handler `fightcard-service run` installs. A second TERM is ignored, so it can't interrupt the
+    cleanup the first one started."""
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    raise Terminated
+
+
 def end_group(proc: subprocess.Popen) -> None:
     """SIGTERM the process group `proc` leads, SIGKILL it KILL_GRACE seconds later (whatever ignored the TERM, or
     a grandchild the stage left behind), and reap `proc`."""
@@ -115,14 +129,17 @@ def end_group(proc: subprocess.Popen) -> None:
             pass
 
 
-def execute(argv: list[str], *, timeout: float) -> int:
+def execute(argv: list[str], *, timeout: float, pass_fds: tuple[int, ...] = ()) -> int:
     # The run process has no threads, so preexec_fn is safe here.
-    proc = subprocess.Popen(argv, start_new_session=True, preexec_fn=lambda: os.nice(NICE))
+    proc = subprocess.Popen(argv, start_new_session=True, pass_fds=pass_fds, preexec_fn=lambda: os.nice(NICE))
     try:
         return proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         end_group(proc)
         raise StageTimeout from None
+    except BaseException:  # Terminated, KeyboardInterrupt: the stage goes first
+        end_group(proc)
+        raise
 
 
 def script_gate(cfg: Config, event: str, cron: str) -> tuple[bool, str]:
@@ -174,32 +191,38 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
         except BlockingIOError:
             return end("locked", LOCKED)
 
-        if event == "schedule":
-            try:
-                go, reason = gate(cfg, event, cron)
-            except Exception as e:  # noqa: BLE001 - logged, and the run fails
-                log(step="gate", status="failed", reason=str(e))
-                return end("failed", 1, failed_step="gate", exit=1)
-            log(step="gate", status="run" if go else "skip", reason=reason)
-            if not go:
-                return end("skipped", 0)
+        step_name = "gate"
+        try:
+            if event == "schedule":
+                try:
+                    go, reason = gate(cfg, event, cron)
+                except Exception as e:  # noqa: BLE001 - logged, and the run fails
+                    log(step="gate", status="failed", reason=str(e))
+                    return end("failed", 1, failed_step="gate", exit=1)
+                log(step="gate", status="run" if go else "skip", reason=reason)
+                if not go:
+                    return end("skipped", 0)
 
-        for step in steps(cfg):
-            if step.fetches and not cfg.fetch:
-                log(step=step.name, status="skipped", reason="fetch-off")
-                continue
-            t0 = clock()
-            limit = TIMEOUTS[step.name]
-            try:
-                code = execute([cfg.fightcard, "--data", str(cfg.data), *step.args], timeout=limit)
-            except StageTimeout:
-                log(step=step.name, status="timeout", timeout_s=f"{limit:g}", duration_s=f"{clock() - t0:.2f}")
-                return end("failed", TIMED_OUT, failed_step=step.name, exit=TIMED_OUT)
-            except OSError as e:
-                log(step=step.name, status="failed", exit=127, duration_s=f"{clock() - t0:.2f}", reason=str(e))
-                return end("failed", 127, failed_step=step.name, exit=127)
-            log(step=step.name, status="ok" if code == 0 else "failed", exit=code,
-                duration_s=f"{clock() - t0:.2f}")
-            if code != 0:
-                return end("failed", code, failed_step=step.name, exit=code)
+            for step in steps(cfg):
+                step_name = step.name
+                if step.fetches and not cfg.fetch:
+                    log(step=step.name, status="skipped", reason="fetch-off")
+                    continue
+                t0 = clock()
+                limit = TIMEOUTS[step.name]
+                try:
+                    code = execute([cfg.fightcard, "--data", str(cfg.data), *step.args], timeout=limit,
+                                   pass_fds=(lock.fileno(),))
+                except StageTimeout:
+                    log(step=step.name, status="timeout", timeout_s=f"{limit:g}", duration_s=f"{clock() - t0:.2f}")
+                    return end("failed", TIMED_OUT, failed_step=step.name, exit=TIMED_OUT)
+                except OSError as e:
+                    log(step=step.name, status="failed", exit=127, duration_s=f"{clock() - t0:.2f}", reason=str(e))
+                    return end("failed", 127, failed_step=step.name, exit=127)
+                log(step=step.name, status="ok" if code == 0 else "failed", exit=code,
+                    duration_s=f"{clock() - t0:.2f}")
+                if code != 0:
+                    return end("failed", code, failed_step=step.name, exit=code)
+        except Terminated:
+            return end("terminated", TERMINATED, failed_step=step_name)
     return end("ok", 0)
