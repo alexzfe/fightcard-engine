@@ -50,7 +50,8 @@ One implementation, in this repo, over the full bout history (since 2026-10-26, 
    functions as `history ingest`, in one transaction committed before the data/ write (data/ is never ahead of
    the store). A failed run leaves the store as it was, and re-running on the same pages changes nothing.
    Completed events in data/ the store doesn't have in full are refetched, at most 20 a run; one whose page 404s
-   or lacks an outcome is skipped with a warning and retried after 7 days. A listed card with no bouts (all
+   or lacks an outcome is skipped with a warning and retried after 7 days;
+   `score` then warns on it (naming the reason) instead of failing. A listed card with no bouts (all
    cancelled) is stored `completed`, so it counts as in full. Without the store, `scrape` exits 1 unless `--no-history`; like
    `history ingest`, it exits 1 on a completed bout on this run's cards with a method but no outcome. A fighter
    fresh in data/ (< 30 days) gets a full store row (bio, record) only at their next refresh.
