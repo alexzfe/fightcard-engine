@@ -91,7 +91,7 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
     if not (cfg.root / "current").exists():
         _log(out, event="startup", status="started", reason="nothing published yet")
         run = start("--event", "startup")
-    fire, cron = next_fire(now())
+    fire, cron = next_fire(now(), cfg.schedule_minute)
     _log(out, status="ready", next=fire.isoformat(), cron=cron)
     while not stop.is_set():
         reap([nginx, run])
@@ -116,7 +116,7 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
             else:
                 _log(out, event="schedule", cron=cron, status="queued", reason="previous run still going")
                 pending = cron
-            fire, cron = next_fire(now())
+            fire, cron = next_fire(now(), cfg.schedule_minute)
         sleep(1)
     _log(out, status="stopping")
     _stop((nginx, signal.SIGQUIT, False), (run, signal.SIGTERM, True))  # SIGQUIT: nginx's graceful shutdown
