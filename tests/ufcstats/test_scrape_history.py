@@ -25,6 +25,7 @@ from fightcard.models import Fighter
 from fightcard.score import stage as score_stage
 from fightcard.store import Store
 from fightcard.ufcstats import stage
+from fightcard.ufcstats.client import HttpError
 from fightcard.ufcstats.parsers import parse_event_detail
 
 HISTORY_HTML = Path(__file__).resolve().parent.parent / "fixtures" / "history" / "html"
@@ -515,3 +516,20 @@ def test_an_upcoming_event_skipped_for_0_fights_stays_out_of_the_store_as_out_of
     assert db.execute("SELECT COUNT(*) FROM events WHERE event_id = ?", (far,)).fetchone() == (0,)
     assert db.execute("SELECT COUNT(*) FROM pages WHERE url = ?", (f"{BASE}/event-details/{far}",)).fetchone() == (0,)
     assert db.execute("SELECT COUNT(*) FROM events WHERE event_id = ?", (UPCOMING_IDS[0],)).fetchone() == (1,)
+
+
+def test_a_backfill_page_failing_with_another_http_error_still_fails_the_run(tmp_path, db):
+    """Only a 404 (the page is gone) is skipped; a 5xx may pass by the next run."""
+    Store(tmp_path / "data").save_event(OLD)
+    c = client()
+    real = c.get
+
+    def get(url):
+        if url == OLD_URL:
+            c.urls.append(url)
+            raise HttpError(url, 503)
+        return real(url)
+
+    c.get = get
+    assert run(tmp_path, db, c) == 1
+    assert not (tmp_path / "data" / "index.json").exists()
