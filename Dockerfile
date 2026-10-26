@@ -33,9 +33,10 @@ ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 \
     XDG_CACHE_HOME=/srv/fightcard/state/cache
 WORKDIR /app
 EXPOSE 8080
-# infra's sites.yml says `healthcheck: image`: this image has curl, not wget.
+# infra's sites.yml says `healthcheck: image`. The supervisor's check: nginx answers /healthz, the data it serves is
+# under 26 h old where this env scrapes, and no run is stuck (docs/SERVICE.md). nginx's /healthz stays a plain 200.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
-    CMD ["curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/healthz"]
+    CMD ["fightcard-service", "health"]
 # The supervisor handles SIGTERM (the nginx base image stops with SIGQUIT) and passes nginx its own graceful stop.
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["fightcard-service"]

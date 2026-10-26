@@ -2,8 +2,9 @@
 
 Runs are child processes (`python -m fightcard.service run`), each leading its own process group, never two at once,
 and none longer than RUN_TIMEOUT. A slot that fires during a run waits for it (one slot at most; a daily one, which
-the gate always lets through, wins over an hourly one) and starts as soon as it ends. If nginx exits, serve exits non-zero and Docker restarts the container.
-SIGTERM/SIGINT stop nginx gracefully and end a running run, together, within STOP_GRACE.
+the gate always lets through, wins over an hourly one) and starts as soon as it ends. If nginx exits, serve exits
+non-zero and Docker restarts the container. SIGTERM/SIGINT stop nginx gracefully and end a running run, together,
+within STOP_GRACE.
 """
 
 from __future__ import annotations
