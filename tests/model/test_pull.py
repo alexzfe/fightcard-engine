@@ -195,6 +195,15 @@ def test_nothing_is_left_behind_in_the_state_dir(root, bucket):
     assert sorted(p.name for p in root.iterdir()) == sorted(["current", BAKED_VERSION, NEW])
 
 
+def test_a_current_symlink_a_crashed_switch_left_behind_is_swept(root, bucket):
+    pull(root, url=bucket.url)
+    (root / ".current-4242").symlink_to(BAKED_VERSION)  # a pull killed between symlink() and os.replace()
+    (root / ".current-dangling").symlink_to("nowhere")
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    assert sorted(p.name for p in root.iterdir()) == sorted(["current", BAKED_VERSION, NEW])
+
+
 # A version that fails a gate is held: current stays, the reason is logged, the run goes on (exit 0).
 
 @pytest.fixture
