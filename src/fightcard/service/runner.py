@@ -1,14 +1,16 @@
 """`fightcard-service run`: one refresh, gate → scrape → segments → images → score → publish.
 
-Each stage is a `fightcard` process over <root>/state/data. The run stops at the first stage that exits non-zero;
-stages write nothing on failure and only publish switches what nginx serves, so the last good generation stays
-live. A flock on <root>/state/run.lock keeps two runs from overlapping. Every step logs one line to stdout.
+Each stage is a `fightcard` process over <root>/state/data, in its own session (so its process group holds it and
+anything it starts) at nice NICE. The run stops at the first stage that exits non-zero or outlives its TIMEOUTS
+entry; stages write nothing on failure and only publish switches what nginx serves, so the last good generation
+stays live. A flock on <root>/state/run.lock keeps two runs from overlapping. Every step logs one line to stdout.
 """
 
 from __future__ import annotations
 
 import fcntl
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -21,6 +23,14 @@ from pathlib import Path
 ROOT = "/srv/fightcard"  # the volume, and the publish root deploy/nginx/fightcard-engine.conf serves
 LOCKED = 75  # EX_TEMPFAIL: another run holds the lock
 _OFF = {"off", "0", "false", "no"}
+
+# Each stage's wall-clock limit, in seconds: well past its normal duration (scrape takes minutes, score seconds),
+# so only a hang hits it. Then the stage's process group gets SIGTERM, KILL_GRACE seconds, SIGKILL, and the run
+# fails with TIMED_OUT (timeout(1)'s code).
+TIMEOUTS = {"scrape": 30 * 60, "segments": 15 * 60, "images": 15 * 60, "score": 10 * 60, "publish": 10 * 60}
+KILL_GRACE = 3
+TIMED_OUT = 124
+NICE = 10  # stages yield the box's 2 vCPUs to nginx and to the other env
 
 
 @dataclass(frozen=True)
@@ -87,8 +97,32 @@ def steps(cfg: Config) -> list[Step]:
     ]
 
 
-def execute(argv: list[str]) -> int:
-    return subprocess.run(argv).returncode
+class StageTimeout(Exception):
+    pass
+
+
+def end_group(proc: subprocess.Popen) -> None:
+    """SIGTERM the process group `proc` leads, SIGKILL it KILL_GRACE seconds later (whatever ignored the TERM, or
+    a grandchild the stage left behind), and reap `proc`."""
+    for sig, wait in ((signal.SIGTERM, KILL_GRACE), (signal.SIGKILL, None)):
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=wait)
+        except subprocess.TimeoutExpired:
+            pass
+
+
+def execute(argv: list[str], *, timeout: float) -> int:
+    # The run process has no threads, so preexec_fn is safe here.
+    proc = subprocess.Popen(argv, start_new_session=True, preexec_fn=lambda: os.nice(NICE))
+    try:
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        end_group(proc)
+        raise StageTimeout from None
 
 
 def script_gate(cfg: Config, event: str, cron: str) -> tuple[bool, str]:
@@ -115,7 +149,7 @@ def logfmt(prefix: str, **fields: object) -> str:
 
 
 def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
-             execute: Callable[[list[str]], int] = execute,
+             execute: Callable[..., int] = execute,
              gate: Callable[[Config, str, str], tuple[bool, str]] = script_gate,
              out: Callable[[str], None] = lambda line: print(line, flush=True),
              clock: Callable[[], float] = time.monotonic, run_id: str | None = None) -> int:
@@ -155,8 +189,12 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
                 log(step=step.name, status="skipped", reason="fetch-off")
                 continue
             t0 = clock()
+            limit = TIMEOUTS[step.name]
             try:
-                code = execute([cfg.fightcard, "--data", str(cfg.data), *step.args])
+                code = execute([cfg.fightcard, "--data", str(cfg.data), *step.args], timeout=limit)
+            except StageTimeout:
+                log(step=step.name, status="timeout", timeout_s=f"{limit:g}", duration_s=f"{clock() - t0:.2f}")
+                return end("failed", TIMED_OUT, failed_step=step.name, exit=TIMED_OUT)
             except OSError as e:
                 log(step=step.name, status="failed", exit=127, duration_s=f"{clock() - t0:.2f}", reason=str(e))
                 return end("failed", 127, failed_step=step.name, exit=127)
