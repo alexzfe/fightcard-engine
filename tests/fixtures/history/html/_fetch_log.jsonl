@@ -1,0 +1,10 @@
+{"url": "http://ufcstats.com/statistics/events/completed?page=all", "path": "data/raw_html/ufcstats/listings/events_completed.html", "status": 200, "bytes": 631623, "fetched_at": 1791999672.8463352}
+{"url": "http://ufcstats.com/event-details/8fa2b06572365321", "path": "data/raw_html/ufcstats/event-details/8fa2b06572365321.html", "status": 200, "bytes": 41915, "fetched_at": 1792000897.7425075}
+{"url": "http://ufcstats.com/event-details/04076783ca83d6ae", "path": "data/raw_html/ufcstats/event-details/04076783ca83d6ae.html", "status": 200, "bytes": 38650, "fetched_at": 1792001856.7781277}
+{"url": "http://ufcstats.com/event-details/31ceaf0e670c1578", "path": "data/raw_html/ufcstats/event-details/31ceaf0e670c1578.html", "status": 200, "bytes": 28795, "fetched_at": 1792002626.1995318}
+{"url": "http://ufcstats.com/fighter-details/634e2fb70bde3fd5", "path": "data/raw_html/ufcstats/fighter-details/634e2fb70bde3fd5.html", "status": 200, "bytes": 61709, "fetched_at": 1792019032.6780565}
+{"url": "http://ufcstats.com/fighter-details/634bb0de2eb043b4", "path": "data/raw_html/ufcstats/fighter-details/634bb0de2eb043b4.html", "status": 200, "bytes": 55705, "fetched_at": 1792019409.6058974}
+{"url": "http://ufcstats.com/event-details/e78f601035d677f2", "path": "data/raw_html/ufcstats/event-details/e78f601035d677f2.html", "status": 200, "bytes": 19687, "fetched_at": 1792025612.0989718}
+{"url": "http://ufcstats.com/event-details/6420efac0578988b", "path": "data/raw_html/ufcstats/event-details/6420efac0578988b.html", "status": 200, "bytes": 31624, "fetched_at": 1792025892.388885}
+{"url": "http://ufcstats.com/event-details/7d96bc577e5178b2", "path": "data/raw_html/ufcstats/event-details/7d96bc577e5178b2.html", "status": 200, "bytes": 10820, "fetched_at": 1792026074.878795}
+{"url": "http://ufcstats.com/statistics/events/completed?page=all", "path": "data/raw_html/ufcstats/listings/events_completed.html", "status": 200, "bytes": 633208, "fetched_at": 1792996370.360192}

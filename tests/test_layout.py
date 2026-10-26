@@ -40,5 +40,5 @@ def test_cli_help_lists_the_stages():
     exe = Path(sys.executable).with_name("fightcard")
     result = subprocess.run([str(exe), "--help"], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    for stage in ("scrape", "segments", "images", "score"):
+    for stage in ("scrape", "segments", "images", "score", "history"):
         assert stage in result.stdout, stage
