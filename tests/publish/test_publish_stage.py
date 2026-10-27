@@ -43,7 +43,7 @@ def test_global_data_flag_works_too(data_dir, out):
 def test_index_adds_contract_version_and_keeps_generated_at(data_dir, out):
     publish(data_dir, out)
     index = load(out / "current" / "index.json")
-    assert index["contract_version"] == CONTRACT_VERSION == "1.1"
+    assert index["contract_version"] == CONTRACT_VERSION == "1.2"
     assert index["generated_at"] == GENERATED_AT
     source = load(data_dir / "index.json")
     assert {k: v for k, v in index.items() if k != "contract_version"} == source
@@ -89,7 +89,7 @@ def test_schema_describes_the_top_level_types(data_dir, out):
     defs = schema["$defs"]
     assert {"Index", "Event", "Fighter", "Fighters"} <= set(defs)
     assert "contract_version" in defs["Index"]["required"]
-    assert schema["title"] == "fightcard /v1 (contract 1.1)"
+    assert schema["title"] == "fightcard /v1 (contract 1.2)"
     assert defs["Fighters"] == {"type": "object", "additionalProperties": {"$ref": "#/$defs/Fighter"}}
     assert "fights" in defs["Event"]["properties"]
 

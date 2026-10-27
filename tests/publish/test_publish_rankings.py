@@ -32,8 +32,8 @@ def refused(data_dir, out, capsys) -> str:
     return capsys.readouterr().err
 
 
-def test_the_contract_version_is_1_1():
-    assert CONTRACT_VERSION == "1.1"
+def test_the_contract_version_is_1_2():
+    assert CONTRACT_VERSION == "1.2"  # 1.1 is the model work's (main); rankings.json is the next minor
 
 
 def test_rankings_json_is_published_as_in_data_when_present(data_dir, out):
