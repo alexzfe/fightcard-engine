@@ -233,6 +233,27 @@ def test_history_ratings_rate_the_store_up_to_as_of(tmp_path):
     conn.close()
 
 
+def test_history_pass_is_the_one_pass_score_images_and_the_rankings_cli_share(tmp_path):
+    """(ratings, bouts, names) as of a day: `history_ratings`' rows, plus the bouts and names they were rated from."""
+    from fightcard.history.rating import history_pass
+    from fightcard.history.store import names, rating_bouts
+    conn = connect(tmp_path / "h.sqlite")
+    fights = [Fight(id="f1", red="b", blue="a", weight_class="Lightweight",
+                    result=Result(winner="b", outcome="win", method="S-DEC"))]
+    with conn:
+        upsert_event(conn, Event(id="e1", slug="x", name="UFC 1", date="2026-01-01", status="completed",
+                                 fights=fights), is_ufc=True, source="listing")
+        upsert_event(conn, Event(id="e2", slug="y", name="UFC 2", date="2026-02-01", status="completed",
+                                 fights=[fights[0].model_copy(update={"id": "f2"})]), is_ufc=True, source="listing")
+        conn.execute("INSERT INTO fighters (fighter_id, name) VALUES ('a', 'Al'), ('b', 'Bo')")
+    ratings, bouts, who = history_pass(conn, "2026-01-31")
+    pd.testing.assert_frame_equal(ratings, history_ratings(conn, as_of="2026-01-31"))
+    assert bouts == rating_bouts(conn, "2026-01-31") and len(bouts) == 1
+    assert who == names(conn) == {"a": "Al", "b": "Bo"}
+    assert history_pass(conn)[1] == rating_bouts(conn, None) and len(history_pass(conn)[1]) == 2
+    conn.close()
+
+
 @pytest.mark.seed
 def test_full_history_pass_reproduces_research_export(seed_db):
     """Restricted to research's own bouts (the store also holds 14 old PRIDE / Strikeforce bouts research's

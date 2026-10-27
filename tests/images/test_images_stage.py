@@ -499,3 +499,13 @@ def test_the_history_db_defaults_to_the_one_beside_the_data_dir(client, transpor
     monkeypatch.chdir(tmp_path_factory.mktemp("elsewhere"))
     assert main(["--data", str(site / "data"), "images"]) == 0
     assert (site / "data" / "images" / "old1.webp").exists()
+
+
+def test_the_p4p_ids_come_from_the_shared_history_pass(data, client, transport, store, monkeypatch):
+    from fightcard.history import rating
+    calls = []
+    monkeypatch.setattr(stage, "history_pass", lambda *a: calls.append(a) or rating.history_pass(*a), raising=False)
+    _history(store, men=[("p9", "Top Dog")])
+    _ok_routes(transport)
+    stage.process(data, client, NOW, history_db=store)
+    assert [as_of for _, as_of in calls] == [NOW.date().isoformat()]
