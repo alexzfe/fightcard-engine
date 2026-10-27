@@ -695,3 +695,28 @@ def test_a_failed_history_run_leaves_rankings_as_they_were(data, model_dir, tmp_
     before = (root / "rankings.json").read_bytes()
     assert score_with(root, model_dir, tmp_path / "nope.sqlite") == 1
     assert (root / "rankings.json").read_bytes() == before
+
+
+# --- one history pass for score, images and `history rankings` ----------------------------------------------------------
+
+def test_images_and_score_agree_on_the_p4p_ids(data, model_dir, veterans, tmp_path):
+    """The contract says `images` works out the same P4P ids as the ones `score` writes: pinned for the same store and
+    `now`, so a change to one pass can't leave a new P4P fighter without a headshot."""
+    from datetime import UTC, datetime
+
+    from fightcard.images.stage import _p4p_names
+    root, _ = data
+    db = history(tmp_path, veterans, five_bouts_each(veterans))
+    assert score_with(root, model_dir, db) == 0
+    published = {e["id"]: e["name"] for side in rankings_of(root)["p4p"].values() for e in side}
+    assert published and _p4p_names(db, datetime.fromisoformat(NOW.replace("Z", "+00:00")).astimezone(UTC)) == published
+
+
+def test_score_takes_its_ratings_from_the_shared_history_pass(data, model_dir, veterans, tmp_path, monkeypatch):
+    from fightcard.history import rating
+    from fightcard.score import stage
+    calls = []
+    monkeypatch.setattr(stage, "history_pass", lambda *a: calls.append(a) or rating.history_pass(*a), raising=False)
+    root, _ = data
+    assert score_with(root, model_dir, history(tmp_path, veterans)) == 0
+    assert [as_of for _, as_of in calls] == [NOW[:10]]

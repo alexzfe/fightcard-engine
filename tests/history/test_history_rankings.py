@@ -222,3 +222,14 @@ def test_rankings_report_prints_one_line_per_module(tmp_path, capsys):
     out = capsys.readouterr().out
     for module in ("p4p", "active_index", "division_ranks", "all_time_peaks"):
         assert module in out
+
+
+def test_rankings_command_takes_its_ratings_from_the_shared_history_pass(tmp_path, monkeypatch):
+    from fightcard.history import rating, stage
+    from fightcard.history.store import connect
+    calls = []
+    monkeypatch.setattr(stage, "history_pass", lambda *a: calls.append(a) or rating.history_pass(*a), raising=False)
+    db = tmp_path / "history.sqlite"
+    connect(db).close()
+    assert run_rankings(db, NOW, report=True) == 0
+    assert [as_of for _, as_of in calls] == [NOW.isoformat()]
