@@ -581,3 +581,117 @@ def test_a_store_without_the_backfill_skips_table_passes_when_complete(data, mod
         conn.execute("DROP TABLE backfill_skips")
     conn.close()
     assert score_with(root, model_dir, db) == 0
+
+
+# --- data/rankings.json (the P4P and active lists /v1/rankings.json serves) ------------------------------------------
+
+def five_bouts_each(veterans: list[dict]) -> list[tuple[str, str, str, str]]:
+    """`history` extras that give every veteran 5 UFC bouts (the P4P minimum): 3 more for each pair."""
+    ids = [v["fighter_id"] for v in veterans]
+    return [(day, f"{day}-{i}", ids[i], ids[i + 1]) for day in ("2026-06-01", "2026-07-01", "2026-08-01")
+            for i in (0, 2, 4)]
+
+
+def rankings_of(root: Path) -> dict:
+    return json.loads((root / "rankings.json").read_text())
+
+
+def test_writes_rankings_json_as_the_contract_has_it(data, model_dir, veterans, tmp_path):
+    root, store = data
+    db = history(tmp_path, veterans, five_bouts_each(veterans))
+    assert score_with(root, model_dir, db) == 0
+    out = rankings_of(root)
+    fighters = store.load_fighters()
+    assert set(out) == {"as_of", "p4p", "active"}
+    assert out["as_of"] == NOW[:10]
+    assert set(out["p4p"]) == {"men", "women"} and out["p4p"]["women"] == []
+    men = out["p4p"]["men"]
+    assert [e["rank"] for e in men] == list(range(1, 7))
+    for e in men:
+        f = fighters[e["id"]]
+        assert set(e) == {"rank", "id", "name", "elo", "division", "image"}
+        assert (e["rank"], e["elo"], e["name"]) == (f.p4p_rank, f.elo, f.name)
+        assert (e["division"], e["image"]) == ("Lightweight", None)
+    assert {e["id"] for e in men} == {v["fighter_id"] for v in veterans}
+
+
+def test_rankings_active_lists_every_active_fighter_with_a_ufc_bout_best_first(data, model_dir, veterans, tmp_path):
+    root, store = data
+    ids = [v["fighter_id"] for v in veterans]
+    db = history(tmp_path, veterans, [*five_bouts_each(veterans), ("2024-01-01", "old", "oldA", "oldB")])
+    assert score_with(root, model_dir, db) == 0
+    active = rankings_of(root)["active"]
+    fighters = store.load_fighters()
+    assert sorted(r["id"] for r in active) == sorted(ids)  # oldA/oldB fought in 2024: inactive
+    assert [r["elo"] for r in active] == sorted((r["elo"] for r in active), reverse=True)
+    for r in active:
+        assert set(r) == {"id", "name", "elo", "division", "p4p_rank", "provisional"}
+        f = fighters[r["id"]]
+        assert (r["elo"], r["p4p_rank"], r["provisional"]) == (f.elo, f.p4p_rank, f.elo_provisional)
+
+
+def test_rankings_cover_fighters_who_are_not_in_fighters_json(data, model_dir, veterans, tmp_path):
+    root, store = data
+    stranger = [(f"2026-0{m}-15", f"s{m}", "sA", "sB") for m in range(1, 6)]
+    db = history(tmp_path, veterans, stranger)
+    assert score_with(root, model_dir, db) == 0
+    men = {e["id"]: e for e in rankings_of(root)["p4p"]["men"]}
+    assert men["sA"]["name"] == "sA" and men["sA"]["division"] == "Lightweight"  # no name in the store: the id
+    assert "sA" not in store.load_fighters()
+
+
+def test_rankings_image_is_set_when_the_headshot_exists(data, model_dir, veterans, tmp_path):
+    root, _ = data
+    v0 = veterans[0]["fighter_id"]
+    (root / "images").mkdir()
+    (root / "images" / f"{v0}.webp").write_bytes(b"webp")
+    (root / "images" / f"{veterans[1]['fighter_id']}.png").write_bytes(b"png")  # not webp: no image
+    db = history(tmp_path, veterans, five_bouts_each(veterans))
+    assert score_with(root, model_dir, db) == 0
+    out = rankings_of(root)
+    assert {e["id"]: e["image"] for e in out["p4p"]["men"]} == {
+        v["fighter_id"]: (f"images/{v0}.webp" if v["fighter_id"] == v0 else None) for v in veterans}
+    assert all("image" not in r for r in out["active"])
+
+
+def test_an_unchanged_run_rewrites_identical_rankings(data, model_dir, veterans, tmp_path):
+    root, _ = data
+    db = history(tmp_path, veterans, five_bouts_each(veterans))
+    score_with(root, model_dir, db)
+    before = (root / "rankings.json").read_text()
+    assert score_with(root, model_dir, db) == 0
+    assert (root / "rankings.json").read_text() == before
+
+
+def test_rankings_are_dated_and_decayed_to_now(data, model_dir, veterans, tmp_path):
+    root, _ = data
+    db = history(tmp_path, veterans, five_bouts_each(veterans))
+    score_with(root, model_dir, db, now="2026-11-01T06:00:00Z")
+    first = rankings_of(root)
+    assert score_with(root, model_dir, db, now="2027-08-01T06:00:00Z") == 0
+    later = rankings_of(root)
+    assert (first["as_of"], later["as_of"]) == ("2026-11-01", "2027-08-01")
+    assert later["p4p"]["men"] == [] and later["active"] == []  # nobody fought in the last 365 days
+
+
+def test_no_history_writes_no_rankings(data, model_dir):
+    root, _ = data
+    assert score(root, model_dir) == 0
+    assert not (root / "rankings.json").exists()
+
+
+def test_no_history_leaves_an_existing_rankings_file_alone(data, model_dir):
+    """Like the fighters' rating fields: --no-history neither refreshes nor removes what a full run wrote."""
+    root, _ = data
+    (root / "rankings.json").write_text('{"as_of": "2026-10-01", "p4p": {"men": [], "women": []}, "active": []}\n')
+    before = (root / "rankings.json").read_bytes()
+    assert score(root, model_dir) == 0
+    assert (root / "rankings.json").read_bytes() == before
+
+
+def test_a_failed_history_run_leaves_rankings_as_they_were(data, model_dir, tmp_path):
+    root, _ = data
+    (root / "rankings.json").write_text('{"as_of": "2026-10-01", "p4p": {"men": [], "women": []}, "active": []}\n')
+    before = (root / "rankings.json").read_bytes()
+    assert score_with(root, model_dir, tmp_path / "nope.sqlite") == 1
+    assert (root / "rankings.json").read_bytes() == before

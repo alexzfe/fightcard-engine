@@ -11,7 +11,7 @@ from datetime import date
 import pandas as pd
 
 from fightcard.history.display import fighter_ratings
-from fightcard.history.rankings import (active_index, all_time_peaks, division_ranks, divisions, p4p,
+from fightcard.history.rankings import (active_index, all_time_peaks, division_ranks, divisions, p4p, published,
                                         size_report)
 from fightcard.history.stage import run_rankings
 
@@ -118,6 +118,31 @@ def test_active_index_elo_matches_the_fighter_pages():
     rows = pool()
     pages = fighter_ratings(list(rows.index), rows, NOW)
     assert all(r["elo"] == pages[r["id"]]["elo"] for r in active_index(rows, NAMES, {}, NOW))
+
+
+# --- published (data/rankings.json) ------------------------------------------------------------------------------
+
+def test_published_is_the_p4p_and_active_lists_as_of_the_day():
+    rows = pool()
+    got = published(rows, NAMES, {"m0": "Welterweight"}, NOW, set())
+    assert set(got) == {"as_of", "p4p", "active"}
+    assert got["as_of"] == "2026-11-01"
+    assert {k: [{c: v for c, v in e.items() if c != "image"} for e in es] for k, es in got["p4p"].items()} == \
+        p4p(rows, NAMES, {"m0": "Welterweight"}, NOW)
+    assert got["active"] == active_index(rows, NAMES, {"m0": "Welterweight"}, NOW)
+
+
+def test_published_p4p_entries_carry_an_image_only_for_fighters_with_a_headshot():
+    got = published(pool(), NAMES, {}, NOW, {"m1", "w0", "m30"})
+    images = {e["id"]: e["image"] for es in got["p4p"].values() for e in es}
+    assert images["m1"] == "images/m1.webp" and images["w0"] == "images/w0.webp"
+    assert images["m0"] is None and images["w3"] is None
+    assert set(images.values()) == {None, "images/m1.webp", "images/w0.webp"}  # m30 isn't ranked: no entry
+
+
+def test_published_active_rows_never_carry_an_image():
+    got = published(pool(), NAMES, {}, NOW, {f"m{i}" for i in range(20)})
+    assert all("image" not in r for r in got["active"])
 
 
 # --- division ranks ----------------------------------------------------------------------------------------------
