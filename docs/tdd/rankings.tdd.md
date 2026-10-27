@@ -14,8 +14,8 @@ from the sizes what the site carries. Nothing is published yet.
 ## Checkpoints
 | Stage | Commit | Command | Result |
 |---|---|---|---|
-| RED | d730355 | `uv run pytest -q tests/history/test_history_rankings.py` | collection error: `No module named 'fightcard.history.rankings'` |
-| GREEN | 196b907 | same | 21 passed; full suite `uv run pytest -q` 717 passed, 1 skipped |
+| RED | b39998a | `uv run pytest -q tests/history/test_history_rankings.py` | collection error: `No module named 'fightcard.history.rankings'` |
+| GREEN | c876a5e | same | 21 passed; full suite `uv run pytest -q` 717 passed, 1 skipped |
 
 `display.fighter_ratings` was split into `scale`, `rankable` and `p4p_ranks` so the rankings and the fighter pages
 share one implementation. `test_history_display.py`, `test_history_rating.py` and `tests/score` stayed green (119 passed).
@@ -56,12 +56,12 @@ all_time_peaks     1278      90.3      31.0
 ## Checkpoints
 | Task | Stage | Commit | Command | Result |
 |---|---|---|---|---|
-| 1 score writes `data/rankings.json` | RED | ec5d4d0 | `uv run pytest -q tests/score/test_score_stage.py tests/history/test_history_rankings.py` | 6 failed in tests/score; collection error in test_history_rankings (`cannot import name 'published'`) |
-| | GREEN | fac6985 | same; full suite `uv run pytest -q` | 0 failed; 729 passed, 1 skipped |
-| 2 publish validates and serves it | RED | ec2b1f0 | `uv run pytest -q tests/publish tests/test_docs.py` | 29 failed |
-| | GREEN | 6fad95b | same; full suite | 0 failed; 763 passed, 1 skipped |
-| 3 images fetches P4P headshots | RED | 5da3e01 | `uv run pytest -q tests/images/test_images_stage.py` | 4 failed |
-| | GREEN | f050d05 | same; full suite | 0 failed; 773 passed, 1 skipped |
+| 1 score writes `data/rankings.json` | RED | 3e43e7b | `uv run pytest -q tests/score/test_score_stage.py tests/history/test_history_rankings.py` | 6 failed in tests/score; collection error in test_history_rankings (`cannot import name 'published'`) |
+| | GREEN | d5e1bdc | same; full suite `uv run pytest -q` | 0 failed; 729 passed, 1 skipped |
+| 2 publish validates and serves it | RED | 5a5e2ff | `uv run pytest -q tests/publish tests/test_docs.py` | 29 failed |
+| | GREEN | f88d589 | same; full suite | 0 failed; 763 passed, 1 skipped |
+| 3 images fetches P4P headshots | RED | a9656d4 | `uv run pytest -q tests/images/test_images_stage.py` | 4 failed |
+| | GREEN | c9813c8 | same; full suite | 0 failed; 773 passed, 1 skipped |
 
 Baseline before Phase 2: 717 passed, 1 skipped. Two of my own tests were wrong, not the code, and were fixed in the GREEN commit:
 `test_rankings_are_dated_and_decayed_to_now` used a `now` 304 days after the last bout (needs more than 365), and
@@ -100,10 +100,10 @@ Three follow-ups on the same branch; the rankings.json shape did not change.
 
 | Fix | Stage | Commit | Command | Result |
 |---|---|---|---|---|
-| 1 images computes the P4P ids itself (same-cycle headshots) | RED | f625e17 | `uv run pytest -q tests/images/test_images_stage.py tests/service/test_runner.py` | 15 failed |
-| | GREEN | 857f32b | same; full suite `uv run pytest -q` | 0 failed; 779 passed, 1 skipped |
-| 2 + 3 publish: dangling image becomes null; P4P/active consistency | RED | 26e23d3 | `uv run pytest -q` | 12 failed, all in tests/publish (the guard in tests/history passes before and after) |
-| | GREEN | cf72b3d | same | 0 failed; 791 passed, 1 skipped |
+| 1 images computes the P4P ids itself (same-cycle headshots) | RED | d0d43b3 | `uv run pytest -q tests/images/test_images_stage.py tests/service/test_runner.py` | 15 failed |
+| | GREEN | f95d9f9 | same; full suite `uv run pytest -q` | 0 failed; 779 passed, 1 skipped |
+| 2 + 3 publish: dangling image becomes null; P4P/active consistency | RED | 264c1e1 | `uv run pytest -q` | 12 failed, all in tests/publish (the guard in tests/history passes before and after) |
+| | GREEN | da0ab78 | same | 0 failed; 791 passed, 1 skipped |
 
 Baseline before the fixes: 773 passed, 1 skipped.
 
@@ -138,14 +138,14 @@ Findings from the read-only review of the branch (one blocking deploy gate, two 
 
 | Findings | Stage | Commit | Command | Result |
 |---|---|---|---|---|
-| B1 + N4 docs (release order, unknown files, rank/elo after a history run) | RED | 713d0ba | `uv run pytest -q tests/test_docs.py` | 4 failed |
-| | GREEN | cdedec9 | same | 83 passed |
-| S1 + S2 one shared history pass, images == score P4P ids | RED | c92e62f | `uv run pytest -q` | 5 failed (4 new, plus `tests/test_layout.py`, which re-runs the score tests) |
-| | GREEN | ce9b3ca | same | 0 failed; 800 passed, 1 skipped |
-| N2 + N6 + hardening (images) | RED | 40775ec | `uv run pytest -q tests/images/test_images_stage.py` | 7 failed |
-| | GREEN | 6e8255f | `uv run pytest -q` | 0 failed; 807 passed, 1 skipped |
-| N1 + N5 + N3 | RED | 37c52c1 | `uv run pytest -q tests/history/test_history_rankings.py` | 1 failed (N5); the N1 guard passes before and after |
-| | GREEN | 5d07eb1 | `uv run pytest -q` | 0 failed; 809 passed, 1 skipped |
+| B1 + N4 docs (release order, unknown files, rank/elo after a history run) | RED | 9d7c9e3 | `uv run pytest -q tests/test_docs.py` | 4 failed |
+| | GREEN | dcb9fe7 | same | 83 passed |
+| S1 + S2 one shared history pass, images == score P4P ids | RED | b218900 | `uv run pytest -q` | 5 failed (4 new, plus `tests/test_layout.py`, which re-runs the score tests) |
+| | GREEN | 3b86cf3 | same | 0 failed; 800 passed, 1 skipped |
+| N2 + N6 + hardening (images) | RED | a6c7037 | `uv run pytest -q tests/images/test_images_stage.py` | 7 failed |
+| | GREEN | c591411 | `uv run pytest -q` | 0 failed; 807 passed, 1 skipped |
+| N1 + N5 + N3 | RED | b431970 | `uv run pytest -q tests/history/test_history_rankings.py` | 1 failed (N5); the N1 guard passes before and after |
+| | GREEN | d50e238 | `uv run pytest -q` | 0 failed; 809 passed, 1 skipped |
 
 - **B1 (docs only):** SERVICE.md has a "Release order" section: the site's `fetch_v1` must accept `rankings.json` (site branch `feat/rankings`) on the site's `main` before this engine is deployed, else every v1 refresh fails; a rollback is safe. No other file in the repo holds deploy steps. CONTRACT.md Versioning: consumers ignore unknown fields **and files**, and a new file is announced in a minor version. Tested through `tests/test_docs.py`.
 - **S1:** `rating.history_pass(conn, as_of)` returns `(ratings, bouts, names)`; `history_ratings` wraps it. `score`, `images` and `history rankings` call it (spy tests pin that), and `test_images_and_score_agree_on_the_p4p_ids` compares `images._p4p_names` with the P4P ids in score's `rankings.json` for the same store and `now`. That equality test passed before the change (the copies agreed); it is a guard, not a RED.
@@ -164,10 +164,12 @@ Findings from the read-only review of the branch (one blocking deploy gate, two 
 
 ## Contract 1.2 after the rebase
 
+The commit hashes in every table above are the rebased ones (on top of main `aab35a8`). The test counts are those of the original runs, before the rebase added main's model-pull tests; at the tip the suite is 1003 passed, 1 skipped. The commit messages themselves still quote the pre-rebase hashes and counts.
+
 This branch was rebased onto `origin/main` (42 commits of the model-pull work). `main` had already made `CONTRACT_VERSION = "1.1"` for the model work (`Result.outcome`, the rating fields, `index.model`, `index.model.stale_fighters`; commits b1861f5 / c9c6465), and this branch had bumped to `"1.1"` for `rankings.json` too. Two different changes can't share a version, so `rankings.json` is **contract 1.2**.
 
 - Conflicts: `docs/CONTRACT.md` (Versioning, the CLI table), `src/fightcard/score/stage.py` (docstring), `src/fightcard/service/runner.py` (the stage list). Each kept both sides; in the replayed commits the branch's own `"1.1"` lines gave way to main's, and 1.2 came in one RED/GREEN pair at the end.
-- RED `0208dd2` (6 failed: `CONTRACT_VERSION`, `index.json`, `schema.json`'s title, CONTRACT.md's Versioning, API.md's rankings row, SERVICE.md's release order); GREEN is the commit after it (1003 passed, 1 skipped; main alone was 886 passed, 1 skipped).
+- RED `0208dd2` (6 failed: `CONTRACT_VERSION`, `index.json`, `schema.json`'s title, CONTRACT.md's Versioning, API.md's rankings row, SERVICE.md's release order); GREEN `e88c70a` (1003 passed, 1 skipped; main alone was 886 passed, 1 skipped).
 - `test_contract_versioning_says_1_1_added...` from main is untouched: 1.1 keeps its text and does not mention `rankings.json`.
 - SERVICE.md's release order: the engine a rollback goes back to publishes `"1.1"` (main's), not `"1"`, so that sentence changed.
 - The site: a consumer that only checks `contract_version` for `"1"`/`"1.1"` needs to accept `"1.2"`; the release order in SERVICE.md still applies (the site's `fetch_v1` accepts `rankings.json` first).
