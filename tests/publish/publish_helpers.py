@@ -15,6 +15,20 @@ WEBP = b"RIFF\x1a\x00\x00\x00WEBPVP8 fake-headshot-f1"
 PNG = b"\x89PNG\r\n\x1a\nfake-headshot-f2"
 
 
+RANKINGS = {
+    "as_of": "2026-10-25",
+    "p4p": {"men": [{"rank": 1, "id": "f1", "name": "Ana Red", "elo": 1612, "division": "Lightweight",
+                     "image": "images/f1.webp"},
+                    {"rank": 2, "id": "g9", "name": "Not On A Card", "elo": 1590, "division": None, "image": None}],
+            "women": [{"rank": 1, "id": "f2", "name": "Bea Blue", "elo": 1550, "division": "Women's Flyweight",
+                       "image": "images/f2.png"}]},
+    "active": [{"id": "f1", "name": "Ana Red", "elo": 1612, "division": "Lightweight", "p4p_rank": 1,
+                "provisional": False},
+               {"id": "h7", "name": "New Kid", "elo": 1480, "division": None, "p4p_rank": None,
+                "provisional": True}],
+}
+
+
 def make_data(root: Path, generated_at: str = GENERATED_AT) -> Path:
     store = Store(root)
     store.save_fighters({
