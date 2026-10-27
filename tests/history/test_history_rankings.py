@@ -233,3 +233,39 @@ def test_rankings_command_takes_its_ratings_from_the_shared_history_pass(tmp_pat
     connect(db).close()
     assert run_rankings(db, NOW, report=True) == 0
     assert [as_of for _, as_of in calls] == [NOW.isoformat()]
+
+
+# --- the model and the rating params agree on the P4P sizes -------------------------------------------------------------
+
+def test_the_rankings_model_limits_equal_the_p4p_sizes_in_the_rating_params():
+    """models.py can't import history.rating (import cycle), so its max_length 15 / 10 are a copy of PARAMS' p4p_men /
+    p4p_women. Raising one without the other makes publish refuse the whole generation."""
+    from fightcard.history.rating import PARAMS
+    from fightcard.models import P4P
+
+    def limit(field: str) -> int:
+        (found,) = [m.max_length for m in P4P.model_fields[field].metadata if hasattr(m, "max_length")]
+        return found
+
+    assert (limit("men"), limit("women")) == (PARAMS["display"]["p4p_men"], PARAMS["display"]["p4p_women"])
+
+
+# --- `fightcard history rankings` rates up to the UTC date by default --------------------------------------------------
+
+def test_the_default_as_of_is_the_utc_date_not_the_local_one(tmp_path, monkeypatch):
+    """Like score and images: near midnight a dev machine's local date can be a day ahead of the one score writes."""
+    from argparse import Namespace
+    from datetime import UTC, datetime
+
+    from fightcard.history import stage
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 31, 23, 30, tzinfo=UTC) if tz is UTC else datetime(2026, 11, 1, 9, 30)
+
+    seen = []
+    monkeypatch.setattr(stage, "datetime", Clock, raising=False)
+    monkeypatch.setattr(stage, "run_rankings", lambda db, now, report: seen.append(now) or 0)
+    assert stage.run(Namespace(action="rankings", db=tmp_path / "h.sqlite", as_of=None, report=False)) == 0
+    assert seen == [date(2026, 10, 31)]
