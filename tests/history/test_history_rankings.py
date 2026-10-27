@@ -14,6 +14,7 @@ from fightcard.history.display import fighter_ratings
 from fightcard.history.rankings import (active_index, all_time_peaks, division_ranks, divisions, p4p, published,
                                         size_report)
 from fightcard.history.stage import run_rankings
+from fightcard.models import Rankings
 
 NOW = date(2026, 11, 1)
 RECENT = "2026-10-01"
@@ -143,6 +144,15 @@ def test_published_p4p_entries_carry_an_image_only_for_fighters_with_a_headshot(
 def test_published_active_rows_never_carry_an_image():
     got = published(pool(), NAMES, {}, NOW, {f"m{i}" for i in range(20)})
     assert all("image" not in r for r in got["active"])
+
+
+def test_published_agrees_with_itself_by_construction():
+    """Every P4P fighter is in `active` with the same rank, and no other active row has a rank (the `Rankings`
+    consistency check publish enforces)."""
+    got = published(pool(), NAMES, {}, NOW, set())
+    Rankings.model_validate(got)
+    ranks = {r["id"]: r["p4p_rank"] for r in got["active"] if r["p4p_rank"] is not None}
+    assert ranks == {e["id"]: e["rank"] for es in got["p4p"].values() for e in es}
 
 
 # --- division ranks ----------------------------------------------------------------------------------------------

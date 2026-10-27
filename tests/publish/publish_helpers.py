@@ -24,6 +24,10 @@ RANKINGS = {
                        "image": "images/f2.png"}]},
     "active": [{"id": "f1", "name": "Ana Red", "elo": 1612, "division": "Lightweight", "p4p_rank": 1,
                 "provisional": False},
+               {"id": "g9", "name": "Not On A Card", "elo": 1590, "division": None, "p4p_rank": 2,
+                "provisional": False},
+               {"id": "f2", "name": "Bea Blue", "elo": 1550, "division": "Women's Flyweight", "p4p_rank": 1,
+                "provisional": False},
                {"id": "h7", "name": "New Kid", "elo": 1480, "division": None, "p4p_rank": None,
                 "provisional": True}],
 }
