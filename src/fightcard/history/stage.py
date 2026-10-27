@@ -19,7 +19,7 @@ import sys
 import tarfile
 import tempfile
 from contextlib import closing
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import BinaryIO
 
@@ -40,7 +40,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     b.add_argument("--db", type=Path, required=True, help="SQLite history store")
     r = sub.add_parser("rankings", help="P4P, active index, division ranks and all-time peaks from the store")
     r.add_argument("--db", type=Path, required=True, help="SQLite history store")
-    r.add_argument("--as-of", type=date.fromisoformat, default=None, help="rate up to this day (default: today)")
+    r.add_argument("--as-of", type=date.fromisoformat, default=None, help="rate up to this day (default: today, UTC)")
     r.add_argument("--report", action="store_true", help="print each module's rows and JSON size instead")
 
 
@@ -81,7 +81,7 @@ def run_rankings(db: Path, now: date, report: bool) -> int:
 
 def run(args: argparse.Namespace) -> int:
     if args.action == "rankings":
-        return run_rankings(args.db, args.as_of or date.today(), args.report)
+        return run_rankings(args.db, args.as_of or datetime.now(UTC).date(), args.report)
     if args.action == "backup":
         if not args.db.is_file():
             print(f"history: {args.db} is missing; nothing to back up", file=sys.stderr)
