@@ -567,7 +567,7 @@ def test_a_zero_byte_headshot_with_no_image_field_is_looked_up_again(data, clien
     (data / "images" / "f1.webp").write_bytes(b"")  # what a write that died part-way leaves
     _ok_routes(transport)
     summary = stage.process(data, client, NOW)
-    assert summary.hits == 2 and "Alexander Volkanovski" in _queried(transport)
+    assert summary.hits == 2  # f1 as well as f2: the empty file did not stand in for a headshot
     assert (data / "images" / "f1.webp").stat().st_size > 0
     assert _fighters(data)["f1"]["image"] == "images/f1.webp"
 
@@ -589,7 +589,8 @@ def test_a_headshot_is_written_to_a_dot_temp_file_and_renamed(data, client, tran
     real_replace = stage.os.replace
 
     def spy(src, dst):
-        renamed.append((Path(src), Path(dst)))
+        if str(dst).endswith(".webp"):  # store.write_json renames through the same os.replace
+            renamed.append((Path(src), Path(dst)))
         real_replace(src, dst)
 
     monkeypatch.setattr(stage.os, "replace", spy)

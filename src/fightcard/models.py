@@ -177,7 +177,8 @@ class Rankings(_Strict):
 
     as_of: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")  # YYYY-MM-DD the ratings are decayed to
     p4p: P4P
-    # >= 1 UFC bout ever and any in-scope bout in the last 365 days; best Elo first (ties by id)
+    # >= 1 UFC bout ever and any in-scope bout in the last 365 days; highest unrounded rating first, ties by id
+    # (so rows with an equal published `elo` are not necessarily in id order)
     active: list[ActiveEntry]
 
     @model_validator(mode="after")
