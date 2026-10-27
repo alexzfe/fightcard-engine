@@ -1,11 +1,16 @@
 """The docs describe what the code does: docs/CONTRACT.md is the /v1/ contract, docs/API.md explains it, and the
 scrapped model-export automation is gone from model/README.md."""
 
+import sys
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "tests" / "publish"))
+from test_v1_enums import V1_ENUMS, enum_field  # noqa: E402
+
+ENUM_FIELDS = sorted({enum_field(where) for where in V1_ENUMS})  # "Fight.finish_tier", "ModelInfo.tiers", ...
 CONTRACT = (REPO / "docs" / "CONTRACT.md").read_text()
 MODEL_README = (REPO / "model" / "README.md").read_text()
 README = (REPO / "README.md").read_text()
@@ -115,7 +120,17 @@ def test_service_doc_records_the_release_order():
 def test_service_doc_says_a_new_file_no_longer_needs_the_release_order():
     order = service_doc().split("## Release order")[1].split("\n## ")[0]
     assert "The same order applies to any file added" not in order
-    assert "skips" in order and "feat/contract-checks" in order
+    assert "skips" in order and "alexzfe/fight-card-website#12" in order and "feat/contract-checks" not in order
+
+
+def test_release_order_reads_as_history():
+    """The release order was for rankings.json; the allowlist it describes is gone, and this doc's engine changes no
+    behaviour, so nothing here gates its deploy."""
+    order = " ".join(service_doc().split("## Release order")[1].split("\n## ")[0].split())
+    assert "allowlists" not in order and "refuses any other member" not in order
+    assert "allowlisted" in order and "refused any other member" in order
+    assert "Deploy this doc's engine" not in order
+    assert "This holds once site PR #12 is on the site's `main`." in order
 
 
 def test_service_doc_states_the_stage_timeouts():
@@ -243,7 +258,7 @@ def test_contract_orders_active_by_the_unrounded_rating_and_says_equal_elo_may_n
 
 
 def test_contract_says_the_site_skips_unknown_files_so_a_new_file_needs_no_release_order():
-    """The site's fetch_v1 skips files outside the /v1/ layout (site PR feat/contract-checks), so the engine can ship
+    """The site's fetch_v1 skips files outside the /v1/ layout (site PR alexzfe/fight-card-website#12), so the engine can ship
     a new file first."""
     section = CONTRACT.split("### Versioning")[1].split("###")[0]
     assert "strict allowlist" not in section
@@ -252,13 +267,31 @@ def test_contract_says_the_site_skips_unknown_files_so_a_new_file_needs_no_relea
 
 def test_contract_says_enum_values_are_closed_in_v1():
     section = CONTRACT.split("### Versioning")[1].split("###")[0]
-    for term in ("enum", "closed", "/v2/", "tests/publish/test_v1_enums.py"):
-        assert term in section, term
+    bullet = " ".join(section.split("- Enum values are closed within `/v1/`")[1].split("\n- ")[0].split())
+    for term in ("a new value in an existing enum is a breaking change and ships as `/v2/`",
+                 "`tests/publish/test_v1_enums.py`"):
+        assert term in bullet, term
+
+
+@pytest.mark.parametrize("field", ENUM_FIELDS)
+def test_contract_names_every_pinned_enum(field):
+    bullet = CONTRACT.split("- Enum values are closed within `/v1/`")[1].split("\n- ")[0]
+    assert f"`{field}`" in bullet, field
 
 
 def test_api_doc_says_enum_values_are_closed():
     section = api_doc().split("## Versioning")[1].split("\n## ")[0]
-    assert "enum" in section.lower() and "/v2/" in section
+    sentence = " ".join(section.split("The values of an existing enum")[1].split("strictly.")[0].split())
+    assert "a new value would go to `/v2/`" in sentence
+
+
+@pytest.mark.parametrize("field", ENUM_FIELDS)
+def test_api_doc_names_every_pinned_enum(field):
+    """By the name a client sees: `finish_tier`, a past fight's `result`, the keys of `index.model.tiers`."""
+    section = api_doc().split("## Versioning")[1].split("\n## ")[0]
+    sentence = " ".join(section.split("The values of an existing enum")[1].split("strictly.")[0].split())
+    name = field.split(".")[1]
+    assert f"`{name}`" in sentence or f"`index.model.{name}`" in sentence, field
 
 
 def test_api_doc_tells_consumers_to_ignore_unknown_files_too():
