@@ -55,7 +55,7 @@ A file that didn't change between updates keeps its ETag, so headshots aren't do
 ## Versioning
 
 The `v1` in the path is a promise: within `/v1/` things are only ever **added** (new fields, new files). Nothing
-is removed or renamed, and no value changes meaning. So write clients that ignore fields they don't know.
+is removed or renamed, and no value changes meaning. So write clients that ignore fields and files they don't know.
 `index.json`'s `contract_version` tells you which additions you're seeing (`"1"`, then `"1.1"`, …). A change that
 would break clients goes to a new `/v2/`, and `/v1/` keeps running next to it for a while.
 

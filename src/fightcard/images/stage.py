@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sqlite3
 import sys
+import tempfile
 from collections.abc import Iterable
 from contextlib import closing
 from dataclasses import dataclass
@@ -93,6 +95,24 @@ def _p4p_names(db: Path, now: datetime) -> dict[str, str]:
     return {e["id"]: e["name"] for es in lists.values() for e in es}
 
 
+def _write_headshot(path: Path, data: bytes) -> None:
+    """Whole or not at all: a temp file beside it (a leading '.', so publish never takes it), then os.replace, as
+    store.write_json does. A file at `path` is trusted as a good headshot, so a write that dies part-way must not leave one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+
+
+def _has_headshot(path: Path) -> bool:
+    return path.is_file() and path.stat().st_size > 0  # a 0-byte file is what a failed write leaves: no headshot
+
+
 def _download_first(client: HttpClient, urls: Iterable[str]) -> bytes | None:
     """Normalised WebP of the first URL that yields a real image."""
     for url in urls:
@@ -121,7 +141,7 @@ def migrate_images(data_dir: Path) -> int:
         if webp is None:
             log.warning("cannot convert %s; left as is", path.name)
             continue
-        (images_dir / f"{path.stem}.webp").write_bytes(webp)
+        _write_headshot(images_dir / f"{path.stem}.webp", webp)
         path.unlink()
         fighter = by_image.get(f"images/{path.name}")
         if fighter is not None:
@@ -156,7 +176,7 @@ def process(
             continue
         if fighter is not None and fighter.image:
             continue
-        if (images_dir / f"{fid}.webp").is_file():  # a P4P headshot saved before the fighter joined fighters.json
+        if _has_headshot(images_dir / f"{fid}.webp"):  # a P4P headshot saved before the fighter joined fighters.json
             if fighter is not None:
                 fighter.image = f"images/{fid}.webp"
                 linked = True
@@ -173,8 +193,7 @@ def process(
             summary.misses += 1
             log.info("image miss %s (%s)", name, fid)
             continue
-        images_dir.mkdir(parents=True, exist_ok=True)
-        (images_dir / f"{fid}.webp").write_bytes(found)
+        _write_headshot(images_dir / f"{fid}.webp", found)
         if fighter:
             fighter.image = f"images/{fid}.webp"
         misses.clear(fid)

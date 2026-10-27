@@ -76,7 +76,7 @@ class Config:
 
     @property
     def history_db(self) -> Path:
-        # scrape upserts it, score reads it; both default to <--data>/../history/history.sqlite
+        # scrape upserts it, images and score read it; all three default to <--data>/../history/history.sqlite
         return self.state / "history" / "history.sqlite"
 
     @property

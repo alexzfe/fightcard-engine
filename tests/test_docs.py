@@ -231,7 +231,7 @@ def test_readme_mentions_the_model_pull():
 
 
 def test_contract_orders_active_by_the_unrounded_rating_and_says_equal_elo_may_not_be_in_id_order():
-    line = next(line for line in CONTRACT.splitlines() if line.startswith("- `active`:"))
+    line = " ".join(CONTRACT.split("- `active`:")[1].split("\n- ")[0].split())
     assert "unrounded" in line and "best `elo` first" not in line
     assert "equal `elo`" in line and "id order" in line
 

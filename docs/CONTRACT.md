@@ -45,10 +45,10 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
   - `"1"`: the first `/v1/` publish.
   - `"1.1"`: `Result.outcome`, the fighter rating fields (`elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`), the model summary in `index.model` and `index.model.stale_fighters`. All optional, so data written before them still validates.
   - `"1.2"`: adds `rankings.json` (the P4P lists and the active-fighter index). Nothing else changed.
-- Consumers must ignore fields and files they don't know (a strict allowlist of top-level files, like the site's
-  `scripts/fetch_v1.py` had, refuses the whole snapshot when a new file appears). A new file is
-  announced in a minor version (`"1.2"` added `rankings.json`), and its consumer is released before the engine that
-  publishes it (docs/SERVICE.md, Release order).
+- Consumers must ignore fields and files they don't know. The site's `scripts/fetch_v1.py` has a strict allowlist of
+  top-level files, which refuses the whole snapshot when a new file appears; the site keeps that allowlist, so a new
+  file still needs the release order. A new file is announced in a minor version (`"1.2"` added `rankings.json`),
+  and its consumer is released before the engine that publishes it (docs/SERVICE.md, Release order).
 - Changing `models.py` is a contract change: it must stay additive while `/v1/` is live, and this doc changes
   with it.
 
@@ -150,8 +150,9 @@ pass as the fighters' ratings (`fightcard.history.rankings.published`), validate
   date, so a fighter who enters the lists gets their headshot in the same run (a miss, or an unusable store, leaves
   `image` `null`). Publish never refuses a generation over `image`: a non-null `image` that isn't among the
   published images is published as `null`, with a warning on stderr. `active` rows never carry `image`.
-- `active`: every fighter with at least one UFC bout and a bout in the last 365 days, best `elo` first (ties by
-  id). `p4p_rank` is the `Fighter.p4p_rank` value or `null`; `provisional` is true with fewer than 3 UFC bouts.
+- `active`: every fighter with at least one UFC bout and a bout in the last 365 days, highest rating first (the
+  unrounded one, ties by id), so rows with an equal `elo` are not necessarily in id order. `p4p_rank` is the
+  `Fighter.p4p_rank` value or `null`; `provisional` is true with fewer than 3 UFC bouts.
 - The lists and `active` agree, and publish refuses a file where they don't: every P4P `id` is in `active` with
   `p4p_rank` equal to its `rank`; every `active` row with a non-null `p4p_rank` has a P4P entry (in `men` or `women`)
   of that `id` and `rank`; and no `id` is in both lists. So a consumer can look an `id` up in `p4p.women` (or `men`)
