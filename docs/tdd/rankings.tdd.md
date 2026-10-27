@@ -173,3 +173,18 @@ This branch was rebased onto `origin/main` (42 commits of the model-pull work). 
 - `test_contract_versioning_says_1_1_added...` from main is untouched: 1.1 keeps its text and does not mention `rankings.json`.
 - SERVICE.md's release order: the engine a rollback goes back to publishes `"1.1"` (main's), not `"1"`, so that sentence changed.
 - The site: a consumer that only checks `contract_version` for `"1"`/`"1.1"` needs to accept `"1.2"`; the release order in SERVICE.md still applies (the site's `fetch_v1` accepts `rankings.json` first).
+
+## Review 2 fixes
+
+Findings from the second read-only review (one should-fix, three nits). No rankings.json shape or semantics changed. Baseline: 1003 passed, 1 skipped.
+
+| Findings | Stage | Commit | Command | Result |
+|---|---|---|---|---|
+| S1 atomic headshots, 0-byte file is absent; N1, N2 docs | RED | 61039a3 | `uv run pytest -q` | 8 failed (5 images, 3 docs) |
+| S1 + N1 + N2 + N3 | GREEN | cd2c633 | same | 0 failed; 1011 passed, 1 skipped |
+
+- **S1:** `images.stage._write_headshot` writes a temp file in `images/` (`.<id>.webp.<random>.tmp`, a leading `.`, like `store.write_json`) and `os.replace`s it; on any failure the temp file is removed. `migrate_images` uses it too. `_has_headshot` treats a missing or 0-byte `<id>.webp` as absent, so the N2 "file on disk means a headshot" shortcut no longer trusts a file a failed write left. Tests: a 0-byte `<id>.webp` with `image` null is looked up and replaced (card fighter and P4P fighter); the write goes through a dot temp file and `os.replace`; a failed write leaves neither the headshot nor a temp file; a temp file left by a killed write (cleanup stubbed out) is not picked up by `publish.build._images`.
+- **N1:** CONTRACT.md's `active` bullet and the `Rankings.active` comment say highest unrounded rating first, ties by id, so equal `elo` values are not necessarily in id order. Tested in `tests/test_docs.py` (the models.py comment has no test).
+- **N2:** CONTRACT.md says the site's `fetch_v1.py` *has* a strict allowlist, so a new file still needs the release order; API.md's Versioning says to ignore unknown fields and files. Tested in `tests/test_docs.py`.
+- **N3:** `service/runner.py`'s `history_db` comment names the three users (scrape upserts; images and score read). Comment only, no test.
+- Two RED tests were corrected in the GREEN commit because they were wrong, not the code: the card-fighter 0-byte test asserted a name query that the scoreboard hit never makes (it now asserts `hits == 2`), the `os.replace` spy also saw `store.write_json`'s renames (now filtered to `.webp`), and the `active` docs test read one wrapped line (it reads the whole bullet). Each still fails on the old code.
