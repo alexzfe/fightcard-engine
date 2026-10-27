@@ -11,7 +11,7 @@ static files: `fightcard publish` writes them and nginx serves them. The exact r
 | `/v1/index.json` | The entry point: upcoming and recent event ids, the model summary, `generated_at`, `contract_version` |
 | `/v1/events/{event_id}.json` | One card: its fights in order, tiers, results |
 | `/v1/fighters.json` | Every fighter on those cards, keyed by id |
-| `/v1/rankings.json` | The pound-for-pound lists (men, women) and every active fighter's Elo, for a rankings page and fighter search. Optional: it appears from `contract_version` `"1.1"` |
+| `/v1/rankings.json` | The pound-for-pound lists (men, women) and every active fighter's Elo, for a rankings page and fighter search. Optional: it appears from `contract_version` `"1.2"` |
 | `/v1/images/{fighter_id}.webp` | A headshot (the fighter's `image` field gives the exact path) |
 | `/v1/schema.json` | A JSON Schema describing all of the JSON above |
 | `/v1/snapshot.tar.gz` | All of the above in one file |

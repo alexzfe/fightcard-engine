@@ -22,7 +22,7 @@ from fightcard import models
 from fightcard.models import Event, Fighter, Rankings
 from fightcard.store import dumps
 
-CONTRACT_VERSION = "1.1"
+CONTRACT_VERSION = "1.2"
 SCHEMA_ID = "https://ufc-data.xlobax.com/v1/schema.json"
 IMAGE_SUFFIXES = {".webp", ".png", ".jpg", ".jpeg", ".avif", ".gif"}
 SNAPSHOT = "snapshot.tar.gz"

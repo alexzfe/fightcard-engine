@@ -218,7 +218,7 @@ The first service run of an engine with `rankings.json` writes it (score) and pu
 
 Deployed the other way round, every v1 refresh fails in `DATA_SOURCE=v1` mode (exit 1, not the stale code 3, so the
 hourly runs fail too and the site's data/ freezes); in `pipeline` mode only the `shadow` job breaks. A rollback is
-safe in either order: the previous engine doesn't publish the file (contract `"1"`) and the site treats it as optional.
+safe in either order: the previous engine doesn't publish the file (contract `"1.1"`) and the site treats it as optional.
 The same order applies to any file added to `/v1/` later (docs/CONTRACT.md, Versioning).
 
 ## Staging
