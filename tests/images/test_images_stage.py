@@ -539,7 +539,7 @@ def test_a_p4p_fighter_in_fighters_json_with_a_file_on_disk_gets_the_field(data,
     (data / "images" / "old1.webp").write_bytes(b"x")
     _history(store, men=[("old1", "Retired Guy")])
     _ok_routes(transport)
-    stage.process(data, client, NOW, limit=0, history_db=store)
+    stage.process(data, client, NOW, history_db=store)
     assert _fighters(data)["old1"]["image"] == "images/old1.webp"
     assert "Retired Guy" not in _queried(transport)
 
