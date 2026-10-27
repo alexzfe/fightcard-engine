@@ -38,7 +38,7 @@ def test_contract_lists_every_endpoint_with_its_cache_policy(endpoint, cache):
 @pytest.mark.parametrize("term", [
     "https://ufc-data.xlobax.com", "contract_version", "/v2/", "additive", "ETag", "304", "404", "405",
     "application/json; charset=utf-8", "snapshot", "deterministic", "2-space", "sorted", "trailing newline",
-    "fightcard publish", "generations/", "schema.json", "rankings.json", '"1.1"', "p4p_rank", "as_of",
+    "fightcard publish", "generations/", "schema.json", "rankings.json", '"1.1"', '"1.2"', "p4p_rank", "as_of",
     # Review fixes: a consumer's allowlist of files broke on rankings.json; the rank/elo guarantee needs a history run.
     "fields and files they don't know", "announced in a minor version", "holds after a history run",
 ])
@@ -191,6 +191,26 @@ def test_contract_versioning_says_what_1_1_added():
     for added in ("Result.outcome", "elo", "best_win", "index.model.stale_fighters"):
         assert added in section, added
     assert "Added without a new" not in CONTRACT  # it is 1.1 now
+
+
+def test_contract_versioning_says_1_2_added_rankings_json():
+    section = CONTRACT.split("### Versioning")[1].split("###")[0]
+    line = next((line for line in section.splitlines() if line.strip().startswith('- `"1.2"`')), None)
+    assert line is not None and "rankings.json" in line
+    one_one = next(line for line in section.splitlines() if line.strip().startswith('- `"1.1"`'))
+    assert "rankings.json" not in one_one  # 1.1 is the model work's, and stays as it was
+    assert '`"1.1"` added `rankings.json`' not in CONTRACT and '`"1.2"` added `rankings.json`' in CONTRACT
+
+
+def test_api_doc_says_rankings_json_appears_from_1_2():
+    row = next(line for line in api_doc().splitlines() if line.startswith("| `/v1/rankings.json`"))
+    assert '`"1.2"`' in row and '`"1.1"`' not in row
+
+
+def test_release_order_names_the_contract_a_rollback_goes_back_to():
+    """The engine before this one already publishes 1.1 (the model work), only without rankings.json."""
+    order = service_doc().split("## Release order")[1].split("\n## ")[0]
+    assert '`"1.1"`' in order and "contract `\"1\"`" not in order
 
 
 def test_api_doc_names_the_model_fields():
