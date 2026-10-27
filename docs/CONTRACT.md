@@ -18,8 +18,9 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
 | `/v1/index.json` | `data/index.json` plus `contract_version` (below). `generated_at` is when `scrape` built the data (ISO 8601 UTC with `Z`). | `application/json; charset=utf-8` | `public, max-age=60` |
 | `/v1/events/{event_id}.json` | one `Event`, as `data/events/<id>.json` | `application/json; charset=utf-8` | `public, max-age=300` |
 | `/v1/fighters.json` | `{ "<fighter_id>": Fighter, ... }`, as `data/fighters.json` | `application/json; charset=utf-8` | `public, max-age=300` |
+| `/v1/rankings.json` | the P4P lists and the active-fighter index, as `data/rankings.json` (below). Optional: absent until `score` has written it. | `application/json; charset=utf-8` | `public, max-age=300` |
 | `/v1/images/{fighter_id}.webp` | headshot, with whatever extension `data/images/` holds (webp today; png/jpg/jpeg/avif/gif also served). `Fighter.image` is the path relative to `/v1/`, e.g. `images/<id>.webp`. | `image/webp` (`image/png`, …) | `public, max-age=86400` |
-| `/v1/schema.json` | JSON Schema (draft 2020-12) of the JSON above: `#/$defs/Index`, `#/$defs/Event`, `#/$defs/Fighters`, `#/$defs/Fighter` | `application/json; charset=utf-8` | `public, max-age=300` |
+| `/v1/schema.json` | JSON Schema (draft 2020-12) of the JSON above: `#/$defs/Index`, `#/$defs/Event`, `#/$defs/Fighters`, `#/$defs/Fighter`, `#/$defs/Rankings` | `application/json; charset=utf-8` | `public, max-age=300` |
 | `/v1/snapshot.tar.gz` | every file above, from one generation, in one archive | `application/gzip` | `public, max-age=60` |
 | `/healthz` | `ok`, for the container healthcheck (unversioned) | `text/plain` | `no-store` |
 
@@ -49,8 +50,8 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
 
 ### Snapshot consistency
 
-`snapshot.tar.gz` holds `index.json`, `events/`, `fighters.json`, `images/` and `schema.json` at their `/v1/`
-paths, all from the same generation. Fetching the files one by one can straddle a publish (an index from the new
+`snapshot.tar.gz` holds `index.json`, `events/`, `fighters.json`, `rankings.json` (when there is one), `images/`
+and `schema.json` at their `/v1/` paths, all from the same generation. Fetching the files one by one can straddle a publish (an index from the new
 generation, an event from the old one); the snapshot can't. That's what the site's refresh downloads.
 
 It is **deterministic**: sorted entries, mtime 0, uid/gid 0 with no names, fixed modes, gzip without a timestamp
@@ -69,7 +70,8 @@ timestamps are ISO 8601 UTC with `Z`.
 1. Validates `data/` with the pydantic models, and refuses (exit 1, nothing written, the live generation stays)
    when any file is unreadable or invalid, an event is filed under another id, a fighter is keyed under another
    id, `index.json` names an event with no `events/<id>.json`, a fight names a fighter missing from
-   `fighters.json`, or `generated_at` isn't UTC with `Z`.
+   `fighters.json`, `generated_at` isn't UTC with `Z`, or `rankings.json` (when present) is invalid or has a P4P
+   `image` that isn't among the published images. A data/ without `rankings.json` publishes fine, just without it.
 2. Writes the whole generation to `<out>/generations/.tmp-<id>/`, renames it to `<out>/generations/<id>/`, then
    points `<out>/current` at it by renaming a new relative symlink over the old one. Each rename is atomic, so a
    reader sees the old generation or the new one, never a half-written tree. A failed write exits 1 and leaves
@@ -88,6 +90,7 @@ data/
   index.json                 Index
   events/<event_id>.json     Event (fights in card order, main event first)
   fighters.json              { "<fighter_id>": Fighter, ... }
+  rankings.json              Rankings; written by score, optional for publish
   images/<fighter_id>.<ext>  headshots (webp today)
   images/misses.json         { "<fighter_id>": "<ISO last tried>" }  — retry after 7 days; not published
   stale_fighters.json        written by score when the model is stale; not published
@@ -107,6 +110,42 @@ Same formatting rule as above. Field meanings, which `/v1/` inherits:
   - `Fighter.p4p_rank`: `1`–`15` for men, `1`–`10` for women (≥5 UFC bouts and a bout in the last 365 days), or `null`.
   - `Fighter.elo_provisional`: `true` with fewer than 3 UFC bouts. `Fighter.elo_inactive`: `true` with no bout in the last 365 days.
   - `Fighter.best_win`: `{"opponent_id", "opponent", "elo", "date"}` or `null` (no win, or an export without the best-win columns). The beaten opponent rated highest going into the bout (split/majority wins count; draws, NC, CNC and Overturned don't; a tie goes to the most recent). `elo` is that pre-bout rating on the displayed scale. The site shows it under Stats.
+
+### rankings.json
+
+`{ "as_of", "p4p": { "men": [...], "women": [...] }, "active": [...] }`, written by `score` from the same history
+pass as the fighters' ratings (`fightcard.history.rankings.published`), validated by `Rankings` in `models.py`.
+
+```json
+{
+  "as_of": "2026-10-27",
+  "p4p": {
+    "men":   [{"rank": 1, "id": "<ufcstats fighter id>", "name": "Islam Makhachev", "elo": 1818,
+               "division": "Welterweight", "image": "images/<id>.webp"}],
+    "women": [{"rank": 1, "id": "...", "name": "Natalia Silva", "elo": 1763,
+               "division": "Women's Flyweight", "image": null}]
+  },
+  "active": [{"id": "...", "name": "...", "elo": 1700, "division": "Lightweight", "p4p_rank": 3,
+              "provisional": false}]
+}
+```
+
+- `as_of`: `YYYY-MM-DD`, the day the ratings are decayed to (`score --now`'s date).
+- `p4p.men` (up to 15) and `p4p.women` (up to 10) are ordered by `rank`, 1..n. A fighter in both this and
+  `fighters.json` has the same `rank` / `elo` as `Fighter.p4p_rank` / `Fighter.elo`. The fighters need not be on a
+  card, so they need not be in `fighters.json`.
+- `elo`: integer on the displayed scale, as `Fighter.elo`. `name` falls back to the id when the history store has none.
+- `division`: the weight class of the fighter's latest bout (Catch Weight, Open Weight and unknown classes skipped),
+  or `null`.
+- `image`: only on P4P entries. `images/<id>.webp` when that headshot is in `data/images/` when `score` runs, else
+  `null`; publish refuses a non-null `image` that isn't among the published images. `images` fetches the headshots
+  of the P4P ids it finds in the previous `rankings.json`, and `images` runs before `score`, so a fighter new to
+  the lists shows no photo for one run. `active` rows never carry `image`.
+- `active`: every fighter with at least one UFC bout and a bout in the last 365 days, best `elo` first (ties by
+  id). `p4p_rank` is the `Fighter.p4p_rank` value or `null`; `provisional` is true with fewer than 3 UFC bouts.
+- `score --no-history` neither writes nor removes it (like the rating fields), so after a history run it keeps
+  that run's `as_of`; a run that fails on the history store changes nothing. Consumers treat the file as optional.
+- Size on real data: P4P about 0.9 KB gzipped, `active` (about 650 rows) about 16 KB gzipped.
 
 ## model/ layout (vendored export from fight-auto-research)
 
@@ -129,11 +168,11 @@ Run from the repo root: `uv run fightcard --data data <stage>`.
 | Stage | Package | Reads | Writes |
 |---|---|---|---|
 | `scrape` | `fightcard.ufcstats` | ufcstats.com, data/, the history store (`--history-db`) | events/, fighters.json, index.json; upserts the pages it fetched into the history store |
-| `images` | `fightcard.images` | index.json, events/, fighters.json, ESPN, Wikipedia | images/, `Fighter.image` (cards in `index.upcoming` then `index.recent`) |
+| `images` | `fightcard.images` | index.json, events/, fighters.json, rankings.json, ESPN, Wikipedia | images/, `Fighter.image` (cards in `index.upcoming` then `index.recent`, then the P4P ids in rankings.json; those without a fighters.json entry only get the file) |
 | `segments` | `fightcard.segments` | events/, fighters.json, ESPN | `Fight.segment` (upcoming events only) |
 | `history ingest` | `fightcard.history` | a ufcstats HTML cache (`--html-dir`) | the history store (`--db`, SQLite), optional sorted JSONL dump |
 | `model pull` | `fightcard.model` | `$FIGHTCARD_MODEL_URL` (`latest.json`, `<version>/<file>`), the baked model/ (first boot seed) | `state/model/<version>/` and the `state/model/current` symlink (`--root`, default `<--data>/../model`); see `docs/SERVICE.md` |
-| `score` | `fightcard.score` | model/, events/, fighters.json, the history store (`--history-db`, read-only; default `<--data>/../history/history.sqlite`) | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json`, `Fighter.elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win` |
+| `score` | `fightcard.score` | model/, events/, fighters.json, the history store (`--history-db`, read-only; default `<--data>/../history/history.sqlite`) | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json`, `Fighter.elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`, `data/rankings.json` |
 | `publish` | `fightcard.publish` | data/ | `<out>/generations/<id>/`, `<out>/current` (the `/v1/` tree) |
 
 - Each stage package exposes `stage.py` with `add_arguments(parser)` and `run(args) -> int` (see `fightcard/cli.py`).
@@ -142,7 +181,7 @@ Run from the repo root: `uv run fightcard --data data <stage>`.
 - `history ingest` exits 1 without `listings/events_completed.html` in the cache (it says which events are UFC events), or when a completed bout has a method but no W/L outcome (it names the fight ids), and leaves the store unchanged; one transaction per run.
 - `score` resolves the default `--history-db` against `--data`, not the cwd: `<--data>/../history/history.sqlite` (`data/` and `history/` side by side, as in the repo and on the VPS). An explicit `--history-db` is used as given.
 - `score` exits 1 before writing anything when the history store is missing, unusable (empty, not SQLite, missing tables, no events) or stale: a completed event in events/ dated up to `--now` that the store doesn't have in full. In full means a store row with status `completed` and either no bouts (all cancelled) or at least one bout with an outcome. A completed row whose bouts have no outcome yet still counts as stale. It prints one line saying which. The one exception: an event `scrape`'s backfill skipped (in the store's `backfill_skips`, read-only; a store without that table, e.g. one made by `history ingest` before it existed, has none) is one WARNING line naming the event and the recorded reason, and doesn't change the exit code; the ratings leave it out. Each run logs the store's newest completed event and last page fetch against `--now`.
-- `score --no-history` (exclusive with `--history-db`) scores tiers only: the history store isn't read and every fighter's rating fields stay as they are in fighters.json.
+- `score --no-history` (exclusive with `--history-db`) scores tiers only: the history store isn't read and every fighter's rating fields stay as they are in fighters.json, and rankings.json is neither written nor removed.
 - `scrape` reads the completed listing as `http://ufcstats.com/statistics/events/completed?page=all` (the whole listing, as `history ingest` reads it), also with `--no-history` (then only when `--recent` > 0).
 - `scrape` keeps the history store current: it refetches the full completed listing every run and upserts it, every event page and every fighter page it fetched, through the same functions as `history ingest`, in one transaction. It takes the store's write lock before the first upsert (`BEGIN IMMEDIATE`, waiting up to 30 s for another writer) and commits the store **before** writing data/, so data/ is never ahead of the store (a store ahead of data/ is harmless: the next run rewrites data/). A failed fetch, check, lock or commit changes neither. If writing data/ fails after the commit, it exits 1 with "store updated, data/ may be partially written; the next run rewrites it". It resolves `--history-db` like `score` (default `<--data>/../history/history.sqlite`) and exits 1 before fetching anything when there's no store there; `--no-history` (exclusive with `--history-db`) scrapes without one. Like `history ingest`, it exits 1 with nothing written when a completed bout on this run's cards (upcoming, past-dated upcoming, the `--recent` completed ones) has a method but no W/L outcome. Seed the store once with `history ingest`; a refresh is then `scrape` → … → `score`.
 - Backfill: completed events in data/ that the store doesn't have in full (as `score` checks) are refetched, oldest first, at most 20 a run (`BACKFILL_PER_RUN`; the rest in later runs), so `score`'s stale-store check passes once they're in. A backfill page that 404s or has a bout without an outcome is skipped with a warning naming the event: it isn't upserted and its data/ file stays as it was. The store's `backfill_skips` table (event id, last try, reason; scrape's bookkeeping, not dumped) keeps a skipped event from being retried for 7 days (`BACKFILL_RETRY`), so it doesn't take a slot of the 20 each run. It's removed once the event goes in. `score` warns on such an event instead of failing (see above). A backfilled card's fighters are fetched only when fighters.json lacks them.
