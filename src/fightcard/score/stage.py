@@ -8,6 +8,10 @@
   `tier_frozen_at` once and never touch `finish_tier` again. A bout whose result
   is already in keeps its stored tier (its fighters' records moved because of
   that bout) and its fighters are not reported as stale.
+- `data/rankings.json` is written beside them from the same pass (`fightcard.history.rankings.published`): the P4P
+  lists and the active-fighter index as of `--now`'s date, for `/v1/rankings.json`. A P4P entry's `image` is
+  `images/<id>.webp` when that headshot is in data/ (`images` runs first, so a fighter new to the P4P list gets
+  theirs a run later). `--no-history` neither writes nor removes it.
 - `index.model` is the export summary the how-it-works page quotes (`fightcard.score.summary`), plus
   `stale_fighters`: how many distinct fighters the staleness guard nulled this run.
 - Each fighter's rating fields (`elo`, `elo_peak`, `p4p_rank`, the tags, the
@@ -37,8 +41,10 @@ from pathlib import Path
 import pandas as pd
 
 from fightcard.history.display import fighter_ratings
-from fightcard.history.rating import history_ratings
-from fightcard.history.store import TABLES, complete_events
+from fightcard.history.rankings import divisions, published
+from fightcard.history.rating import rate
+from fightcard.history.store import TABLES, complete_events, rating_bouts
+from fightcard.history.store import names as store_names
 from fightcard.models import BestWin, Event, Fight, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
 from fightcard.score.features import bout_context, bout_row
@@ -141,9 +147,9 @@ def _backfill_skips(conn: sqlite3.Connection, tables: set[str]) -> dict[str, str
     return dict(conn.execute("SELECT event_id, reason FROM backfill_skips"))
 
 
-def _history_ratings(db: Path, now: datetime, events: list[Event]) -> pd.DataFrame:
+def _history_ratings(db: Path, now: datetime, events: list[Event]) -> tuple[pd.DataFrame, list[dict], dict[str, str]]:
     """The full-history pass up to `now`'s date (read-only: score never writes the store), after checking the
-    store is usable and has every completed event in `events` up to then."""
+    store is usable and has every completed event in `events` up to then: (ratings, the rating's bouts, names)."""
     as_of = now.date().isoformat()
     if not db.is_file():
         raise HistoryUnavailable(f"no history store at {db}; run `fightcard history ingest`, "
@@ -167,7 +173,8 @@ def _history_ratings(db: Path, now: datetime, events: list[Event]) -> pd.DataFra
             if missing:
                 raise HistoryUnavailable(f"completed events with no bouts in the history store: {', '.join(missing)}; "
                                          f"run `fightcard history ingest`")
-            return history_ratings(conn, as_of)
+            bouts, who = rating_bouts(conn, as_of), store_names(conn)
+            return rate(bouts, who)[1].set_index("fighter_id"), bouts, who
         except sqlite3.DatabaseError as e:
             raise unusable from e
 
@@ -202,13 +209,16 @@ def run(args: argparse.Namespace) -> int:
     if not args.no_history:
         db = args.history_db or args.data.resolve().parent / "history" / "history.sqlite"
         try:
-            history = _history_ratings(db, now, events)
+            history, bouts, who = _history_ratings(db, now, events)
         except HistoryUnavailable as e:
             print(f"score: {e}", file=sys.stderr)
             return 1
         rating = fighter_ratings(fighters, history, now.date())
         fighters = {fid: f.model_copy(update=_rating_fields(rating[fid])) for fid, f in fighters.items()}
         store.save_fighters(fighters)
+        headshots = {p.stem for p in (store.root / "images").glob("*.webp")}
+        write_json(store.root / "rankings.json",
+                   published(history, who, divisions(bouts), now.date(), headshots))
         rated = f"{sum(r['elo'] is not None for r in rating.values())} fighters with an Elo"
     events, stale = score_events(events, fighters, bundle, now)
     for ev in events:

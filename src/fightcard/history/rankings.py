@@ -3,7 +3,7 @@ active-fighter index the site's search reads, division ranks and the all-time pe
 as compact JSON, so we can see what the site can carry.
 
 `ratings` is `rating.history_ratings` (indexed by fighter_id); `names` is `store.names`; `divs` is `divisions`.
-A fighter without a name shows their id.
+A fighter without a name shows their id. `published` is the part of them that goes to data/rankings.json.
 """
 
 from __future__ import annotations
@@ -80,6 +80,16 @@ def all_time_peaks(ratings: pd.DataFrame, names: dict, now: date, limit: int | N
     ids = sorted(peaks.index, key=lambda fid: (-peaks[fid], fid))[:limit]
     return [{"rank": i, "id": fid, "name": names.get(fid, fid), "peak": round(float(peaks[fid]) + shift)}
             for i, fid in enumerate(ids, start=1)]
+
+
+def published(ratings: pd.DataFrame, names: dict, divs: dict, now: date, headshots: set[str]) -> dict:
+    """data/rankings.json (docs/CONTRACT.md): the P4P lists and the active index as of `now`. A P4P entry's `image` is
+    `images/<id>.webp` when the id is in `headshots`, else null; active rows carry none."""
+    lists = p4p(ratings, names, divs, now)
+    return {"as_of": now.isoformat(),
+            "p4p": {key: [e | {"image": f"images/{e['id']}.webp" if e["id"] in headshots else None} for e in es]
+                    for key, es in lists.items()},
+            "active": active_index(ratings, names, divs, now)}
 
 
 def _rows(value) -> int:

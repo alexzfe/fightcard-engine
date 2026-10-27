@@ -668,9 +668,9 @@ def test_rankings_are_dated_and_decayed_to_now(data, model_dir, veterans, tmp_pa
     db = history(tmp_path, veterans, five_bouts_each(veterans))
     score_with(root, model_dir, db, now="2026-11-01T06:00:00Z")
     first = rankings_of(root)
-    assert score_with(root, model_dir, db, now="2027-08-01T06:00:00Z") == 0
+    assert score_with(root, model_dir, db, now="2027-12-01T06:00:00Z") == 0
     later = rankings_of(root)
-    assert (first["as_of"], later["as_of"]) == ("2026-11-01", "2027-08-01")
+    assert (first["as_of"], later["as_of"]) == ("2026-11-01", "2027-12-01")
     assert later["p4p"]["men"] == [] and later["active"] == []  # nobody fought in the last 365 days
 
 
