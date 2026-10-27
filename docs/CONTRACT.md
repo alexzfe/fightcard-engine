@@ -70,8 +70,10 @@ timestamps are ISO 8601 UTC with `Z`.
 1. Validates `data/` with the pydantic models, and refuses (exit 1, nothing written, the live generation stays)
    when any file is unreadable or invalid, an event is filed under another id, a fighter is keyed under another
    id, `index.json` names an event with no `events/<id>.json`, a fight names a fighter missing from
-   `fighters.json`, `generated_at` isn't UTC with `Z`, or `rankings.json` (when present) is invalid or has a P4P
-   `image` that isn't among the published images. A data/ without `rankings.json` publishes fine, just without it.
+   `fighters.json`, `generated_at` isn't UTC with `Z`, or `rankings.json` (when present) is invalid or its P4P
+   lists and `active` disagree (below). A P4P `image` that isn't among the published images doesn't refuse: that entry
+   is published with `image` `null` and a warning goes to stderr. A data/ without `rankings.json` publishes fine, just
+   without it.
 2. Writes the whole generation to `<out>/generations/.tmp-<id>/`, renames it to `<out>/generations/<id>/`, then
    points `<out>/current` at it by renaming a new relative symlink over the old one. Each rename is atomic, so a
    reader sees the old generation or the new one, never a half-written tree. A failed write exits 1 and leaves
@@ -144,6 +146,10 @@ pass as the fighters' ratings (`fightcard.history.rankings.published`), validate
   published images is published as `null`, with a warning on stderr. `active` rows never carry `image`.
 - `active`: every fighter with at least one UFC bout and a bout in the last 365 days, best `elo` first (ties by
   id). `p4p_rank` is the `Fighter.p4p_rank` value or `null`; `provisional` is true with fewer than 3 UFC bouts.
+- The lists and `active` agree, and publish refuses a file where they don't: every P4P `id` is in `active` with
+  `p4p_rank` equal to its `rank`; every `active` row with a non-null `p4p_rank` has a P4P entry (in `men` or `women`)
+  of that `id` and `rank`; and no `id` is in both lists. So a consumer can look an `id` up in `p4p.women` (or `men`)
+  to tell which list a ranked fighter is in.
 - `score --no-history` neither writes nor removes it (like the rating fields), so after a history run it keeps
   that run's `as_of`; a run that fails on the history store changes nothing. Consumers treat the file as optional.
 - Size on real data: P4P about 0.9 KB gzipped, `active` (about 650 rows) about 16 KB gzipped.

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 FinishTier = Literal["high", "medium", "low"]
 CardSegment = Literal["main", "prelims", "early_prelims"]
@@ -177,3 +177,21 @@ class Rankings(_Strict):
     as_of: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")  # YYYY-MM-DD the ratings are decayed to
     p4p: P4P
     active: list[ActiveEntry]  # a UFC bout in the last 365 days, best Elo first (ties by id)
+
+    @model_validator(mode="after")
+    def _p4p_agrees_with_active(self) -> Rankings:
+        """The lists and the index tell the same story: every P4P fighter is in `active` with the same rank, no other
+        active row has one, and no id is in both lists, so a consumer can look an id up in `p4p.women` to tell the
+        lists apart."""
+        listed = [(e.id, e.rank) for es in (self.p4p.men, self.p4p.women) for e in es]
+        ids = [fid for fid, _ in listed]
+        if both := sorted({fid for fid in ids if ids.count(fid) > 1}):
+            raise ValueError(f"P4P ids listed more than once: {', '.join(both)}")
+        ranks = {a.id: a.p4p_rank for a in self.active}
+        if off := [f"{fid} (rank {rank})" for fid, rank in listed if ranks.get(fid) != rank]:
+            raise ValueError(f"P4P fighters missing from active or with another p4p_rank there: {', '.join(off)}")
+        ranked = dict(listed)
+        if stray := [f"{a.id} (p4p_rank {a.p4p_rank})" for a in self.active
+                     if a.p4p_rank is not None and ranked.get(a.id) != a.p4p_rank]:
+            raise ValueError(f"active rows with a p4p_rank that matches no P4P entry: {', '.join(stray)}")
+        return self
