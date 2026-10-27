@@ -160,6 +160,7 @@ class ActiveEntry(_Strict):
 
 
 class P4P(_Strict):
+    # PARAMS' p4p_men / p4p_women (history.rating imports this module, so they are copied; a test keeps them equal)
     men: list[P4PEntry] = Field(max_length=15)
     women: list[P4PEntry] = Field(max_length=10)
 
@@ -176,7 +177,8 @@ class Rankings(_Strict):
 
     as_of: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")  # YYYY-MM-DD the ratings are decayed to
     p4p: P4P
-    active: list[ActiveEntry]  # a UFC bout in the last 365 days, best Elo first (ties by id)
+    # >= 1 UFC bout ever and any in-scope bout in the last 365 days; best Elo first (ties by id)
+    active: list[ActiveEntry]
 
     @model_validator(mode="after")
     def _p4p_agrees_with_active(self) -> Rankings:
