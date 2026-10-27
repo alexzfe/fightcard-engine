@@ -2,7 +2,7 @@
 active-fighter index the site's search reads, division ranks and the all-time peak list. `size_report` measures each
 as compact JSON, so we can see what the site can carry.
 
-`ratings` is `rating.history_ratings` (indexed by fighter_id); `names` is `store.names`; `divs` is `divisions`.
+`ratings` is `rating.history_pass`'s first part (indexed by fighter_id); `names` is `store.names`; `divs` is `divisions`.
 A fighter without a name shows their id. `published` is the part of them that goes to data/rankings.json.
 """
 

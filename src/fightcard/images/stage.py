@@ -22,8 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fightcard.history.rankings import divisions, p4p
-from fightcard.history.rating import rate
-from fightcard.history.store import names, rating_bouts
+from fightcard.history.rating import history_pass
 from fightcard.images.download import normalize_image
 from fightcard.images.http import HttpClient
 from fightcard.images.misses import Misses
@@ -86,8 +85,7 @@ def _p4p_names(db: Path, now: datetime) -> dict[str, str]:
         if not db.is_file():
             raise FileNotFoundError("no such file")
         with closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
-            bouts, who = rating_bouts(conn, now.date().isoformat()), names(conn)
-        ratings = rate(bouts, who)[1].set_index("fighter_id")
+            ratings, bouts, who = history_pass(conn, now.date().isoformat())
         lists = p4p(ratings, who, divisions(bouts), now.date())
     except (OSError, sqlite3.Error, ValueError, KeyError) as e:
         log.warning("no P4P headshots: history store %s is unusable (%s); fetching the card fighters only", db, e)
