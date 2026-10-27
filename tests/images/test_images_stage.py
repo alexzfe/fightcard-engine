@@ -509,3 +509,51 @@ def test_the_p4p_ids_come_from_the_shared_history_pass(data, client, transport, 
     _ok_routes(transport)
     stage.process(data, client, NOW, history_db=store)
     assert [as_of for _, as_of in calls] == [NOW.date().isoformat()]
+
+
+# --- a headshot already on disk is reused -------------------------------------------------------------------------------
+
+def test_a_fighter_with_a_file_on_disk_and_no_image_field_gets_the_field_without_a_lookup(data, client, transport):
+    """A P4P-only headshot saved earlier, the fighter now in fighters.json with `image: null`."""
+    (data / "images").mkdir()
+    (data / "images" / "f1.webp").write_bytes(b"x")
+    _ok_routes(transport)
+    summary = stage.process(data, client, NOW)
+    assert _fighters(data)["f1"]["image"] == "images/f1.webp"
+    assert "Alexander Volkanovski" not in _queried(transport) and headshot_url("3949584") not in _queried(transport)
+    assert (data / "images" / "f1.webp").read_bytes() == b"x"
+    assert summary.hits == 1 and summary.misses == 1  # f2 and f4 are looked up, f1 is not
+
+
+def test_the_field_is_saved_even_when_nothing_is_fetched(data, client, transport):
+    (data / "images").mkdir()
+    (data / "images" / "f1.webp").write_bytes(b"x")
+    _ok_routes(transport)
+    summary = stage.process(data, client, NOW, limit=0)
+    assert _fighters(data)["f1"]["image"] == "images/f1.webp"
+    assert summary.hits == 0 and transport.calls == []
+
+
+def test_a_p4p_fighter_in_fighters_json_with_a_file_on_disk_gets_the_field(data, client, transport, store):
+    (data / "images").mkdir()
+    (data / "images" / "old1.webp").write_bytes(b"x")
+    _history(store, men=[("old1", "Retired Guy")])
+    _ok_routes(transport)
+    stage.process(data, client, NOW, limit=0, history_db=store)
+    assert _fighters(data)["old1"]["image"] == "images/old1.webp"
+    assert "Retired Guy" not in _queried(transport)
+
+
+@pytest.mark.parametrize("error", [RuntimeError("boom"), TypeError("bad"), IndexError("out"), ZeroDivisionError()],
+                         ids=lambda e: type(e).__name__)
+def test_history_can_never_fail_the_images_step(data, client, transport, store, monkeypatch, caplog, error):
+    """Whatever the pass raises, the cards are still fetched and the step exits 0 with a warning."""
+    def broken(*args):
+        raise error
+    monkeypatch.setattr(stage, "history_pass", broken)
+    _history(store, men=[("p9", "Top Dog")])
+    _ok_routes(transport)
+    with caplog.at_level("WARNING"):
+        summary = stage.process(data, client, NOW, history_db=store)
+    assert summary.hits == 2 and summary.misses == 1
+    assert any("P4P" in r.message and str(store) in r.message for r in caplog.records if r.levelname == "WARNING")
