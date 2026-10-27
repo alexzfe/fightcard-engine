@@ -88,6 +88,7 @@ def test_stages_share_the_state_data_dir_and_publish_to_the_root(tmp_path):
                                      str(cfg.root / "state" / "history" / "history.sqlite")]
     assert by_stage["scrape"][3:] == ["scrape", "--cookie-file",
                                       str(cfg.root / "state" / "cache" / "fightcard" / "ufcstats_cookie.json")]
+    assert by_stage["images"][3:] == ["images", "--history-db", str(cfg.root / "state" / "history" / "history.sqlite")]
 
 
 # The model pull (docs/SERVICE.md): before score, over state/model, and never a reason to fail the run.
