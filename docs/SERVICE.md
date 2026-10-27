@@ -209,8 +209,8 @@ restore, stream the archive into `state/` the way the seed goes in (below).
 ## Release order
 
 The first service run of an engine with `rankings.json` writes it (score) and puts it in `/v1/snapshot.tar.gz`
-(publish). The site's `scripts/fetch_v1.py` allowlists the top-level files it accepts and refuses any other member
-(`unsafe snapshot member 'rankings.json': not part of the /v1/ layout`). So:
+(publish). The site's `scripts/fetch_v1.py` then allowlisted the top-level files it accepted and refused any other
+member (`unsafe snapshot member 'rankings.json': not part of the /v1/ layout`). So:
 
 1. Merge the site's change that adds `rankings.json` to `fetch_v1` (site branch `feat/rankings`) to the site's `main`
    and let it deploy, before this engine is deployed.
@@ -219,10 +219,9 @@ The first service run of an engine with `rankings.json` writes it (score) and pu
 Deployed the other way round, every v1 refresh fails in `DATA_SOURCE=v1` mode (exit 1, not the stale code 3, so the
 hourly runs fail too and the site's data/ freezes); in `pipeline` mode only the `shadow` job breaks. A rollback is
 safe in either order: the previous engine doesn't publish the file (contract `"1.1"`) and the site treats it as optional.
-That order was for `rankings.json` only. Since the site's change on branch `feat/contract-checks`, `fetch_v1`
-skips files outside the layout it knows instead of refusing the snapshot, so a file added to `/v1/` later can be
-deployed before any site change (docs/CONTRACT.md, Versioning). Deploy this doc's engine only once that site change
-is on the site's `main`.
+That order was for `rankings.json` only. Since site PR alexzfe/fight-card-website#12, `fetch_v1` skips files
+outside the layout it knows instead of refusing the snapshot, so a file added to `/v1/` later can be deployed before
+any site change (docs/CONTRACT.md, Versioning). This holds once site PR #12 is on the site's `main`.
 
 ## Staging
 

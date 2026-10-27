@@ -7,12 +7,12 @@ from fightcard.publish.build import schema
 # Keyed by where the enum sits: "<Def>.<field>" then the JSON path inside the field ("<Def>" alone for a def that is
 # an enum). Values compare as sets: reordering a Literal is no change for a client.
 V1_ENUMS = {
-    "Event.status": ["upcoming", "completed"],
-    "Fight.finish_tier": ["high", "medium", "low"],
-    "Fight.segment": ["main", "prelims", "early_prelims"],
-    "ModelInfo.tiers": ["low", "medium", "high"],  # its keys
-    "PastFight.result": ["win", "loss", "draw", "nc"],
-    "Result.outcome": ["win", "draw", "nc"],
+    "Event.status": {"upcoming", "completed"},
+    "Fight.finish_tier/anyOf/0": {"high", "medium", "low"},
+    "Fight.segment/anyOf/0": {"main", "prelims", "early_prelims"},
+    "ModelInfo.tiers/anyOf/0/propertyNames": {"low", "medium", "high"},
+    "PastFight.result": {"win", "loss", "draw", "nc"},
+    "Result.outcome/anyOf/0": {"win", "draw", "nc"},
 }
 
 
