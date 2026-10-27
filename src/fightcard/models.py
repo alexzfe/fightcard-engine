@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 FinishTier = Literal["high", "medium", "low"]
 CardSegment = Literal["main", "prelims", "early_prelims"]
@@ -135,3 +135,45 @@ class Index(BaseModel):
     upcoming: list[str]  # event ids, soonest first
     recent: list[str]  # completed event ids, most recent first
     model: ModelInfo | None = None
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(strict=True)  # data/rankings.json is machine-written: no "1" for 1
+
+
+class P4PEntry(_Strict):
+    rank: int = Field(ge=1)
+    id: str  # ufcstats fighter id; the fighter may be on no card (not in fighters.json)
+    name: str
+    elo: int  # displayed scale, as Fighter.elo
+    division: str | None  # weight class of the latest bout, Catch/Open Weight skipped; None = none
+    image: str | None  # path relative to data/, e.g. "images/<id>.webp", of a published image; None = no headshot
+
+
+class ActiveEntry(_Strict):
+    id: str
+    name: str
+    elo: int
+    division: str | None
+    p4p_rank: int | None  # as Fighter.p4p_rank
+    provisional: bool  # fewer than 3 UFC bouts
+
+
+class P4P(_Strict):
+    men: list[P4PEntry] = Field(max_length=15)
+    women: list[P4PEntry] = Field(max_length=10)
+
+    @field_validator("men", "women")
+    @classmethod
+    def _ranked_in_order(cls, entries: list[P4PEntry]) -> list[P4PEntry]:
+        if [e.rank for e in entries] != list(range(1, len(entries) + 1)):
+            raise ValueError("ranks must be 1..n in order")
+        return entries
+
+
+class Rankings(_Strict):
+    """data/rankings.json, written by `score` and published as /v1/rankings.json (docs/CONTRACT.md)."""
+
+    as_of: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")  # YYYY-MM-DD the ratings are decayed to
+    p4p: P4P
+    active: list[ActiveEntry]  # a UFC bout in the last 365 days, best Elo first (ties by id)

@@ -11,6 +11,7 @@ static files: `fightcard publish` writes them and nginx serves them. The exact r
 | `/v1/index.json` | The entry point: upcoming and recent event ids, the model summary, `generated_at`, `contract_version` |
 | `/v1/events/{event_id}.json` | One card: its fights in order, tiers, results |
 | `/v1/fighters.json` | Every fighter on those cards, keyed by id |
+| `/v1/rankings.json` | The pound-for-pound lists (men, women) and every active fighter's Elo, for a rankings page and fighter search. Optional: it appears from `contract_version` `"1.1"` |
 | `/v1/images/{fighter_id}.webp` | A headshot (the fighter's `image` field gives the exact path) |
 | `/v1/schema.json` | A JSON Schema describing all of the JSON above |
 | `/v1/snapshot.tar.gz` | All of the above in one file |
@@ -37,8 +38,8 @@ curl -s https://ufc-data.xlobax.com/v1/index.json
 ## Caching, ETag and 304
 
 Every response has a `Cache-Control` header saying how long you may reuse it without asking again:
-60 seconds for `index.json` and the snapshot (they change on every update), 5 minutes for events, fighters and
-the schema, a day for headshots.
+60 seconds for `index.json` and the snapshot (they change on every update), 5 minutes for events, fighters,
+the schema and rankings, a day for headshots.
 
 After that, ask again cheaply. Each response has an `ETag`, a fingerprint of the file. Send it back as
 `If-None-Match`. If the file hasn't changed, the server answers `304 Not Modified` with no body, and you keep

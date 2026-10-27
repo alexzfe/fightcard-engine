@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from pydantic.json_schema import models_json_schema
 
 from fightcard import models
-from fightcard.models import Event, Fighter
+from fightcard.models import Event, Fighter, Rankings
 from fightcard.store import dumps
 
 CONTRACT_VERSION = "1.1"
@@ -101,9 +101,23 @@ def _images(data_dir: Path) -> dict[str, bytes]:
             if p.is_file() and not p.name.startswith(".") and p.suffix.lower() in IMAGE_SUFFIXES}
 
 
+def _load_rankings(data_dir: Path, images: dict[str, bytes]) -> Rankings | None:
+    """data/rankings.json if there is one (it's optional): valid, and every P4P `image` among the published `images`."""
+    if not (data_dir / "rankings.json").exists():
+        return None
+    rel, data = _read(data_dir / "rankings.json", data_dir)
+    rankings = _validate(Rankings, rel, data)
+    absent = [f"{e.id} ({e.image})" for es in (rankings.p4p.men, rankings.p4p.women) for e in es
+              if e.image is not None and e.image not in images]
+    if absent:
+        raise DataError(f"{rel}: P4P images that are not among the published images: {', '.join(absent)}")
+    return rankings
+
+
 def schema() -> dict:
-    """JSON Schema for the published JSON: `#/$defs/Index`, `Event`, `Fighters` (fighters.json), `Fighter`."""
-    _, top = models_json_schema([(m, "validation") for m in (Index, Event, Fighter)],
+    """JSON Schema for the published JSON: `#/$defs/Index`, `Event`, `Fighters` (fighters.json), `Fighter`,
+    `Rankings`."""
+    _, top = models_json_schema([(m, "validation") for m in (Index, Event, Fighter, Rankings)],
                                 ref_template="#/$defs/{model}")
     defs = top["$defs"]
     defs["Fighters"] = {"type": "object", "additionalProperties": {"$ref": "#/$defs/Fighter"}}
@@ -112,7 +126,7 @@ def schema() -> dict:
         "$id": SCHEMA_ID,
         "title": f"fightcard /v1 (contract {CONTRACT_VERSION})",
         "description": "index.json is #/$defs/Index, events/{id}.json is #/$defs/Event, "
-                       "fighters.json is #/$defs/Fighters.",
+                       "fighters.json is #/$defs/Fighters, rankings.json is #/$defs/Rankings.",
         "$defs": defs,
     }
 
@@ -150,6 +164,8 @@ def build(data_dir: Path) -> dict[str, bytes]:
     index = _load_index(data_dir)
     events = _load_events(data_dir)
     fighters = _load_fighters(data_dir)
+    images = _images(data_dir)
+    rankings = _load_rankings(data_dir, images)
     missing = [eid for eid in index.upcoming + index.recent if eid not in events]
     if missing:
         raise DataError(f"index.json names events with no events/<id>.json: {', '.join(missing)}")
@@ -161,6 +177,8 @@ def build(data_dir: Path) -> dict[str, bytes]:
     files = {"index.json": _json(index), "schema.json": dumps(schema()).encode("utf-8"),
              "fighters.json": dumps({fid: f.model_dump(mode="json") for fid, f in fighters.items()}).encode("utf-8")}
     files.update({f"events/{eid}.json": _json(event) for eid, event in events.items()})
-    files.update(_images(data_dir))
+    if rankings is not None:
+        files["rankings.json"] = _json(rankings)
+    files.update(images)
     files[SNAPSHOT] = snapshot(files)
     return files
