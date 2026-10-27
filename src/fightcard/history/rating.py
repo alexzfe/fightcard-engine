@@ -1,7 +1,7 @@
 """Fighter rating (Elo): the single implementation, a chronological pass over the history store's bouts.
 
 Ported from fight-auto-research `main:export/rating.py` (d179cf2 era), which computed it for the export until
-then; spec and contract in docs/ELO.md. `history_ratings(conn)` feeds `rate` from `fightcard.history.store`
+then; spec and contract in docs/ELO.md. `history_pass(conn, as_of)` feeds `rate` from `fightcard.history.store`
 (`rating_bouts`, `names`); `fightcard.history.display` turns its rows into the displayed numbers.
 
 Rules (raw scale; re-anchoring, P4P rank and tags are `fightcard.history.display`'s, `PARAMS["display"]`):
@@ -298,10 +298,17 @@ def _dump(obj) -> str:
     return json.dumps(obj, indent=2, sort_keys=True) + "\n"
 
 
+def history_pass(conn: sqlite3.Connection, as_of: str | None = None) -> tuple[pd.DataFrame, list[dict], dict[str, str]]:
+    """The history pass up to `as_of` (None = all), the one `score`, `images` and `fightcard history rankings` share
+    so they agree on who is rated: (`rate`'s export rows indexed by fighter_id, the bouts they were rated from,
+    names)."""
+    bouts, who = rating_bouts(conn, as_of), store_names(conn)
+    return rate(bouts, who)[1].set_index("fighter_id"), bouts, who
+
+
 def history_ratings(conn: sqlite3.Connection, as_of: str | None = None) -> pd.DataFrame:
     """`rate` over the store's bouts up to `as_of` (None = all): the export rows indexed by fighter_id."""
-    _, fighters = rate(rating_bouts(conn, as_of), store_names(conn))
-    return fighters.set_index("fighter_id")
+    return history_pass(conn, as_of)[0]
 
 
 if __name__ == "__main__":

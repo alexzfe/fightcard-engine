@@ -10,8 +10,8 @@
   that bout) and its fighters are not reported as stale.
 - `data/rankings.json` is written beside them from the same pass (`fightcard.history.rankings.published`): the P4P
   lists and the active-fighter index as of `--now`'s date, for `/v1/rankings.json`. A P4P entry's `image` is
-  `images/<id>.webp` when that headshot is in data/ (`images` runs first, so a fighter new to the P4P list gets
-  theirs a run later). `--no-history` neither writes nor removes it.
+  `images/<id>.webp` when that headshot is in data/ (`images` runs first and works out the same P4P ids from the
+  store as of the run's date, so a fighter new to the list has theirs in the same run). `--no-history` neither writes nor removes it.
 - `index.model` is the export summary the how-it-works page quotes (`fightcard.score.summary`), plus
   `stale_fighters`: how many distinct fighters the staleness guard nulled this run.
 - Each fighter's rating fields (`elo`, `elo_peak`, `p4p_rank`, the tags, the
@@ -42,9 +42,8 @@ import pandas as pd
 
 from fightcard.history.display import fighter_ratings
 from fightcard.history.rankings import divisions, published
-from fightcard.history.rating import rate
-from fightcard.history.store import TABLES, complete_events, rating_bouts
-from fightcard.history.store import names as store_names
+from fightcard.history.rating import history_pass
+from fightcard.history.store import TABLES, complete_events
 from fightcard.models import BestWin, Event, Fight, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
 from fightcard.score.features import bout_context, bout_row
@@ -173,8 +172,7 @@ def _history_ratings(db: Path, now: datetime, events: list[Event]) -> tuple[pd.D
             if missing:
                 raise HistoryUnavailable(f"completed events with no bouts in the history store: {', '.join(missing)}; "
                                          f"run `fightcard history ingest`")
-            bouts, who = rating_bouts(conn, as_of), store_names(conn)
-            return rate(bouts, who)[1].set_index("fighter_id"), bouts, who
+            return history_pass(conn, as_of)
         except sqlite3.DatabaseError as e:
             raise unusable from e
 

@@ -25,8 +25,8 @@ from typing import BinaryIO
 
 from fightcard.history.ingest import LISTING, MissingOutcome, ingest
 from fightcard.history.rankings import active_index, all_time_peaks, division_ranks, divisions, p4p, size_report
-from fightcard.history.rating import rate
-from fightcard.history.store import connect, dump, names, rating_bouts
+from fightcard.history.rating import history_pass
+from fightcard.history.store import connect, dump
 
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
@@ -57,9 +57,7 @@ def backup(db: Path, out: BinaryIO) -> None:
 
 def rankings(conn: sqlite3.Connection, now: date) -> dict[str, object]:
     """Every rankings module over the store's bouts up to `now`."""
-    bouts = rating_bouts(conn, now.isoformat())
-    who = names(conn)
-    ratings = rate(bouts, who)[1].set_index("fighter_id")
+    ratings, bouts, who = history_pass(conn, now.isoformat())
     divs = divisions(bouts)
     return {"p4p": p4p(ratings, who, divs, now), "active_index": active_index(ratings, who, divs, now),
             "division_ranks": division_ranks(ratings, who, divs, now),
