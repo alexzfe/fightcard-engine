@@ -87,7 +87,7 @@ def _p4p_names(db: Path, now: datetime) -> dict[str, str]:
         with closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
             ratings, bouts, who = history_pass(conn, now.date().isoformat())
         lists = p4p(ratings, who, divisions(bouts), now.date())
-    except (OSError, sqlite3.Error, ValueError, KeyError) as e:
+    except Exception as e:  # noqa: BLE001 - the store only says whose headshots to fetch; it never fails the step
         log.warning("no P4P headshots: history store %s is unusable (%s); fetching the card fighters only", db, e)
         return {}
     return {e["id"]: e["name"] for es in lists.values() for e in es}
@@ -142,17 +142,24 @@ def process(
     fighters, events, index = _load(store)
     fighter_ids = _fighter_ids(events, index)
     p4p_names = {} if history_db is None else _p4p_names(history_db, now)
-    fighter_ids += [fid for fid in p4p_names if fid not in set(fighter_ids)]  # after the cards
+    known = set(fighter_ids)
+    fighter_ids += [fid for fid in p4p_names if fid not in known]  # after the cards
     images_dir = data_dir / "images"
     misses = Misses.load(images_dir / "misses.json")
     finder = ImageFinder(client)
     summary = Summary()
+    linked = False
 
     for fid in fighter_ids:
         fighter = fighters.get(fid)
         if fighter is None and fid not in p4p_names:
             continue
-        if fighter.image if fighter else (images_dir / f"{fid}.webp").is_file():
+        if fighter is not None and fighter.image:
+            continue
+        if (images_dir / f"{fid}.webp").is_file():  # a P4P headshot saved before the fighter joined fighters.json
+            if fighter is not None:
+                fighter.image = f"images/{fid}.webp"
+                linked = True
             continue
         if misses.recently_tried(fid, now):
             summary.skipped += 1
@@ -174,7 +181,7 @@ def process(
         summary.hits += 1
         log.info("image hit %s (%s)", name, fid)
 
-    if summary.hits:
+    if summary.hits or linked:
         store.save_fighters(fighters)
     if summary.hits or summary.misses:
         misses.save()
