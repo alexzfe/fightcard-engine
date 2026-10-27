@@ -689,6 +689,14 @@ def test_a_redirect_to_another_http_url_is_followed(root, bucket):
     assert any(r == "/latest.json" for r in bucket.requests)
 
 
+def test_every_request_names_fightcard_as_its_user_agent(root, bucket):
+    # Cloudflare answers 403 to urllib's default "Python-urllib/3.x" (models.xlobax.com did, on the first staging pull)
+    bucket.publish(NEW)
+    pull(root, url=bucket.url)
+    assert current(root) == NEW
+    assert bucket.user_agents and all(ua.startswith("fightcard") for ua in bucket.user_agents)
+
+
 # FIGHTCARD_MODEL_PIN: run a kept version and pull nothing, which is also how a bad model is rolled back.
 
 @pytest.fixture

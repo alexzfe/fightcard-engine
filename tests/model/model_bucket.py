@@ -60,11 +60,13 @@ class Bucket:
         self.root = root
         root.mkdir()
         self.requests: list[str] = []
-        requests = self.requests
+        self.user_agents: list[str] = []
+        requests, user_agents = self.requests, self.user_agents
 
         class Handler(SimpleHTTPRequestHandler):
             def log_message(self, format, *args):  # noqa: A002 - the stdlib's name
                 requests.append(self.path)
+                user_agents.append(self.headers.get("User-Agent", ""))
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), partial(Handler, directory=str(root)))
         self.url = f"http://127.0.0.1:{self.server.server_port}"
