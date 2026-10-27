@@ -94,3 +94,41 @@ Baseline before Phase 2: 717 passed, 1 skipped. Two of my own tests were wrong, 
 - Not run against the prod store, not deployed, nothing pushed.
 - No `ruff` in the dev environment, so lint wasn't run.
 - The first real `images` run after deploy fetches nothing for P4P (no `rankings.json` yet); photos appear from the second cycle.
+
+## Phase 2 fixes
+Three follow-ups on the same branch; the rankings.json shape did not change.
+
+| Fix | Stage | Commit | Command | Result |
+|---|---|---|---|---|
+| 1 images computes the P4P ids itself (same-cycle headshots) | RED | f625e17 | `uv run pytest -q tests/images/test_images_stage.py tests/service/test_runner.py` | 15 failed |
+| | GREEN | 857f32b | same; full suite `uv run pytest -q` | 0 failed; 779 passed, 1 skipped |
+| 2 + 3 publish: dangling image becomes null; P4P/active consistency | RED | 26e23d3 | `uv run pytest -q` | 12 failed (11 in tests/publish; the guard in tests/history passes both before and after) |
+| | GREEN | cf72b3d | same | 0 failed; 791 passed, 1 skipped |
+
+Baseline before the fixes: 773 passed, 1 skipped.
+
+### Fix 1: same-cycle P4P headshots
+- `images` opens the history store read-only (`--history-db`, default `<--data>/../history/history.sqlite`, the runner passes `state/history/history.sqlite` like it does to `score`) and runs `rating_bouts` / `names` / `rate` / `rankings.p4p` as of the run date (`now.date()`), the same functions `score` uses for `rankings.json`. It no longer reads `rankings.json` at all.
+- P4P lookups come after the card fighters, under the same misses and `--limit`; a P4P id outside fighters.json still gets the file only.
+- A missing, non-SQLite, never-ingested or otherwise unusable store logs a warning naming the path and the images stage carries on with the card fighters (exit 0). `process(..., history_db=None)` skips the lookup, so library callers and tests without a store are unaffected.
+- Tests build a real store (five UFC bouts each, so the fighter is P4P-eligible) rather than mocking `p4p`. They cover: a fighter new to the lists is fetched with no `rankings.json` present, a stale `rankings.json` is ignored, the lists are as of the run date (a fifth bout after `now` doesn't count), the unusable-store fallbacks (missing / not sqlite / never ingested), the default path beside data/ whatever the cwd, and the runner's `images --history-db` argv.
+- The old `test_an_unreadable_rankings_json_is_ignored` tests are gone: the file is not read.
+
+### Fix 2: a dangling P4P image no longer refuses the generation
+`publish` writes that entry with `image: null` (in `rankings.json` and in the snapshot) and prints `publish: WARNING: ... published as null: <id> (<image>)` to stderr. The file in data/ is not touched. The three old "is refused" tests became "is published as null" tests (missing file, non-published suffix, no images/ dir), plus a snapshot test and a no-warning-when-all-present test.
+
+### Fix 3: P4P lists and `active` must agree
+`Rankings` has a model validator, so `publish` refuses with the usual `rankings.json is invalid: ...` (exit 1, nothing written) when:
+- a P4P id is not in `active`, or is there with another `p4p_rank`;
+- an `active` row has a non-null `p4p_rank` and no P4P entry (men or women) has that id and rank;
+- (added, same intent) an id is in both lists, which would make the site's `p4p.women` lookup ambiguous.
+The shared `RANKINGS` fixture in `tests/publish/publish_helpers.py` was itself inconsistent (its P4P fighters g9 and f2 were not in `active`), so it now has them. `test_published_agrees_with_itself_by_construction` checks that real `published()` output passes the validator, and on the seed-store copy the result (15 men, 10 women, 644 active) validates.
+
+### Decisions
+- The consistency check lives in the model, not in `publish/build.py`, so any validation of `Rankings` (tests, a future consumer of the model) gets it, and it adds nothing to schema.json (a validator is not expressible there; CONTRACT.md says so in words).
+- `images` tolerates every store failure with a warning rather than an exit code: the store only says whose headshots to fetch. `score` is still what fails on a bad store.
+
+### Gaps
+- Not run against the prod store; nothing pushed, no PR.
+- The images stage now imports pandas through `history.rating` (it already ran in the same venv as `score`).
+- `ruff` is not in the dev environment, so lint wasn't run.
