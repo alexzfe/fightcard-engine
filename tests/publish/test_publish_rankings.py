@@ -86,26 +86,58 @@ def test_a_null_image_is_fine(data_dir, out):
     assert publish(data_dir, out) == 0
 
 
-def test_a_p4p_image_missing_from_the_published_images_is_refused(data_dir, out, capsys):
+def published_rankings(out) -> dict:
+    return load(out / "current" / "rankings.json")
+
+
+def test_a_p4p_image_missing_from_the_published_images_is_published_as_null_with_a_warning(data_dir, out, capsys):
     value = rankings()
     value["p4p"]["men"][1]["image"] = "images/g9.webp"
-    message = refused(with_rankings(data_dir, value), out, capsys)
-    assert "rankings.json" in message and "images/g9.webp" in message and "g9" in message
+    with_rankings(data_dir, value)
+    assert publish(data_dir, out) == 0
+    err = capsys.readouterr().err
+    assert "rankings.json" in err and "images/g9.webp" in err and "g9" in err
+    assert published_rankings(out) == RANKINGS  # g9's image null, everything else as it was
+    assert load(data_dir / "rankings.json")["p4p"]["men"][1]["image"] == "images/g9.webp"  # data/ is left alone
 
 
-def test_a_p4p_image_whose_file_is_not_a_published_type_is_refused(data_dir, out, capsys):
+def test_a_p4p_image_whose_file_is_not_a_published_type_is_published_as_null(data_dir, out, capsys):
     (data_dir / "images" / "g9.txt").write_text("not an image")
     value = rankings()
     value["p4p"]["men"][1]["image"] = "images/g9.txt"
-    assert "images/g9.txt" in refused(with_rankings(data_dir, value), out, capsys)
+    with_rankings(data_dir, value)
+    assert publish(data_dir, out) == 0
+    assert "images/g9.txt" in capsys.readouterr().err
+    assert published_rankings(out)["p4p"]["men"][1]["image"] is None
 
 
-def test_a_p4p_image_when_there_is_no_images_dir_is_refused(tmp_path, out, capsys):
+def test_p4p_images_when_there_is_no_images_dir_are_all_published_as_null(tmp_path, out, capsys):
     data = make_data(tmp_path / "data")
     for p in (data / "images").iterdir():
         p.unlink()
     (data / "images").rmdir()
-    assert "images/f1.webp" in refused(with_rankings(data), out, capsys)
+    with_rankings(data)
+    assert publish(data, out) == 0
+    err = capsys.readouterr().err
+    assert "images/f1.webp" in err and "images/f2.png" in err
+    got = published_rankings(out)["p4p"]
+    assert [e["image"] for es in got.values() for e in es] == [None, None, None]
+
+
+def test_the_snapshot_carries_the_nulled_image_too(data_dir, out):
+    value = rankings()
+    value["p4p"]["men"][1]["image"] = "images/g9.webp"
+    with_rankings(data_dir, value)
+    publish(data_dir, out)
+    files = tree(out / "current")
+    members = snapshot_members(files.pop("snapshot.tar.gz"))
+    assert members == files and files["rankings.json"].decode() == dumps(RANKINGS)
+
+
+def test_no_warning_when_every_image_is_published(data_dir, out, capsys):
+    with_rankings(data_dir)
+    assert publish(data_dir, out) == 0
+    assert "WARNING" not in capsys.readouterr().err
 
 
 def break_(path: str, value):
@@ -151,3 +183,43 @@ def test_an_invalid_rankings_json_is_refused(data_dir, out, capsys, edit):
 def test_a_rankings_json_that_is_not_an_object_is_refused(data_dir, out, capsys, text):
     (data_dir / "rankings.json").write_text(text, encoding="utf-8")
     assert "rankings.json" in refused(data_dir, out, capsys)
+
+
+# --- the P4P lists and the active index agree (the site finds a P4P fighter's list by looking the id up) -----------
+
+def edit_active(fid: str, **changes):
+    def edit(r: dict) -> dict:
+        next(a for a in r["active"] if a["id"] == fid).update(changes)
+        return r
+    return edit
+
+
+INCONSISTENT = {
+    "a P4P id missing from active": lambda r: r.update(active=[a for a in r["active"] if a["id"] != "g9"]) or r,
+    "a P4P woman missing from active": lambda r: r.update(active=[a for a in r["active"] if a["id"] != "f2"]) or r,
+    "a P4P id in active with another rank": edit_active("g9", p4p_rank=5),
+    "a P4P id in active with no rank": edit_active("f1", p4p_rank=None),
+    "an active rank on a fighter in neither list": edit_active("h7", p4p_rank=3),
+    "an active rank that no list entry of that fighter has": edit_active("f2", p4p_rank=2),
+    "an id in both lists": lambda r: r["p4p"]["women"].append(
+        {**r["p4p"]["men"][0], "rank": 2}) or r,
+}
+
+
+@pytest.mark.parametrize("edit", INCONSISTENT.values(), ids=INCONSISTENT)
+def test_a_rankings_json_whose_p4p_lists_and_active_disagree_is_refused(data_dir, out, capsys, edit):
+    message = refused(with_rankings(data_dir, edit(rankings())), out, capsys)
+    assert "rankings.json" in message and "P4P" in message
+
+
+def test_the_refusal_names_the_fighters(data_dir, out, capsys):
+    message = refused(with_rankings(data_dir, edit_active("g9", p4p_rank=5)(rankings())), out, capsys)
+    assert "g9" in message
+    message = refused(with_rankings(data_dir, edit_active("h7", p4p_rank=3)(rankings())), out, capsys)
+    assert "h7" in message
+
+
+def test_the_same_rank_in_both_lists_is_fine(data_dir, out):
+    """f1 is men #1 and f2 is women #1: the id picks the list."""
+    with_rankings(data_dir)
+    assert publish(data_dir, out) == 0
