@@ -219,7 +219,10 @@ The first service run of an engine with `rankings.json` writes it (score) and pu
 Deployed the other way round, every v1 refresh fails in `DATA_SOURCE=v1` mode (exit 1, not the stale code 3, so the
 hourly runs fail too and the site's data/ freezes); in `pipeline` mode only the `shadow` job breaks. A rollback is
 safe in either order: the previous engine doesn't publish the file (contract `"1.1"`) and the site treats it as optional.
-The same order applies to any file added to `/v1/` later (docs/CONTRACT.md, Versioning).
+That order was for `rankings.json` only. Since the site's change on branch `feat/contract-checks`, `fetch_v1`
+skips files outside the layout it knows instead of refusing the snapshot, so a file added to `/v1/` later can be
+deployed before any site change (docs/CONTRACT.md, Versioning). Deploy this doc's engine only once that site change
+is on the site's `main`.
 
 ## Staging
 
