@@ -132,3 +132,32 @@ The shared `RANKINGS` fixture in `tests/publish/publish_helpers.py` was itself i
 - Not run against the prod store; nothing pushed, no PR.
 - The images stage now imports pandas through `history.rating` (it already ran in the same venv as `score`).
 - `ruff` is not in the dev environment, so lint wasn't run.
+
+## Review fixes
+Findings from the read-only review of the branch (one blocking deploy gate, two should-fix, six nits). No rankings.json shape or semantics changed. Baseline: 791 passed, 1 skipped.
+
+| Findings | Stage | Commit | Command | Result |
+|---|---|---|---|---|
+| B1 + N4 docs (release order, unknown files, rank/elo after a history run) | RED | 713d0ba | `uv run pytest -q tests/test_docs.py` | 4 failed |
+| | GREEN | cdedec9 | same | 83 passed |
+| S1 + S2 one shared history pass, images == score P4P ids | RED | c92e62f | `uv run pytest -q` | 5 failed (4 new, plus `tests/test_layout.py`, which re-runs the score tests) |
+| | GREEN | ce9b3ca | same | 0 failed; 800 passed, 1 skipped |
+| N2 + N6 + hardening (images) | RED | 40775ec | `uv run pytest -q tests/images/test_images_stage.py` | 7 failed |
+| | GREEN | 6e8255f | `uv run pytest -q` | 0 failed; 807 passed, 1 skipped |
+| N1 + N5 + N3 | RED | 37c52c1 | `uv run pytest -q tests/history/test_history_rankings.py` | 1 failed (N5); the N1 guard passes before and after |
+| | GREEN | 5d07eb1 | `uv run pytest -q` | 0 failed; 809 passed, 1 skipped |
+
+- **B1 (docs only):** SERVICE.md has a "Release order" section: the site's `fetch_v1` must accept `rankings.json` (site branch `feat/rankings`) on the site's `main` before this engine is deployed, else every v1 refresh fails; a rollback is safe. No other file in the repo holds deploy steps. CONTRACT.md Versioning: consumers ignore unknown fields **and files**, and a new file is announced in a minor version. Tested through `tests/test_docs.py`.
+- **S1:** `rating.history_pass(conn, as_of)` returns `(ratings, bouts, names)`; `history_ratings` wraps it. `score`, `images` and `history rankings` call it (spy tests pin that), and `test_images_and_score_agree_on_the_p4p_ids` compares `images._p4p_names` with the P4P ids in score's `rankings.json` for the same store and `now`. That equality test passed before the change (the copies agreed); it is a guard, not a RED.
+- **S2:** score/stage.py's docstring now says images works out the same ids from the store in the same run. A docstring has no test.
+- **N1:** `test_the_rankings_model_limits_equal_the_p4p_sizes_in_the_rating_params` (a guard: passes before and after), and a comment on the `max_length` values that says why they are copied.
+- **N2:** a fighters.json entry with no `image` whose `images/<id>.webp` exists gets the field with no lookup, for card fighters and P4P fighters, and fighters.json is saved for it even when nothing else is fetched. The loop still stops at `--limit` before it reaches the P4P fighters (they come after the cards), so a P4P fighter's link can wait for the next run when the limit is hit. The RED test of the P4P-in-fighters.json case used `limit=0`, which stops before the P4P fighters; the GREEN commit changed it to no limit.
+- **N3:** comment only (`>= 1 UFC bout ever and any in-scope bout in the last 365 days`); semantics untouched.
+- **N5:** `history rankings` defaults `--as-of` to `datetime.now(UTC).date()`; the test stubs the module's `datetime` so it doesn't depend on the machine's time zone.
+- **N6:** `set(fighter_ids)` is built once; the nested conditional is two `if`s.
+- **Hardening:** `_p4p_names` catches `Exception` (`# noqa: BLE001 - ...`, as in `images/http.py` and `service/runner.py`), so no failure of the history pass can fail the images step; tested with RuntimeError, TypeError, IndexError and ZeroDivisionError.
+
+### Gaps
+- Not run against the prod store or the seed store; nothing pushed, no PR, nothing deployed.
+- Whether Road To UFC-only activity should count as "active" (N3's product question) is untouched.
+- `ruff` is not in the dev environment, so lint wasn't run.
