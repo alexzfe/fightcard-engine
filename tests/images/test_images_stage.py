@@ -1,10 +1,14 @@
 import argparse
 import json
+import shutil
+import sqlite3
 from datetime import datetime, timezone
 
 import pytest
 from images_helpers import png_bytes
 
+from fightcard.cli import main
+from fightcard.history.store import connect, upsert_event
 from fightcard.images import stage
 from fightcard.images.http import HttpClient, Response
 from fightcard.images.sources import (
@@ -13,6 +17,7 @@ from fightcard.images.sources import (
     WIKIPEDIA_API_URL,
     headshot_url,
 )
+from fightcard.models import Event, Fight, Result
 
 NOW = datetime(2026, 10, 24, 12, 0, tzinfo=timezone.utc)
 
@@ -195,7 +200,7 @@ def test_no_events_dir_is_a_noop(tmp_path, client):
 
 
 def _args(data, limit=None):
-    return argparse.Namespace(data=data, limit=limit)
+    return argparse.Namespace(data=data, limit=limit, history_db=data / "no-history.sqlite")
 
 
 def test_run_exits_zero_and_uses_client_factory(data, client, transport, monkeypatch):
@@ -318,14 +323,30 @@ def test_migrate_does_not_rewrite_fighters_when_nothing_to_convert(data):
     assert (data / "fighters.json").read_text() == before
 
 
-# --- P4P headshots: the ids in data/rankings.json (written by the previous `score`) ------------------------------------
+# --- P4P headshots: the P4P ids computed from the history store, as of the run date -----------------------------------
 
-def _rankings(data, men=(), women=()):
-    def entries(rows):
-        return [{"rank": i, "id": fid, "name": name, "elo": 1600, "division": None, "image": None}
-                for i, (fid, name) in enumerate(rows, start=1)]
-    (data / "rankings.json").write_text(json.dumps(
-        {"as_of": "2026-10-23", "p4p": {"men": entries(men), "women": entries(women)}, "active": []}))
+def _history(path, men=(), women=(), extra=()):
+    """A history store where each (id, name) in `men`/`women` has won five UFC bouts (May to September 2026) against
+    a one-bout opponent, which is what the P4P lists need; `extra` is more (date, winner id) bouts for them."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = connect(path)
+    with conn:
+        for wc, fighters in (("Lightweight", men), ("Women's Strawweight", women)):
+            for fid, name in fighters:
+                conn.execute("INSERT OR REPLACE INTO fighters (fighter_id, name) VALUES (?, ?)", (fid, name))
+                days = [f"2026-0{m}-01" for m in range(5, 10)] + [d for d, who in extra if who == fid]
+                for i, day in enumerate(days):
+                    fight = Fight(id=f"{fid}-{i}", red=fid, blue=f"{fid}-opp{i}", weight_class=wc,
+                                  result=Result(winner=fid, outcome="win", method="KO/TKO", round=1, time="1:00"))
+                    upsert_event(conn, Event(id=f"ev-{fid}-{i}", slug="x", name=f"UFC {fid} {i}", date=day,
+                                             status="completed", fights=[fight]), is_ufc=True, source="listing")
+    conn.close()
+    return path
+
+
+@pytest.fixture
+def store(tmp_path):
+    return tmp_path / "hist" / "history.sqlite"
 
 
 def _wiki_hit(transport, name):
@@ -336,77 +357,145 @@ def _wiki_hit(transport, name):
     transport.add(url, Response(200, png_bytes(fmt="JPEG")))
 
 
-def test_p4p_fighters_get_headshots_even_when_on_no_card(data, client, transport):
-    _rankings(data, men=[("old1", "Retired Guy")], women=[("old2", "Other Retired")])
+def test_p4p_fighters_get_headshots_even_when_on_no_card(data, client, transport, store):
+    _history(store, men=[("old1", "Retired Guy")], women=[("old2", "Other Retired")])
     _wiki_hit(transport, "Retired Guy")
     _wiki_hit(transport, "Other Retired")
     _ok_routes(transport)
-    stage.process(data, client, NOW)
+    stage.process(data, client, NOW, history_db=store)
     for fid in ("old1", "old2"):
         assert (data / "images" / f"{fid}.webp").exists()
         assert _fighters(data)[fid]["image"] == f"images/{fid}.webp"
 
 
-def test_a_p4p_fighter_missing_from_fighters_json_gets_the_file_only(data, client, transport):
-    _rankings(data, men=[("p9", "Top Dog")])
+def test_the_run_a_fighter_enters_the_p4p_lists_fetches_their_headshot(data, client, transport, store):
+    """No rankings.json yet (score runs after this stage): the ids come from the store, not from the last run."""
+    _history(store, men=[("p9", "Top Dog")])
     _wiki_hit(transport, "Top Dog")
     _ok_routes(transport)
-    summary = stage.process(data, client, NOW)
+    assert not (data / "rankings.json").exists()
+    stage.process(data, client, NOW, history_db=store)
+    assert (data / "images" / "p9.webp").exists()
+
+
+def test_rankings_json_is_not_read(data, client, transport, store):
+    (data / "rankings.json").write_text(json.dumps(
+        {"as_of": "2026-10-23", "p4p": {"men": [{"rank": 1, "id": "old1", "name": "Retired Guy", "elo": 1600,
+                                                 "division": None, "image": None}], "women": []}, "active": []}))
+    _history(store)
+    _ok_routes(transport)
+    summary = stage.process(data, client, NOW, history_db=store)
+    assert "Retired Guy" not in _queried(transport)
+    assert summary.hits == 2 and summary.misses == 1
+
+
+def test_the_p4p_lists_are_as_of_the_run_date(data, client, transport, store):
+    """A fighter whose fifth UFC bout is after `now` is not P4P yet."""
+    _history(store, men=[("p9", "Top Dog")], extra=[("2026-11-01", "p9")])
+    conn = connect(store)
+    with conn:
+        conn.execute("DELETE FROM fights WHERE fight_id = 'p9-0'")
+        conn.execute("DELETE FROM events WHERE event_id = 'ev-p9-0'")
+    conn.close()
+    _ok_routes(transport)
+    stage.process(data, client, NOW, history_db=store)
+    assert "Top Dog" not in _queried(transport)
+
+
+def test_a_p4p_fighter_missing_from_fighters_json_gets_the_file_only(data, client, transport, store):
+    _history(store, men=[("p9", "Top Dog")])
+    _wiki_hit(transport, "Top Dog")
+    _ok_routes(transport)
+    summary = stage.process(data, client, NOW, history_db=store)
     assert (data / "images" / "p9.webp").exists()
     assert set(_fighters(data)) == set(FIGHTERS)  # no p9 entry made up
     assert summary.hits == 3  # f1, f2 on the cards, and p9
 
 
-def test_p4p_fighters_come_after_the_cards_and_count_against_the_limit(data, client, transport):
-    _rankings(data, men=[("old1", "Retired Guy")])
+def test_p4p_fighters_come_after_the_cards_and_count_against_the_limit(data, client, transport, store):
+    _history(store, men=[("old1", "Retired Guy")])
     _ok_routes(transport)
-    summary = stage.process(data, client, NOW, limit=3)  # f1, f2, f4 are on the cards
+    summary = stage.process(data, client, NOW, limit=3, history_db=store)  # f1, f2, f4 are on the cards
     assert summary.hits + summary.misses == 3
     assert "Retired Guy" not in _queried(transport)
-    summary = stage.process(data, client, NOW, limit=1)  # f4's miss is recent: only old1 is left to try
+    summary = stage.process(data, client, NOW, limit=1, history_db=store)  # f4's miss is recent: only old1 is left
     assert "Retired Guy" in _queried(transport)
     assert summary.misses == 1
 
 
-def test_a_p4p_fighter_with_a_headshot_is_not_looked_up_again(data, client, transport):
+def test_a_p4p_fighter_with_a_headshot_is_not_looked_up_again(data, client, transport, store):
     (data / "images").mkdir()
     (data / "images" / "p9.webp").write_bytes(b"x")
-    _rankings(data, men=[("p9", "Top Dog"), ("f3", "Petr Yan")])  # p9 has its file, f3 has fighter.image
+    _history(store, men=[("p9", "Top Dog"), ("f3", "Petr Yan")])  # p9 has its file, f3 has fighter.image
     _ok_routes(transport)
-    stage.process(data, client, NOW)
+    stage.process(data, client, NOW, history_db=store)
     assert "Top Dog" not in _queried(transport) and "Petr Yan" not in _queried(transport)
 
 
-def test_a_fighter_on_a_card_and_in_the_p4p_lists_is_looked_up_once(data, client, transport):
-    _rankings(data, men=[("f1", "Alexander Volkanovski")])
+def test_a_fighter_on_a_card_and_in_the_p4p_lists_is_looked_up_once(data, client, transport, store):
+    _history(store, men=[("f1", "Alexander Volkanovski")])
     _ok_routes(transport)
-    summary = stage.process(data, client, NOW)
+    summary = stage.process(data, client, NOW, history_db=store)
     assert summary.hits == 2 and summary.misses == 1
     assert sum(url == headshot_url("3949584") for url, _ in transport.calls) == 1
 
 
-def test_a_p4p_miss_is_recorded_and_not_retried_within_a_week(data, client, transport):
-    _rankings(data, men=[("p9", "Top Dog")])
+def test_a_p4p_miss_is_recorded_and_not_retried_within_a_week(data, client, transport, store):
+    _history(store, men=[("p9", "Top Dog")])
     _ok_routes(transport)
-    stage.process(data, client, NOW)
+    stage.process(data, client, NOW, history_db=store)
     assert json.loads((data / "images" / "misses.json").read_text())["p9"] == "2026-10-24T12:00:00Z"
     assert not (data / "images" / "p9.webp").exists()
     transport.calls.clear()
-    summary = stage.process(data, client, NOW)
+    summary = stage.process(data, client, NOW, history_db=store)
     assert transport.calls == [] and summary.skipped == 2  # f4 and p9
 
 
-@pytest.mark.parametrize("content", ["{not json", "[]", '{"as_of": "2026-10-23"}'], ids=["unparseable", "a list", "invalid"])
-def test_an_unreadable_rankings_json_is_ignored(data, client, transport, content):
-    """It's only a hint for which headshots to fetch: publish is what refuses a bad one."""
-    (data / "rankings.json").write_text(content)
+def test_without_a_history_db_only_the_cards_are_fetched(data, client, transport):
     _ok_routes(transport)
     summary = stage.process(data, client, NOW)
     assert summary.hits == 2 and summary.misses == 1
 
 
-def test_run_exits_zero_with_a_p4p_list(data, client, transport, monkeypatch):
-    _rankings(data, men=[("old1", "Retired Guy")])
+@pytest.mark.parametrize("make", [
+    lambda store: None,
+    lambda store: (store.parent.mkdir(parents=True), store.write_text("not a database"))[-1],
+    lambda store: (store.parent.mkdir(parents=True), sqlite3.connect(store).close())[-1],
+], ids=["missing", "not sqlite", "never ingested"])
+def test_a_missing_or_unusable_history_store_warns_and_falls_back_to_the_cards(data, client, transport, store, make,
+                                                                              caplog):
+    """The store only says whose headshots to fetch: images never fails because of it."""
+    make(store)
+    _ok_routes(transport)
+    with caplog.at_level("WARNING"):
+        summary = stage.process(data, client, NOW, history_db=store)
+    assert summary.hits == 2 and summary.misses == 1
+    assert any("P4P" in r.message and str(store) in r.message for r in caplog.records if r.levelname == "WARNING")
+
+
+def test_run_exits_zero_with_a_p4p_list(data, client, transport, monkeypatch, store):
+    _history(store, men=[("old1", "Retired Guy")])
+    _wiki_hit(transport, "Retired Guy")
     _ok_routes(transport)
     monkeypatch.setattr(stage, "make_client", lambda: client)
-    assert stage.run(_args(data)) == 0
+    assert stage.run(argparse.Namespace(data=data, limit=None, history_db=store)) == 0
+    assert (data / "images" / "old1.webp").exists()
+
+
+def test_run_exits_zero_when_the_history_store_is_missing(data, client, transport, monkeypatch, store):
+    _ok_routes(transport)
+    monkeypatch.setattr(stage, "make_client", lambda: client)
+    assert stage.run(argparse.Namespace(data=data, limit=None, history_db=store)) == 0
+
+
+def test_the_history_db_defaults_to_the_one_beside_the_data_dir(client, transport, monkeypatch, tmp_path_factory, data):
+    """Like score's: <--data>/../history/history.sqlite, whatever the cwd."""
+    site = tmp_path_factory.mktemp("site")
+    shutil.copytree(data, site / "data")
+    _history(site / "history" / "history.sqlite", men=[("old1", "Retired Guy")])
+    _wiki_hit(transport, "Retired Guy")
+    _ok_routes(transport)
+    monkeypatch.setattr(stage, "make_client", lambda: client)
+    monkeypatch.chdir(tmp_path_factory.mktemp("elsewhere"))
+    assert main(["--data", str(site / "data"), "images"]) == 0
+    assert (site / "data" / "images" / "old1.webp").exists()
