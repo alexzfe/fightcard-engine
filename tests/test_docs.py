@@ -15,6 +15,7 @@ ENDPOINTS = [
     ("/v1/events/{event_id}.json", "public, max-age=300"),
     ("/v1/fighters.json", "public, max-age=300"),
     ("/v1/images/{fighter_id}.webp", "public, max-age=86400"),
+    ("/v1/rankings.json", "public, max-age=300"),
     ("/v1/schema.json", "public, max-age=300"),
     ("/v1/snapshot.tar.gz", "public, max-age=60"),
     ("/healthz", "no-store"),
@@ -37,7 +38,7 @@ def test_contract_lists_every_endpoint_with_its_cache_policy(endpoint, cache):
 @pytest.mark.parametrize("term", [
     "https://ufc-data.xlobax.com", "contract_version", "/v2/", "additive", "ETag", "304", "404", "405",
     "application/json; charset=utf-8", "snapshot", "deterministic", "2-space", "sorted", "trailing newline",
-    "fightcard publish", "generations/", "schema.json",
+    "fightcard publish", "generations/", "schema.json", "rankings.json", '"1.1"', "p4p_rank", "as_of",
 ])
 def test_contract_covers(term):
     assert term in CONTRACT, term
@@ -55,7 +56,7 @@ def test_model_readme_drops_the_scrapped_export_automation():
 
 
 @pytest.mark.parametrize("term", ["200", "304", "404", "405", "ETag", "If-None-Match", "Cache-Control",
-                                  "/v2/", "snapshot.tar.gz", "contract_version"])
+                                  "/v2/", "snapshot.tar.gz", "contract_version", "rankings.json"])
 def test_api_doc_explains(term):
     assert term in api_doc(), term
 
