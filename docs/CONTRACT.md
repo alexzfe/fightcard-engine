@@ -44,7 +44,10 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
   part (`"1.1"`, `"1.2"`, …); the major part always matches the URL.
   - `"1"`: the first `/v1/` publish.
   - `"1.1"`: `Result.outcome`, the fighter rating fields (`elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`), the model summary in `index.model` and `index.model.stale_fighters`. All optional, so data written before them still validates.
-- Consumers must ignore fields they don't know.
+- Consumers must ignore fields and files they don't know (a strict allowlist of top-level files, like the site's
+  `scripts/fetch_v1.py` had, refuses the whole snapshot when a new file appears). A new file is
+  announced in a minor version (`"1.1"` added `rankings.json`), and its consumer is released before the engine that
+  publishes it (docs/SERVICE.md, Release order).
 - Changing `models.py` is a contract change: it must stay additive while `/v1/` is live, and this doc changes
   with it.
 
@@ -134,8 +137,10 @@ pass as the fighters' ratings (`fightcard.history.rankings.published`), validate
 
 - `as_of`: `YYYY-MM-DD`, the day the ratings are decayed to (`score --now`'s date).
 - `p4p.men` (up to 15) and `p4p.women` (up to 10) are ordered by `rank`, 1..n. A fighter in both this and
-  `fighters.json` has the same `rank` / `elo` as `Fighter.p4p_rank` / `Fighter.elo`. The fighters need not be on a
-  card, so they need not be in `fighters.json`.
+  `fighters.json` has the same `rank` / `elo` as `Fighter.p4p_rank` / `Fighter.elo`; that holds after a history run
+  (`score --no-history` leaves the rating fields as they are, and a scrape rebuilds a refreshed fighter without them,
+  so `fighters.json` can lag until the next history run). The fighters need not be on a card, so they need not be in
+  `fighters.json`.
 - `elo`: integer on the displayed scale, as `Fighter.elo`. `name` falls back to the id when the history store has none.
 - `division`: the weight class of the fighter's latest bout (Catch Weight, Open Weight and unknown classes skipped),
   or `null`.
