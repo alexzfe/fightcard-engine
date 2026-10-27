@@ -1,4 +1,8 @@
-"""`fightcard images`: download headshots for fighters on the cards the site shows.
+"""`fightcard images`: download headshots for fighters on the cards the site shows, then for the P4P fighters.
+
+The P4P ids come from data/rankings.json, which `score` writes after this stage, so a fighter who just entered the
+P4P lists gets their headshot on the next run. A P4P fighter on no card may be missing from fighters.json: they get
+images/<id>.webp and no `Fighter.image`.
 
 A lookup miss never fails the pipeline; only unreadable data/ does.
 """
@@ -17,8 +21,8 @@ from fightcard.images.download import normalize_image
 from fightcard.images.http import HttpClient
 from fightcard.images.misses import Misses
 from fightcard.images.sources import ImageFinder
-from fightcard.models import Event, Fighter, Index
-from fightcard.store import Store
+from fightcard.models import Event, Fighter, Index, Rankings
+from fightcard.store import Store, read_json
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +70,18 @@ def _fighter_ids(events: list[Event], index: Index | None) -> list[str]:
             seen.setdefault(fight.red)
             seen.setdefault(fight.blue)
     return list(seen)
+
+
+def _p4p_names(data_dir: Path) -> dict[str, str]:
+    """The P4P fighters in data/rankings.json, id -> name. Missing, unreadable or invalid means none: it only says
+    whose headshots to fetch, and `publish` is what refuses a bad one."""
+    try:
+        data = read_json(data_dir / "rankings.json")
+        rankings = None if data is None else Rankings.model_validate(data)
+    except (OSError, ValueError) as e:
+        log.warning("ignoring rankings.json: %s", e)
+        return {}
+    return {} if rankings is None else {e.id: e.name for es in (rankings.p4p.men, rankings.p4p.women) for e in es}
 
 
 def _download_first(client: HttpClient, urls: Iterable[str]) -> bytes | None:
@@ -116,6 +132,8 @@ def process(
         log.info("converted %d legacy headshots to webp", migrated)
     fighters, events, index = _load(store)
     fighter_ids = _fighter_ids(events, index)
+    p4p = _p4p_names(data_dir)
+    fighter_ids += [fid for fid in p4p if fid not in set(fighter_ids)]  # after the cards
     images_dir = data_dir / "images"
     misses = Misses.load(images_dir / "misses.json")
     finder = ImageFinder(client)
@@ -123,25 +141,29 @@ def process(
 
     for fid in fighter_ids:
         fighter = fighters.get(fid)
-        if fighter is None or fighter.image:
+        if fighter is None and fid not in p4p:
+            continue
+        if fighter.image if fighter else (images_dir / f"{fid}.webp").is_file():
             continue
         if misses.recently_tried(fid, now):
             summary.skipped += 1
             continue
         if limit is not None and summary.hits + summary.misses >= limit:
             break
-        found = _download_first(client, finder.candidates(fighter.name, fighter.nickname))
+        name, nickname = (fighter.name, fighter.nickname) if fighter else (p4p[fid], None)
+        found = _download_first(client, finder.candidates(name, nickname))
         if found is None:
             misses.record(fid, now)
             summary.misses += 1
-            log.info("image miss %s (%s)", fighter.name, fid)
+            log.info("image miss %s (%s)", name, fid)
             continue
         images_dir.mkdir(parents=True, exist_ok=True)
         (images_dir / f"{fid}.webp").write_bytes(found)
-        fighter.image = f"images/{fid}.webp"
+        if fighter:
+            fighter.image = f"images/{fid}.webp"
         misses.clear(fid)
         summary.hits += 1
-        log.info("image hit %s (%s)", fighter.name, fid)
+        log.info("image hit %s (%s)", name, fid)
 
     if summary.hits:
         store.save_fighters(fighters)

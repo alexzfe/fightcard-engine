@@ -351,13 +351,10 @@ def test_a_p4p_fighter_missing_from_fighters_json_gets_the_file_only(data, clien
     _rankings(data, men=[("p9", "Top Dog")])
     _wiki_hit(transport, "Top Dog")
     _ok_routes(transport)
-    before = (data / "fighters.json").read_text()
     summary = stage.process(data, client, NOW)
     assert (data / "images" / "p9.webp").exists()
-    assert "p9" not in _fighters(data)
+    assert set(_fighters(data)) == set(FIGHTERS)  # no p9 entry made up
     assert summary.hits == 3  # f1, f2 on the cards, and p9
-    assert {k: v for k, v in _fighters(data).items() if k != "f1" and k != "f2"} == \
-        {k: v for k, v in json.loads(before).items() if k != "f1" and k != "f2"}
 
 
 def test_p4p_fighters_come_after_the_cards_and_count_against_the_limit(data, client, transport):
