@@ -102,7 +102,7 @@ Three follow-ups on the same branch; the rankings.json shape did not change.
 |---|---|---|---|---|
 | 1 images computes the P4P ids itself (same-cycle headshots) | RED | f625e17 | `uv run pytest -q tests/images/test_images_stage.py tests/service/test_runner.py` | 15 failed |
 | | GREEN | 857f32b | same; full suite `uv run pytest -q` | 0 failed; 779 passed, 1 skipped |
-| 2 + 3 publish: dangling image becomes null; P4P/active consistency | RED | 26e23d3 | `uv run pytest -q` | 12 failed (11 in tests/publish; the guard in tests/history passes both before and after) |
+| 2 + 3 publish: dangling image becomes null; P4P/active consistency | RED | 26e23d3 | `uv run pytest -q` | 12 failed, all in tests/publish (the guard in tests/history passes before and after) |
 | | GREEN | cf72b3d | same | 0 failed; 791 passed, 1 skipped |
 
 Baseline before the fixes: 773 passed, 1 skipped.
