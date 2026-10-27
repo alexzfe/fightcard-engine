@@ -112,6 +112,12 @@ def test_service_doc_records_the_release_order():
         assert term in order, term
 
 
+def test_service_doc_says_a_new_file_no_longer_needs_the_release_order():
+    order = service_doc().split("## Release order")[1].split("\n## ")[0]
+    assert "The same order applies to any file added" not in order
+    assert "skips" in order and "feat/contract-checks" in order
+
+
 def test_service_doc_states_the_stage_timeouts():
     from fightcard.service.runner import TIMEOUTS
     doc = service_doc()
@@ -236,10 +242,23 @@ def test_contract_orders_active_by_the_unrounded_rating_and_says_equal_elo_may_n
     assert "equal `elo`" in line and "id order" in line
 
 
-def test_contract_says_the_site_keeps_an_allowlist_so_a_new_file_needs_the_release_order():
+def test_contract_says_the_site_skips_unknown_files_so_a_new_file_needs_no_release_order():
+    """The site's fetch_v1 skips files outside the /v1/ layout (site PR feat/contract-checks), so the engine can ship
+    a new file first."""
     section = CONTRACT.split("### Versioning")[1].split("###")[0]
-    assert "`scripts/fetch_v1.py` had" not in section
-    assert "`scripts/fetch_v1.py` has" in section and "release order" in section.lower()
+    assert "strict allowlist" not in section
+    assert "`scripts/fetch_v1.py` skips" in section
+
+
+def test_contract_says_enum_values_are_closed_in_v1():
+    section = CONTRACT.split("### Versioning")[1].split("###")[0]
+    for term in ("enum", "closed", "/v2/", "tests/publish/test_v1_enums.py"):
+        assert term in section, term
+
+
+def test_api_doc_says_enum_values_are_closed():
+    section = api_doc().split("## Versioning")[1].split("\n## ")[0]
+    assert "enum" in section.lower() and "/v2/" in section
 
 
 def test_api_doc_tells_consumers_to_ignore_unknown_files_too():
