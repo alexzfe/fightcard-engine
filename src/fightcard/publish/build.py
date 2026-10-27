@@ -11,6 +11,7 @@ import gzip
 import io
 import json
 import re
+import sys
 import tarfile
 from pathlib import Path
 
@@ -102,15 +103,19 @@ def _images(data_dir: Path) -> dict[str, bytes]:
 
 
 def _load_rankings(data_dir: Path, images: dict[str, bytes]) -> Rankings | None:
-    """data/rankings.json if there is one (it's optional): valid, and every P4P `image` among the published `images`."""
+    """data/rankings.json if there is one (it's optional): valid, with a P4P `image` that isn't among the published
+    `images` published as null (and a warning), so one missing headshot doesn't hold back the generation."""
     if not (data_dir / "rankings.json").exists():
         return None
     rel, data = _read(data_dir / "rankings.json", data_dir)
     rankings = _validate(Rankings, rel, data)
-    absent = [f"{e.id} ({e.image})" for es in (rankings.p4p.men, rankings.p4p.women) for e in es
+    absent = [e for es in (rankings.p4p.men, rankings.p4p.women) for e in es
               if e.image is not None and e.image not in images]
     if absent:
-        raise DataError(f"{rel}: P4P images that are not among the published images: {', '.join(absent)}")
+        print(f"publish: WARNING: {rel}: P4P images that are not among the published images, published as null: "
+              f"{', '.join(f'{e.id} ({e.image})' for e in absent)}", file=sys.stderr)
+        for e in absent:
+            e.image = None
     return rankings
 
 
