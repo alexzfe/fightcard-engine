@@ -46,7 +46,7 @@ all_time_peaks     1278      90.3      31.0
 - No `ruff` in the dev environment, so lint wasn't run.
 - The seed cache is research's copy and may trail the prod store by a few events, so prod numbers can differ slightly.
 
-# Phase 2: publish the rankings (`/v1/rankings.json`, contract 1.1)
+# Phase 2: publish the rankings (`/v1/rankings.json`, contract 1.2; first written as 1.1, see "Contract 1.2 after the rebase")
 
 ## User stories
 - As the site, I want `/v1/rankings.json` (P4P men 15 / women 10 with photos, plus every active fighter) so the rankings page and the fighter search need no Elo code.
@@ -77,7 +77,7 @@ Baseline before Phase 2: 717 passed, 1 skipped. Two of my own tests were wrong, 
 | 13 | `--no-history` writes nothing and removes nothing; a failed history run leaves an existing file; an unchanged run rewrites identical bytes | `test_no_history_*`, `test_a_failed_history_run_*`, `test_an_unchanged_run_rewrites_identical_rankings` |
 | 14 | `publish` serves a valid `rankings.json` (formatted, in the snapshot, in `schema.json` as `Rankings`) and still publishes without one | `test_rankings_json_*`, `test_a_data_dir_without_rankings_json_still_publishes`, `test_schema_describes_rankings` |
 | 15 | `publish` refuses (exit 1, nothing written) an unparseable/non-object file, wrong types, missing keys, ranks not 1..n in order, more than 15 men / 10 women, and a non-null P4P `image` that isn't among the published images | `test_an_invalid_rankings_json_is_refused[*]`, `test_a_p4p_image_*` |
-| 16 | `contract_version` is `"1.1"`; CONTRACT.md and API.md name the file, its cache policy and the 1 / 1.1 difference | `test_the_contract_version_is_1_1`, `tests/test_docs.py` |
+| 16 | `contract_version` is `"1.2"` (written as `"1.1"` before the rebase); CONTRACT.md and API.md name the file, its cache policy and what 1.2 added | `test_the_contract_version_is_1_2`, `tests/test_docs.py` |
 | 17 | `images` fetches P4P headshots after the cards, under the same misses and `--limit`; a P4P id outside fighters.json gets the file only; an id on a card and in the lists is looked up once; an unreadable `rankings.json` is ignored | `test_p4p_*`, `test_a_fighter_on_a_card_*`, `test_an_unreadable_rankings_json_is_ignored` |
 
 ## Decisions
@@ -161,3 +161,13 @@ Findings from the read-only review of the branch (one blocking deploy gate, two 
 - Not run against the prod store or the seed store; nothing pushed, no PR, nothing deployed.
 - Whether Road To UFC-only activity should count as "active" (N3's product question) is untouched.
 - `ruff` is not in the dev environment, so lint wasn't run.
+
+## Contract 1.2 after the rebase
+
+This branch was rebased onto `origin/main` (42 commits of the model-pull work). `main` had already made `CONTRACT_VERSION = "1.1"` for the model work (`Result.outcome`, the rating fields, `index.model`, `index.model.stale_fighters`; commits b1861f5 / c9c6465), and this branch had bumped to `"1.1"` for `rankings.json` too. Two different changes can't share a version, so `rankings.json` is **contract 1.2**.
+
+- Conflicts: `docs/CONTRACT.md` (Versioning, the CLI table), `src/fightcard/score/stage.py` (docstring), `src/fightcard/service/runner.py` (the stage list). Each kept both sides; in the replayed commits the branch's own `"1.1"` lines gave way to main's, and 1.2 came in one RED/GREEN pair at the end.
+- RED `0208dd2` (6 failed: `CONTRACT_VERSION`, `index.json`, `schema.json`'s title, CONTRACT.md's Versioning, API.md's rankings row, SERVICE.md's release order); GREEN is the commit after it (1003 passed, 1 skipped; main alone was 886 passed, 1 skipped).
+- `test_contract_versioning_says_1_1_added...` from main is untouched: 1.1 keeps its text and does not mention `rankings.json`.
+- SERVICE.md's release order: the engine a rollback goes back to publishes `"1.1"` (main's), not `"1"`, so that sentence changed.
+- The site: a consumer that only checks `contract_version` for `"1"`/`"1.1"` needs to accept `"1.2"`; the release order in SERVICE.md still applies (the site's `fetch_v1` accepts `rankings.json` first).
