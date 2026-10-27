@@ -45,10 +45,14 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
   - `"1"`: the first `/v1/` publish.
   - `"1.1"`: `Result.outcome`, the fighter rating fields (`elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`), the model summary in `index.model` and `index.model.stale_fighters`. All optional, so data written before them still validates.
   - `"1.2"`: adds `rankings.json` (the P4P lists and the active-fighter index). Nothing else changed.
-- Consumers must ignore fields and files they don't know. The site's `scripts/fetch_v1.py` has a strict allowlist of
-  top-level files, which refuses the whole snapshot when a new file appears; the site keeps that allowlist, so a new
-  file still needs the release order. A new file is announced in a minor version (`"1.2"` added `rankings.json`),
-  and its consumer is released before the engine that publishes it (docs/SERVICE.md, Release order).
+- Enum values are closed within `/v1/`: `Event.status`, `Fight.finish_tier`, `Fight.segment`, `PastFight.result`,
+  `Result.outcome` and `ModelInfo.tiers`' keys keep exactly the values they have. Consumers validate them strictly
+  (the site does), so a new value in an existing enum is a breaking change and ships as `/v2/`. A new field may
+  bring its own enum (additive). `tests/publish/test_v1_enums.py` pins every enum in `/v1/schema.json`.
+- Consumers must ignore fields and files they don't know. The site's `scripts/fetch_v1.py` skips a file outside the
+  layout it knows (and names it), so a new file needs no release order: the engine can publish it first, and the
+  site reads it once a site release lists it. A new file is announced in a minor version
+  (`"1.2"` added `rankings.json`).
 - Changing `models.py` is a contract change: it must stay additive while `/v1/` is live, and this doc changes
   with it.
 
