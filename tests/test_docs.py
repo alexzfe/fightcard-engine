@@ -39,6 +39,8 @@ def test_contract_lists_every_endpoint_with_its_cache_policy(endpoint, cache):
     "https://ufc-data.xlobax.com", "contract_version", "/v2/", "additive", "ETag", "304", "404", "405",
     "application/json; charset=utf-8", "snapshot", "deterministic", "2-space", "sorted", "trailing newline",
     "fightcard publish", "generations/", "schema.json", "rankings.json", '"1.1"', "p4p_rank", "as_of",
+    # Review fixes: a consumer's allowlist of files broke on rankings.json; the rank/elo guarantee needs a history run.
+    "fields and files they don't know", "announced in a minor version", "holds after a history run",
 ])
 def test_contract_covers(term):
     assert term in CONTRACT, term
@@ -100,6 +102,14 @@ def test_service_doc_says_to_seed_the_store_fully_before_the_first_run():
     seeding = service_doc().split("## Seeding a new volume")[1].split("\n## ")[0]
     for term in ("before the first run", "fightcard history ingest", f"at most {BACKFILL_PER_RUN}", "backfill_skips"):
         assert term in seeding, term
+
+
+def test_service_doc_records_the_release_order():
+    """The first run of an engine that publishes rankings.json breaks a site whose fetch_v1 doesn't know the file."""
+    order = service_doc().split("## Release order")[1].split("\n## ")[0]
+    for term in ("fetch_v1", "rankings.json", "feat/rankings", "main", "before this engine is deployed",
+                 "every v1 refresh fails", "rollback"):
+        assert term in order, term
 
 
 def test_service_doc_states_the_stage_timeouts():
