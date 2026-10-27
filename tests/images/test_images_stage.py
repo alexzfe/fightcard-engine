@@ -3,6 +3,7 @@ import json
 import shutil
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from images_helpers import png_bytes
@@ -557,3 +558,77 @@ def test_history_can_never_fail_the_images_step(data, client, transport, store, 
         summary = stage.process(data, client, NOW, history_db=store)
     assert summary.hits == 2 and summary.misses == 1
     assert any("P4P" in r.message and str(store) in r.message for r in caplog.records if r.levelname == "WARNING")
+
+
+# --- a headshot is written whole or not at all; a 0-byte file is no headshot ----------------------------------------
+
+def test_a_zero_byte_headshot_with_no_image_field_is_looked_up_again(data, client, transport):
+    (data / "images").mkdir()
+    (data / "images" / "f1.webp").write_bytes(b"")  # what a write that died part-way leaves
+    _ok_routes(transport)
+    summary = stage.process(data, client, NOW)
+    assert summary.hits == 2 and "Alexander Volkanovski" in _queried(transport)
+    assert (data / "images" / "f1.webp").stat().st_size > 0
+    assert _fighters(data)["f1"]["image"] == "images/f1.webp"
+
+
+def test_a_zero_byte_p4p_headshot_is_looked_up_again(data, client, transport, store):
+    (data / "images").mkdir()
+    (data / "images" / "p9.webp").write_bytes(b"")
+    _history(store, men=[("p9", "Top Dog")])
+    _wiki_hit(transport, "Top Dog")
+    _ok_routes(transport)
+    stage.process(data, client, NOW, history_db=store)
+    assert "Top Dog" in _queried(transport)
+    assert (data / "images" / "p9.webp").stat().st_size > 0
+
+
+def test_a_headshot_is_written_to_a_dot_temp_file_and_renamed(data, client, transport, monkeypatch):
+    """The temp file starts with a dot, like store.write_json's, so publish (which skips dot files) never takes it."""
+    renamed = []
+    real_replace = stage.os.replace
+
+    def spy(src, dst):
+        renamed.append((Path(src), Path(dst)))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(stage.os, "replace", spy)
+    _ok_routes(transport)
+    stage.process(data, client, NOW, limit=1)
+    (src, dst), = renamed
+    assert dst == data / "images" / "f1.webp"
+    assert src.parent == dst.parent and src.name.startswith(".")
+    assert [p.name for p in (data / "images").iterdir() if p.name != "misses.json"] == ["f1.webp"]  # no temp left
+
+
+def test_a_failed_write_leaves_no_headshot_and_no_temp_file(data, client, transport, monkeypatch):
+    def boom(src, dst):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(stage.os, "replace", boom)
+    _ok_routes(transport)
+    with pytest.raises(OSError):
+        stage.process(data, client, NOW, limit=1)
+    assert not (data / "images" / "f1.webp").exists()
+    assert "image" not in _fighters(data)["f1"]
+    assert list((data / "images").iterdir()) == []
+
+
+def test_publish_never_picks_up_a_temp_file_left_by_a_killed_write(data, client, transport, monkeypatch):
+    seen = []
+
+    def killed(src, dst):  # the process dies between writing the temp file and renaming it
+        seen.append(Path(src))
+        raise SystemExit
+
+    monkeypatch.setattr(stage.os, "replace", killed)
+    _ok_routes(transport)
+    real_unlink = stage.os.unlink
+    monkeypatch.setattr(stage.os, "unlink", lambda p: None)  # SIGKILL runs no cleanup
+    with pytest.raises(SystemExit):
+        stage.process(data, client, NOW, limit=1)
+    monkeypatch.setattr(stage.os, "unlink", real_unlink)
+    (temp,) = seen
+    assert temp.is_file() and temp.stat().st_size > 0
+    from fightcard.publish.build import _images
+    assert _images(data) == {}

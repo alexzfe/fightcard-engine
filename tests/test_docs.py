@@ -228,3 +228,20 @@ def test_model_readme_says_re_exporting_is_automated_and_hand_export_still_works
 
 def test_readme_mentions_the_model_pull():
     assert "fightcard model pull" in README
+
+
+def test_contract_orders_active_by_the_unrounded_rating_and_says_equal_elo_may_not_be_in_id_order():
+    line = next(line for line in CONTRACT.splitlines() if line.startswith("- `active`:"))
+    assert "unrounded" in line and "best `elo` first" not in line
+    assert "equal `elo`" in line and "id order" in line
+
+
+def test_contract_says_the_site_keeps_an_allowlist_so_a_new_file_needs_the_release_order():
+    section = CONTRACT.split("### Versioning")[1].split("###")[0]
+    assert "`scripts/fetch_v1.py` had" not in section
+    assert "`scripts/fetch_v1.py` has" in section and "release order" in section.lower()
+
+
+def test_api_doc_tells_consumers_to_ignore_unknown_files_too():
+    section = api_doc().split("## Versioning")[1].split("\n## ")[0]
+    assert "ignore fields and files they don't know" in section
