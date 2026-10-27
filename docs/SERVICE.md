@@ -206,6 +206,21 @@ holding `history/history.sqlite`, the seed tarball's layout. infra's `sites.yml`
 in the prod container and the homeserver's `pull-backup@ufc-data.timer` pulls it nightly (14 daily, 8 weekly). To
 restore, stream the archive into `state/` the way the seed goes in (below).
 
+## Release order
+
+The first service run of an engine with `rankings.json` writes it (score) and puts it in `/v1/snapshot.tar.gz`
+(publish). The site's `scripts/fetch_v1.py` allowlists the top-level files it accepts and refuses any other member
+(`unsafe snapshot member 'rankings.json': not part of the /v1/ layout`). So:
+
+1. Merge the site's change that adds `rankings.json` to `fetch_v1` (site branch `feat/rankings`) to the site's `main`
+   and let it deploy, before this engine is deployed.
+2. Then deploy the engine.
+
+Deployed the other way round, every v1 refresh fails in `DATA_SOURCE=v1` mode (exit 1, not the stale code 3, so the
+hourly runs fail too and the site's data/ freezes); in `pipeline` mode only the `shadow` job breaks. A rollback is
+safe in either order: the previous engine doesn't publish the file (contract `"1"`) and the site treats it as optional.
+The same order applies to any file added to `/v1/` later (docs/CONTRACT.md, Versioning).
+
 ## Staging
 
 Staging runs the same image with fetching off: no scrape, segments or images, only the model pull, score and
