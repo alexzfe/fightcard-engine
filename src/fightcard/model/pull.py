@@ -199,6 +199,8 @@ class _HttpOnly(urllib.request.HTTPRedirectHandler):
 
 
 _OPENER = urllib.request.build_opener(_HttpOnly)
+# Cloudflare (models.xlobax.com) answers 403 to urllib's default "Python-urllib/3.x"
+_OPENER.addheaders = [("User-Agent", "fightcard/0.1 (non-commercial fan site)")]
 
 
 def _read(url: str, sink: Callable[[bytes], None], limit: int) -> None:
