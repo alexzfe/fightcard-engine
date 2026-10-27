@@ -138,9 +138,10 @@ pass as the fighters' ratings (`fightcard.history.rankings.published`), validate
 - `division`: the weight class of the fighter's latest bout (Catch Weight, Open Weight and unknown classes skipped),
   or `null`.
 - `image`: only on P4P entries. `images/<id>.webp` when that headshot is in `data/images/` when `score` runs, else
-  `null`; publish refuses a non-null `image` that isn't among the published images. `images` fetches the headshots
-  of the P4P ids it finds in the previous `rankings.json`, and `images` runs before `score`, so a fighter new to
-  the lists shows no photo for one run. `active` rows never carry `image`.
+  `null`. `images` runs before `score` and works out the same P4P ids itself from the history store, as of its run
+  date, so a fighter who enters the lists gets their headshot in the same run (a miss, or an unusable store, leaves
+  `image` `null`). Publish never refuses a generation over `image`: a non-null `image` that isn't among the
+  published images is published as `null`, with a warning on stderr. `active` rows never carry `image`.
 - `active`: every fighter with at least one UFC bout and a bout in the last 365 days, best `elo` first (ties by
   id). `p4p_rank` is the `Fighter.p4p_rank` value or `null`; `provisional` is true with fewer than 3 UFC bouts.
 - `score --no-history` neither writes nor removes it (like the rating fields), so after a history run it keeps
@@ -168,7 +169,7 @@ Run from the repo root: `uv run fightcard --data data <stage>`.
 | Stage | Package | Reads | Writes |
 |---|---|---|---|
 | `scrape` | `fightcard.ufcstats` | ufcstats.com, data/, the history store (`--history-db`) | events/, fighters.json, index.json; upserts the pages it fetched into the history store |
-| `images` | `fightcard.images` | index.json, events/, fighters.json, rankings.json, ESPN, Wikipedia | images/, `Fighter.image` (cards in `index.upcoming` then `index.recent`, then the P4P ids in rankings.json; those without a fighters.json entry only get the file) |
+| `images` | `fightcard.images` | index.json, events/, fighters.json, the history store (`--history-db`, read-only; default `<--data>/../history/history.sqlite`; a missing or unusable one warns and leaves the cards only), ESPN, Wikipedia | images/, `Fighter.image` (cards in `index.upcoming` then `index.recent`, then the P4P ids as of the run date, worked out from the store; those without a fighters.json entry only get the file) |
 | `segments` | `fightcard.segments` | events/, fighters.json, ESPN | `Fight.segment` (upcoming events only) |
 | `history ingest` | `fightcard.history` | a ufcstats HTML cache (`--html-dir`) | the history store (`--db`, SQLite), optional sorted JSONL dump |
 | `model pull` | `fightcard.model` | `$FIGHTCARD_MODEL_URL` (`latest.json`, `<version>/<file>`), the baked model/ (first boot seed) | `state/model/<version>/` and the `state/model/current` symlink (`--root`, default `<--data>/../model`); see `docs/SERVICE.md` |

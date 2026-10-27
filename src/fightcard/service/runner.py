@@ -130,7 +130,7 @@ def steps(cfg: Config) -> list[Step]:
         Step("scrape", ("scrape", "--cookie-file", str(cfg.cache / "fightcard" / "ufcstats_cookie.json")),
              fetches=True),
         Step("segments", ("segments",), fetches=True),
-        Step("images", ("images",), fetches=True),
+        Step("images", ("images", "--history-db", str(cfg.history_db)), fetches=True),
         Step("model", ("model", "pull", "--root", str(cfg.model_state), "--seed-dir", str(cfg.model_dir),
                        *(("--url", cfg.model_url) if cfg.model_url else ()),
                        *(("--pin", cfg.model_pin) if cfg.model_pin else ())), fatal=False),

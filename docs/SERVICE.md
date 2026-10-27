@@ -67,8 +67,9 @@ gate → scrape → segments → images → model pull → score → publish
 - `SIGTERM` to a run (the supervisor stopping) ends its current stage's process group
   the same way, then the run exits 143 with `status=terminated`.
 - The **history store** is `state/history/history.sqlite`, beside `state/data/`: scrape upserts it in the same
-  transaction as data/ (`feat/scrape-history`), and score reads it (`--history-db`). Both default to
-  `<--data>/../history/history.sqlite`, and both exit 1 when it's missing, so a fresh volume needs the seed below.
+  transaction as data/ (`feat/scrape-history`), score reads it (`--history-db`), and so does images, only to work out
+  the P4P fighters' headshots. All three default to `<--data>/../history/history.sqlite`. scrape and score exit 1 when
+  it's missing, so a fresh volume needs the seed below; images warns and fetches the card fighters only.
   There is no separate history step.
 - It stops at the first stage that exits non-zero, except the model pull, which is logged and skipped past ([The
   model](#the-model)). Every stage writes nothing on failure, and only publish switches

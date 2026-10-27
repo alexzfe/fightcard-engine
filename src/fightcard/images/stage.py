@@ -1,28 +1,35 @@
 """`fightcard images`: download headshots for fighters on the cards the site shows, then for the P4P fighters.
 
-The P4P ids come from data/rankings.json, which `score` writes after this stage, so a fighter who just entered the
-P4P lists gets their headshot on the next run. A P4P fighter on no card may be missing from fighters.json: they get
+The P4P ids are computed here from the history store (`--history-db`, default `<--data>/../history/history.sqlite`),
+the way `score` computes data/rankings.json, as of the run date: a fighter who enters the P4P lists gets their headshot
+in the same run, before `score` writes them. A P4P fighter on no card may be missing from fighters.json: they get
 images/<id>.webp and no `Fighter.image`.
 
-A lookup miss never fails the pipeline; only unreadable data/ does.
+A lookup miss never fails the pipeline, nor does a missing or unusable history store (the cards are still fetched);
+only unreadable data/ does.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import sqlite3
 import sys
 from collections.abc import Iterable
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from fightcard.history.rankings import divisions, p4p
+from fightcard.history.rating import rate
+from fightcard.history.store import names, rating_bouts
 from fightcard.images.download import normalize_image
 from fightcard.images.http import HttpClient
 from fightcard.images.misses import Misses
 from fightcard.images.sources import ImageFinder
-from fightcard.models import Event, Fighter, Index, Rankings
-from fightcard.store import Store, read_json
+from fightcard.models import Event, Fighter, Index
+from fightcard.store import Store
 
 log = logging.getLogger(__name__)
 
@@ -72,16 +79,20 @@ def _fighter_ids(events: list[Event], index: Index | None) -> list[str]:
     return list(seen)
 
 
-def _p4p_names(data_dir: Path) -> dict[str, str]:
-    """The P4P fighters in data/rankings.json, id -> name. Missing, unreadable or invalid means none: it only says
-    whose headshots to fetch, and `publish` is what refuses a bad one."""
+def _p4p_names(db: Path, now: datetime) -> dict[str, str]:
+    """The P4P fighters as of `now`'s date, id -> name, from the history store (read-only, like `score`; the same
+    functions as data/rankings.json). A missing or unusable store means none: it only says whose headshots to fetch."""
     try:
-        data = read_json(data_dir / "rankings.json")
-        rankings = None if data is None else Rankings.model_validate(data)
-    except (OSError, ValueError) as e:
-        log.warning("ignoring rankings.json: %s", e)
+        if not db.is_file():
+            raise FileNotFoundError("no such file")
+        with closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
+            bouts, who = rating_bouts(conn, now.date().isoformat()), names(conn)
+        ratings = rate(bouts, who)[1].set_index("fighter_id")
+        lists = p4p(ratings, who, divisions(bouts), now.date())
+    except (OSError, sqlite3.Error, ValueError, KeyError) as e:
+        log.warning("no P4P headshots: history store %s is unusable (%s); fetching the card fighters only", db, e)
         return {}
-    return {} if rankings is None else {e.id: e.name for es in (rankings.p4p.men, rankings.p4p.women) for e in es}
+    return {e["id"]: e["name"] for es in lists.values() for e in es}
 
 
 def _download_first(client: HttpClient, urls: Iterable[str]) -> bytes | None:
@@ -124,7 +135,7 @@ def migrate_images(data_dir: Path) -> int:
 
 
 def process(
-    data_dir: Path, client: HttpClient, now: datetime, limit: int | None = None
+    data_dir: Path, client: HttpClient, now: datetime, limit: int | None = None, history_db: Path | None = None
 ) -> Summary:
     store = Store(data_dir)
     migrated = migrate_images(data_dir)
@@ -132,8 +143,8 @@ def process(
         log.info("converted %d legacy headshots to webp", migrated)
     fighters, events, index = _load(store)
     fighter_ids = _fighter_ids(events, index)
-    p4p = _p4p_names(data_dir)
-    fighter_ids += [fid for fid in p4p if fid not in set(fighter_ids)]  # after the cards
+    p4p_names = {} if history_db is None else _p4p_names(history_db, now)
+    fighter_ids += [fid for fid in p4p_names if fid not in set(fighter_ids)]  # after the cards
     images_dir = data_dir / "images"
     misses = Misses.load(images_dir / "misses.json")
     finder = ImageFinder(client)
@@ -141,7 +152,7 @@ def process(
 
     for fid in fighter_ids:
         fighter = fighters.get(fid)
-        if fighter is None and fid not in p4p:
+        if fighter is None and fid not in p4p_names:
             continue
         if fighter.image if fighter else (images_dir / f"{fid}.webp").is_file():
             continue
@@ -150,7 +161,7 @@ def process(
             continue
         if limit is not None and summary.hits + summary.misses >= limit:
             break
-        name, nickname = (fighter.name, fighter.nickname) if fighter else (p4p[fid], None)
+        name, nickname = (fighter.name, fighter.nickname) if fighter else (p4p_names[fid], None)
         found = _download_first(client, finder.candidates(name, nickname))
         if found is None:
             misses.record(fid, now)
@@ -174,12 +185,16 @@ def process(
 
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--limit", type=int, default=None, help="max fighters to look up")
+    parser.add_argument("--history-db", type=Path, default=None,
+                        help="bout-history store, for the P4P fighters' headshots "
+                             "(default <--data>/../history/history.sqlite)")
 
 
 def run(args: argparse.Namespace) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     try:
-        summary = process(Path(args.data), make_client(), datetime.now(UTC), args.limit)
+        history_db = args.history_db or Path(args.data).resolve().parent / "history" / "history.sqlite"
+        summary = process(Path(args.data), make_client(), datetime.now(UTC), args.limit, history_db)
     except DataError as e:
         print(f"images: {e}", file=sys.stderr)
         return 1
