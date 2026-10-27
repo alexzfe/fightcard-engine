@@ -316,3 +316,100 @@ def test_migrate_does_not_rewrite_fighters_when_nothing_to_convert(data):
     before = (data / "fighters.json").read_text()
     assert stage.migrate_images(data) == 0
     assert (data / "fighters.json").read_text() == before
+
+
+# --- P4P headshots: the ids in data/rankings.json (written by the previous `score`) ------------------------------------
+
+def _rankings(data, men=(), women=()):
+    def entries(rows):
+        return [{"rank": i, "id": fid, "name": name, "elo": 1600, "division": None, "image": None}
+                for i, (fid, name) in enumerate(rows, start=1)]
+    (data / "rankings.json").write_text(json.dumps(
+        {"as_of": "2026-10-23", "p4p": {"men": entries(men), "women": entries(women)}, "active": []}))
+
+
+def _wiki_hit(transport, name):
+    """A Wikipedia page image for `name` (add before `_ok_routes`: the first matching route wins)."""
+    url = f"https://upload.wikimedia.org/{name.replace(' ', '_')}.jpg"
+    transport.add_json(WIKIPEDIA_API_URL, {"query": {"pages": {"5": {"title": name, "thumbnail": {"source": url}}}}},
+                       query=name)
+    transport.add(url, Response(200, png_bytes(fmt="JPEG")))
+
+
+def test_p4p_fighters_get_headshots_even_when_on_no_card(data, client, transport):
+    _rankings(data, men=[("old1", "Retired Guy")], women=[("old2", "Other Retired")])
+    _wiki_hit(transport, "Retired Guy")
+    _wiki_hit(transport, "Other Retired")
+    _ok_routes(transport)
+    stage.process(data, client, NOW)
+    for fid in ("old1", "old2"):
+        assert (data / "images" / f"{fid}.webp").exists()
+        assert _fighters(data)[fid]["image"] == f"images/{fid}.webp"
+
+
+def test_a_p4p_fighter_missing_from_fighters_json_gets_the_file_only(data, client, transport):
+    _rankings(data, men=[("p9", "Top Dog")])
+    _wiki_hit(transport, "Top Dog")
+    _ok_routes(transport)
+    before = (data / "fighters.json").read_text()
+    summary = stage.process(data, client, NOW)
+    assert (data / "images" / "p9.webp").exists()
+    assert "p9" not in _fighters(data)
+    assert summary.hits == 3  # f1, f2 on the cards, and p9
+    assert {k: v for k, v in _fighters(data).items() if k != "f1" and k != "f2"} == \
+        {k: v for k, v in json.loads(before).items() if k != "f1" and k != "f2"}
+
+
+def test_p4p_fighters_come_after_the_cards_and_count_against_the_limit(data, client, transport):
+    _rankings(data, men=[("old1", "Retired Guy")])
+    _ok_routes(transport)
+    summary = stage.process(data, client, NOW, limit=3)  # f1, f2, f4 are on the cards
+    assert summary.hits + summary.misses == 3
+    assert "Retired Guy" not in _queried(transport)
+    summary = stage.process(data, client, NOW, limit=1)  # f4's miss is recent: only old1 is left to try
+    assert "Retired Guy" in _queried(transport)
+    assert summary.misses == 1
+
+
+def test_a_p4p_fighter_with_a_headshot_is_not_looked_up_again(data, client, transport):
+    (data / "images").mkdir()
+    (data / "images" / "p9.webp").write_bytes(b"x")
+    _rankings(data, men=[("p9", "Top Dog"), ("f3", "Petr Yan")])  # p9 has its file, f3 has fighter.image
+    _ok_routes(transport)
+    stage.process(data, client, NOW)
+    assert "Top Dog" not in _queried(transport) and "Petr Yan" not in _queried(transport)
+
+
+def test_a_fighter_on_a_card_and_in_the_p4p_lists_is_looked_up_once(data, client, transport):
+    _rankings(data, men=[("f1", "Alexander Volkanovski")])
+    _ok_routes(transport)
+    summary = stage.process(data, client, NOW)
+    assert summary.hits == 2 and summary.misses == 1
+    assert sum(url == headshot_url("3949584") for url, _ in transport.calls) == 1
+
+
+def test_a_p4p_miss_is_recorded_and_not_retried_within_a_week(data, client, transport):
+    _rankings(data, men=[("p9", "Top Dog")])
+    _ok_routes(transport)
+    stage.process(data, client, NOW)
+    assert json.loads((data / "images" / "misses.json").read_text())["p9"] == "2026-10-24T12:00:00Z"
+    assert not (data / "images" / "p9.webp").exists()
+    transport.calls.clear()
+    summary = stage.process(data, client, NOW)
+    assert transport.calls == [] and summary.skipped == 2  # f4 and p9
+
+
+@pytest.mark.parametrize("content", ["{not json", "[]", '{"as_of": "2026-10-23"}'], ids=["unparseable", "a list", "invalid"])
+def test_an_unreadable_rankings_json_is_ignored(data, client, transport, content):
+    """It's only a hint for which headshots to fetch: publish is what refuses a bad one."""
+    (data / "rankings.json").write_text(content)
+    _ok_routes(transport)
+    summary = stage.process(data, client, NOW)
+    assert summary.hits == 2 and summary.misses == 1
+
+
+def test_run_exits_zero_with_a_p4p_list(data, client, transport, monkeypatch):
+    _rankings(data, men=[("old1", "Retired Guy")])
+    _ok_routes(transport)
+    monkeypatch.setattr(stage, "make_client", lambda: client)
+    assert stage.run(_args(data)) == 0
