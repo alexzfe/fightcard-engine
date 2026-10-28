@@ -30,7 +30,9 @@ A completed fight's `elo` (`Fight.elo`, `"1.3"`) is each corner's Elo going in, 
 P4P rank going in, for a line like "1612 (+26) · #4 P4P":
 `{"red_pre": 1612, "red_delta": 26, "blue_pre": 1588, "blue_delta": -26, "red_p4p_rank": 4, "blue_p4p_rank": null}`.
 It's `null` on upcoming fights and on fights the ratings don't cover. The values are on today's scale, the same as
-`fighters.json`'s `elo`, so an old fight's numbers can move by a point between publishes.
+`fighters.json`'s `elo`, so an old fight's numbers can move by a point between publishes. That also means a
+completed card's file can get a new `ETag` and `Last-Modified` (and change in the snapshot) when nothing happened
+on the card: expect the occasional `200` where you'd have had a `304`.
 
 ## Status codes
 

@@ -4,16 +4,23 @@
 (`rating_bouts` is inclusive). On the raw scale; the display shift is the caller's (`display.scale`).
   - `state(fighter_id, day)`: rating decayed to `day`, n, n_ufc, last bout date, gender, peak; None before a bout
   - `ratings(day)`: those rows for everyone as `rate`'s export rows (no best win), what `display` and `rankings` take
-  - `p4p(day)`: `rankings.p4p` over them as of D-1, the lists `fightcard history rankings --as-of D-1` shows
-  - `bout(fight_id)`: each fighter's pre (decayed to the day) and that bout's own delta; on an early-UFC tournament
-    day every bout starts from the same pre-day rating, and the deltas sum to the day's change
+  - `p4p(day)`: `rankings.p4p` over them as of D-1, the lists `fightcard history rankings --as-of D-1` shows (a copy)
+  - `ranks(day)`: those lists as {fighter_id: rank}, cached per day and read-only
+  - `bout(fight_id)`: the bout's day (the store's) and each fighter's pre (decayed to it) and that bout's own delta;
+    on an early-UFC tournament day every bout starts from the same pre-day rating, and the deltas sum to the day's
+    change
   - `series(fighter_id)`: their bouts in date order; `post` is the end-of-day rating (shared by a day's bouts)
+
+`score` uses `bout` and `ranks` (`Fight.elo`); `state` and `series` are kept for what comes next (a fighter's Elo
+chart, historical rankings), which are queries on this rather than new passes.
 """
 
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections.abc import Mapping
 from datetime import date, timedelta
+from types import MappingProxyType
 from typing import NamedTuple
 
 import numpy as np
@@ -21,10 +28,12 @@ import pandas as pd
 
 from fightcard.history.rankings import divisions
 from fightcard.history.rankings import p4p as p4p_lists
-from fightcard.history.rating import COLUMNS, HistoryPass, _gender, decayed
+from fightcard.history.rating import COLUMNS, HistoryPass, decayed, gender_of
 
 
 class State(NamedTuple):
+    """A fighter going into a day, on the raw scale: the rating decayed to that day, the bouts so far (all, UFC), the
+    last bout's date, the gender and peak `rate` would export (peak None before the 5th UFC bout)."""
     rating: float
     n_bouts: int
     n_ufc_bouts: int
@@ -34,8 +43,15 @@ class State(NamedTuple):
 
 
 class Side(NamedTuple):
+    """One fighter in a bout, raw scale: the rating going in (decayed to the bout's day) and that bout's own change."""
     pre: float
     delta: float
+
+
+class Bout(NamedTuple):
+    """A rated bout: the store's date for it and {fighter_id: Side} for both fighters."""
+    date: str
+    sides: dict[str, Side]
 
 
 class _Day(NamedTuple):
@@ -48,6 +64,9 @@ class _Day(NamedTuple):
 
 
 class Timeline:
+    """Ratings as of any date from one pass's log (see the module docstring); immutable once built, and the answers
+    it hands out are copies or read-only."""
+
     def __init__(self, log: list[dict], bouts: list[dict], names: dict[str, str] | None = None):
         self.names = names or {}
         self._bouts = sorted(bouts, key=lambda b: (b["date"], b["fight_id"]))
@@ -60,13 +79,16 @@ class Timeline:
         n: dict[str, int] = {}
         n_ufc: dict[str, int] = {}
         classes: dict[str, set] = {}
+        missing = sorted({row["fight_id"] for row in log} - by_id.keys())
+        if missing:
+            raise ValueError(f"the log has fight ids that aren't in the bouts: {', '.join(missing[:5])}")
         for row in sorted(log, key=lambda r: (r["date"], r["fight_id"])):
             b, day = by_id[row["fight_id"]], row["date"]
             for f, o, side in ((row["fighter_a"], row["fighter_b"], "a"), (row["fighter_b"], row["fighter_a"], "b")):
                 n[f] = n.get(f, 0) + 1
                 n_ufc[f] = n_ufc.get(f, 0) + bool(b["ufc"])
                 classes.setdefault(f, set()).add(b["weight_class"])
-                after = _Day(row[f"post_{side}"], n[f], n_ufc[f], _gender(classes[f]), row[f"peak_{side}"])
+                after = _Day(row[f"post_{side}"], n[f], n_ufc[f], gender_of(classes[f]), row[f"peak_{side}"])
                 days = self._days.setdefault(f, [])
                 if days and days[-1] == day:
                     self._after[f][-1] = after  # a later bout the same day: the counts so far, the same post
@@ -77,6 +99,7 @@ class Timeline:
                     "date": day, "fight_id": row["fight_id"], "opponent": o, "pre": row[f"pre_{side}"],
                     "delta": row[f"delta_{side}"], "post": row[f"post_{side}"]})
         self._p4p: dict[str, dict[str, list[dict]]] = {}
+        self._ranks: dict[str, Mapping[str, int]] = {}
 
     @classmethod
     def from_pass(cls, hp: HistoryPass) -> Timeline:
@@ -112,21 +135,32 @@ class Timeline:
         }, columns=COLUMNS)
         return out.set_index("fighter_id")
 
-    def p4p(self, day: str) -> dict[str, list[dict]]:
-        """The P4P lists going into `day`: `rankings.p4p` over the bouts strictly before it, as of the day before."""
+    def _lists(self, day: str) -> dict[str, list[dict]]:
         if day not in self._p4p:
             before = self._bouts[:bisect_left(self._bout_days, day)]
             eve = date.fromisoformat(day) - timedelta(days=1)
             self._p4p[day] = p4p_lists(self.ratings(day), self.names, divisions(before), eve)
         return self._p4p[day]
 
-    def bout(self, fight_id: str) -> dict[str, Side] | None:
-        """{fighter_id: (pre, delta)} for both fighters of a rated bout; None when it isn't in the pass."""
+    def p4p(self, day: str) -> dict[str, list[dict]]:
+        """The P4P lists going into `day`: `rankings.p4p` over the bouts strictly before it, as of the day before. A
+        copy: the cached lists stay as they were."""
+        return {key: [dict(e) for e in entries] for key, entries in self._lists(day).items()}
+
+    def ranks(self, day: str) -> Mapping[str, int]:
+        """{fighter_id: P4P rank} going into `day` (both lists), cached per day and read-only."""
+        if day not in self._ranks:
+            self._ranks[day] = MappingProxyType(
+                {e["id"]: e["rank"] for entries in self._lists(day).values() for e in entries})
+        return self._ranks[day]
+
+    def bout(self, fight_id: str) -> Bout | None:
+        """The bout's day and {fighter_id: (pre, delta)} for both fighters; None when it isn't in the pass."""
         row = self._log.get(fight_id)
         if row is None:
             return None
-        return {row["fighter_a"]: Side(row["pre_a"], row["delta_a"]),
-                row["fighter_b"]: Side(row["pre_b"], row["delta_b"])}
+        return Bout(row["date"], {row["fighter_a"]: Side(row["pre_a"], row["delta_a"]),
+                                  row["fighter_b"]: Side(row["pre_b"], row["delta_b"])})
 
     def series(self, fighter_id: str) -> list[dict]:
         """The fighter's bouts in date order: {date, fight_id, opponent, pre, delta, post}."""
