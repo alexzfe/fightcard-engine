@@ -27,6 +27,10 @@
   table is there) is a WARNING naming it and the reason instead. Each run logs
   the store's newest completed event and last page fetch against `--now`.
   `--no-history` scores tiers only and leaves the rating fields as they are.
+- Each completed fight's `elo` (`fightcard.history.timeline`, from the same pass): both fighters' ratings going in
+  and the bout's own change, on today's display shift (as `Fighter.elo`, so they can move a point between runs), and
+  their P4P ranks going into the card's day (as of the day before). Null for a fight with no result or one the pass
+  doesn't have (after `--now`, unrated, another fight id). `--no-history` leaves it as it is.
 """
 
 from __future__ import annotations
@@ -38,11 +42,12 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fightcard.history.display import fighter_ratings
+from fightcard.history.display import fighter_ratings, scale
 from fightcard.history.rankings import divisions, published
 from fightcard.history.rating import HistoryPass, history_pass
 from fightcard.history.store import TABLES, complete_events
-from fightcard.models import BestWin, Event, Fight, Fighter, ModelInfo
+from fightcard.history.timeline import Timeline
+from fightcard.models import BestWin, Event, Fight, FightElo, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
 from fightcard.score.features import bout_context, bout_row
 from fightcard.score.summary import model_summary
@@ -180,6 +185,20 @@ def _rating_fields(r: dict) -> dict:
     return r | {"best_win": None if r["best_win"] is None else BestWin(**r["best_win"])}
 
 
+def fight_elo(fight: Fight, day: str, timeline: Timeline, shift: float) -> FightElo | None:
+    """`Fight.elo`: each fighter's rating going into the bout and its own change on the display `shift` (the one
+    Fighter.elo uses), each rounded on its own, and their P4P ranks going into `day`. None without a result, or when
+    the pass doesn't have this fight between these two fighters."""
+    sides = timeline.bout(fight.id) if fight.result is not None else None
+    if sides is None or set(sides) != {fight.red, fight.blue}:
+        return None
+    rank = {e["id"]: e["rank"] for entries in timeline.p4p(day).values() for e in entries}
+    red, blue = sides[fight.red], sides[fight.blue]
+    return FightElo(red_pre=round(red.pre + shift), red_delta=round(red.delta),
+                    blue_pre=round(blue.pre + shift), blue_delta=round(blue.delta),
+                    red_p4p_rank=rank.get(fight.red), blue_p4p_rank=rank.get(fight.blue))
+
+
 def run(args: argparse.Namespace) -> int:
     model_dir = args.model_dir
     try:
@@ -202,13 +221,16 @@ def run(args: argparse.Namespace) -> int:
     fighters = store.load_fighters()
     events = list(store.load_events().values())
     rated = "ratings left as they are (--no-history)"
+    timeline = None
     if not args.no_history:
         db = args.history_db or args.data.resolve().parent / "history" / "history.sqlite"
         try:
-            history, bouts, who, _ = _history_ratings(db, now, events)
+            hp = _history_ratings(db, now, events)
         except HistoryUnavailable as e:
             print(f"score: {e}", file=sys.stderr)
             return 1
+        history, bouts, who, _ = hp
+        timeline, shift = Timeline.from_pass(hp), scale(history, now.date())[2]
         rating = fighter_ratings(fighters, history, now.date())
         fighters = {fid: f.model_copy(update=_rating_fields(rating[fid])) for fid, f in fighters.items()}
         store.save_fighters(fighters)
@@ -217,6 +239,10 @@ def run(args: argparse.Namespace) -> int:
                    published(history, who, divisions(bouts), now.date(), headshots))
         rated = f"{sum(r['elo'] is not None for r in rating.values())} fighters with an Elo"
     events, stale = score_events(events, fighters, bundle, now)
+    if timeline is not None:
+        for ev in events:
+            for fight in ev.fights:
+                fight.elo = fight_elo(fight, ev.date, timeline, shift)
     for ev in events:
         store.save_event(ev)
     stale_path = store.root / "stale_fighters.json"

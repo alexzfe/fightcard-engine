@@ -66,6 +66,8 @@ is set on the JSON. `If-Modified-Since` with the `Last-Modified` it received als
   - `"1"`: the first `/v1/` publish.
   - `"1.1"`: `Result.outcome`, the fighter rating fields (`elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`), the model summary in `index.model` and `index.model.stale_fighters`. All optional, so data written before them still validates.
   - `"1.2"`: adds `rankings.json` (the P4P lists and the active-fighter index). Nothing else changed.
+  - `"1.3"`: adds `Fight.elo` (a completed fight's Elo going in, the bout's own change and the P4P rank going in).
+    Optional, so events written before it still validate.
 - Enum values are closed within `/v1/`: `Event.status`, `Fight.finish_tier`, `Fight.segment`, `PastFight.result`,
   `Result.outcome` and `ModelInfo.tiers`' keys keep exactly the values they have. Consumers validate them strictly
   (the site does), so a new value in an existing enum is a breaking change and ships as `/v2/`. A new field may
@@ -141,6 +143,22 @@ Same formatting rule as above. Field meanings, which `/v1/` inherits:
   - `Fighter.p4p_rank`: `1`–`15` for men, `1`–`10` for women (≥5 UFC bouts and a bout in the last 365 days), or `null`.
   - `Fighter.elo_provisional`: `true` with fewer than 3 UFC bouts. `Fighter.elo_inactive`: `true` with no bout in the last 365 days.
   - `Fighter.best_win`: `{"opponent_id", "opponent", "elo", "date"}` or `null` (no win, or an export without the best-win columns). The beaten opponent rated highest going into the bout (split/majority wins count; draws, NC, CNC and Overturned don't; a tie goes to the most recent). `elo` is that pre-bout rating on the displayed scale. The site shows it under Stats.
+- `Fight.elo` (`"1.3"`, `docs/ELO.md`): the Elo at the time of a completed fight, written by `score` from the same
+  history pass, e.g. shown as "1612 (+26) · #4 P4P".
+  `{"red_pre", "red_delta", "blue_pre", "blue_delta", "red_p4p_rank", "blue_p4p_rank"}`, all integers (strict: no
+  `"1612"` for `1612`), or `null`.
+  - `red_pre` / `blue_pre`: the fighter's rating going into the bout (from the bouts before the card's day, decayed
+    to it), on today's shift: the displayed scale of the run that wrote it, the same as `Fighter.elo`. The anchor
+    moves as fighters come and go, so an old fight's values can move a point between publishes.
+  - `red_delta` / `blue_delta`: this bout's own change, rounded on its own (an early-UFC tournament fighter's bouts
+    that day each show their own; they needn't add up to the day's change after rounding). `0` for a no contest,
+    including CNC and Overturned.
+  - `red_p4p_rank` / `blue_p4p_rank`: the P4P rank going into the card, i.e. the lists as of the day before (bouts
+    strictly before the card's day, the same rules as `Fighter.p4p_rank`), `1`–`15` men, `1`–`10` women, or `null`
+    when unranked. A result on the card itself never moves it.
+  - `null` for an upcoming fight, one with no result, and one the history store doesn't have under that fight id
+    (store ids are the site's ids) or that is after `score --now`. `score --no-history` leaves it as it is. There is
+    no record at the time (ufcstats records include regional bouts the store doesn't have).
 
 ### rankings.json
 
@@ -211,7 +229,7 @@ Run from the repo root: `uv run fightcard --data data <stage>`.
 | `segments` | `fightcard.segments` | events/, fighters.json, ESPN | `Fight.segment` (upcoming events only) |
 | `history ingest` | `fightcard.history` | a ufcstats HTML cache (`--html-dir`) | the history store (`--db`, SQLite), optional sorted JSONL dump |
 | `model pull` | `fightcard.model` | `$FIGHTCARD_MODEL_URL` (`latest.json`, `<version>/<file>`), the baked model/ (first boot seed) | `state/model/<version>/` and the `state/model/current` symlink (`--root`, default `<--data>/../model`); see `docs/SERVICE.md` |
-| `score` | `fightcard.score` | model/, events/, fighters.json, the history store (`--history-db`, read-only; default `<--data>/../history/history.sqlite`) | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json`, `Fighter.elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`, `data/rankings.json` |
+| `score` | `fightcard.score` | model/, events/, fighters.json, the history store (`--history-db`, read-only; default `<--data>/../history/history.sqlite`) | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json`, `Fighter.elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`, `Fight.elo`, `data/rankings.json` |
 | `publish` | `fightcard.publish` | data/ | `<out>/generations/<id>/`, `<out>/current` (the `/v1/` tree) |
 
 - Each stage package exposes `stage.py` with `add_arguments(parser)` and `run(args) -> int` (see `fightcard/cli.py`).
