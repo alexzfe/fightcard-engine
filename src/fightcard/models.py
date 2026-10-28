@@ -75,6 +75,23 @@ class Result(BaseModel):
     time: str | None = None  # "4:12"
 
 
+class _Strict(BaseModel):
+    model_config = ConfigDict(strict=True)  # data/rankings.json and Fight.elo are machine-written: no "1" for 1
+
+
+class FightElo(_Strict):
+    """A completed bout's Elo at the time (docs/ELO.md), set by `score` from the history timeline. pre/delta are on
+    the displayed scale of the run that wrote them (today's shift, as Fighter.elo), so they can move a point between
+    publishes."""
+
+    red_pre: int  # rating going into the bout (decayed to the day)
+    red_delta: int  # this bout's own change, rounded on its own (0 for NC / CNC / Overturned)
+    blue_pre: int
+    blue_delta: int
+    red_p4p_rank: int | None = Field(ge=1)  # P4P rank going into the card's day (as of the day before); None = unranked
+    blue_p4p_rank: int | None = Field(ge=1)
+
+
 class Fight(BaseModel):
     id: str  # ufcstats fight id when known, else "<event_id>-<n>"
     weight_class: str | None = None
@@ -85,6 +102,7 @@ class Fight(BaseModel):
     tier_frozen_at: str | None = None  # ISO 8601; set once the event starts
     result: Result | None = None
     segment: CardSegment | None = None  # from ESPN; None = unknown
+    elo: FightElo | None = None  # completed bouts in the history store only; None = upcoming / unrated / unmatched
 
 
 class Event(BaseModel):
@@ -135,10 +153,6 @@ class Index(BaseModel):
     upcoming: list[str]  # event ids, soonest first
     recent: list[str]  # completed event ids, most recent first
     model: ModelInfo | None = None
-
-
-class _Strict(BaseModel):
-    model_config = ConfigDict(strict=True)  # data/rankings.json is machine-written: no "1" for 1
 
 
 class P4PEntry(_Strict):

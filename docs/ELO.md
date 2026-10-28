@@ -37,6 +37,24 @@ they were expected to win clearly.
 - **Peak:** the highest rating reached after ≥5 UFC bouts. Shown under Stats with the best win, and in the Elo's tooltip.
 - `null` / hidden when the rating is unknown, as today.
 
+### At fight time (`Fight.elo`, contract `"1.3"`)
+
+A completed fight shows each fighter's Elo going in, the bout's own change and their P4P rank going in, e.g.
+"1612 (+26) · #4 P4P". `score` takes it from `fightcard.history.timeline`, built from the same one history pass as
+the current ratings (computed each run, not stored: `score` opens the store read-only):
+
+- **Pre:** the rating from the bouts strictly before the card's day, decayed to that day.
+- **Delta:** that bout's own change, rounded on its own. On an early-UFC tournament day a fighter's bouts all start
+  from the same pre-day rating and each shows its own change (the log's `post` is the end-of-day value, so it isn't
+  published). NC, CNC and Overturned: 0.
+- **Scale:** today's shift, the same one as `Fighter.elo` and `rankings.json`, for every published value, so a pre and
+  the current Elo compare directly. The anchor moves as fighters come and go, so an old fight's values may move
+  a point between publishes.
+- **Rank:** the P4P rank as of the day before the card (bouts strictly before it, the same rules as above), so the
+  card's own results never move it. The same lists `fightcard history rankings --as-of <the day before>` prints.
+  That command gives historical rankings for any day.
+- No record at the time: ufcstats records include regional bouts that aren't in the store.
+
 ## Where it is computed
 
 One implementation, in this repo, over the full bout history (since 2026-10-26, `docs/tdd/history-rating.tdd.md`):

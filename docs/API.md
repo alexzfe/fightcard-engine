@@ -9,7 +9,7 @@ static files: `fightcard publish` writes them and nginx serves them. The exact r
 | URL | What you get |
 |---|---|
 | `/v1/index.json` | The entry point: upcoming and recent event ids, the model summary, `generated_at`, `contract_version` |
-| `/v1/events/{event_id}.json` | One card: its fights in order, tiers, results |
+| `/v1/events/{event_id}.json` | One card: its fights in order, tiers, results, and on a completed fight its `elo` at the time (from `contract_version` `"1.3"`) |
 | `/v1/fighters.json` | Every fighter on those cards, keyed by id |
 | `/v1/rankings.json` | The pound-for-pound lists (men, women) and every active fighter's Elo, for a rankings page and fighter search. Optional: it appears from `contract_version` `"1.2"` |
 | `/v1/images/{fighter_id}.webp` | A headshot (the fighter's `image` field gives the exact path) |
@@ -25,6 +25,12 @@ fought since that export (their bouts show "—").
 ```
 curl -s https://ufc-data.xlobax.com/v1/index.json
 ```
+
+A completed fight's `elo` (`Fight.elo`, `"1.3"`) is each corner's Elo going in, the bout's own change and their
+P4P rank going in, for a line like "1612 (+26) · #4 P4P":
+`{"red_pre": 1612, "red_delta": 26, "blue_pre": 1588, "blue_delta": -26, "red_p4p_rank": 4, "blue_p4p_rank": null}`.
+It's `null` on upcoming fights and on fights the ratings don't cover. The values are on today's scale, the same as
+`fighters.json`'s `elo`, so an old fight's numbers can move by a point between publishes.
 
 ## Status codes
 
