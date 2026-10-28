@@ -32,8 +32,8 @@ def refused(data_dir, out, capsys) -> str:
     return capsys.readouterr().err
 
 
-def test_the_contract_version_is_1_3():
-    assert CONTRACT_VERSION == "1.3"  # 1.2 added rankings.json; Fight.elo is the next minor
+def test_the_contract_version_is_1_4():
+    assert CONTRACT_VERSION == "1.4"  # 1.2 added rankings.json, 1.3 Fight.elo, 1.4 Fight.form
 
 
 def test_rankings_json_is_published_as_in_data_when_present(data_dir, out):

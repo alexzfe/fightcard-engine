@@ -43,7 +43,7 @@ def test_global_data_flag_works_too(data_dir, out):
 def test_index_adds_contract_version_and_keeps_generated_at(data_dir, out):
     publish(data_dir, out)
     index = load(out / "current" / "index.json")
-    assert index["contract_version"] == CONTRACT_VERSION == "1.3"
+    assert index["contract_version"] == CONTRACT_VERSION == "1.4"
     assert index["generated_at"] == GENERATED_AT
     source = load(data_dir / "index.json")
     assert {k: v for k, v in index.items() if k != "contract_version"} == source
@@ -89,7 +89,7 @@ def test_schema_describes_the_top_level_types(data_dir, out):
     defs = schema["$defs"]
     assert {"Index", "Event", "Fighter", "Fighters"} <= set(defs)
     assert "contract_version" in defs["Index"]["required"]
-    assert schema["title"] == "fightcard /v1 (contract 1.3)"
+    assert schema["title"] == "fightcard /v1 (contract 1.4)"
     assert defs["Fighters"] == {"type": "object", "additionalProperties": {"$ref": "#/$defs/Fighter"}}
     assert "fights" in defs["Event"]["properties"]
 
@@ -123,6 +123,24 @@ def test_fight_elo_is_published_and_in_the_schema(data_dir, out):
     defs = load(out / "current" / "schema.json")["$defs"]
     assert "elo" in defs["Fight"]["properties"] and "elo" not in defs["Fight"]["required"]
     assert set(defs["FightElo"]["required"]) == set(elo)
+
+
+def test_fight_form_is_published_and_in_the_schema(data_dir, out):
+    """1.4: a completed fight's last three results before it, per corner; optional, so events written before it still
+    validate."""
+    past = {"result": "win", "opponent": "Dan Delta", "opponent_id": "f9", "method": "KO/TKO", "round": 1,
+            "time": "2:10", "event": "UFC 318", "date": "2026-06-13"}
+    form = {"red": [past], "blue": []}
+    event = load(data_dir / "events" / "e2.json")
+    event["fights"] = [{"id": "e2-1", "red": "f1", "blue": "f2", "form": form,
+                        "result": {"winner": "f1", "outcome": "win", "method": "KO/TKO", "round": 1}}]
+    write_json(data_dir / "events" / "e2.json", event)
+    assert publish(data_dir, out) == 0
+    assert load(out / "current" / "events" / "e2.json")["fights"][0]["form"] == form
+    assert load(out / "current" / "events" / "e1.json")["fights"][0]["form"] is None
+    defs = load(out / "current" / "schema.json")["$defs"]
+    assert "form" in defs["Fight"]["properties"] and "form" not in defs["Fight"]["required"]
+    assert set(defs["FightForm"]["required"]) == {"red", "blue"}
 
 
 @pytest.mark.parametrize("field,value", [("red_pre", "1612"), ("blue_delta", 2.5), ("red_p4p_rank", 0)])

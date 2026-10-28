@@ -346,3 +346,27 @@ def test_api_doc_names_every_pinned_enum(field):
 def test_api_doc_tells_consumers_to_ignore_unknown_files_too():
     section = api_doc().split("## Versioning")[1].split("\n## ")[0]
     assert "ignore fields and files they don't know" in section
+
+
+def test_contract_versioning_says_1_4_added_fight_form():
+    section = CONTRACT.split("### Versioning")[1].split("###")[0]
+    line = next((line for line in section.splitlines() if line.strip().startswith('- `"1.4"`')), None)
+    assert line is not None and "Fight.form" in line
+
+
+@pytest.mark.parametrize("term", ["strictly before", "newest first", "PastFight", "rating's scope", "empty"])
+def test_contract_documents_fight_form(term):
+    layout = CONTRACT.split("## data/ layout")[1].split("\n## ")[0]
+    assert "- `Fight.form` (" in layout
+    field = layout.split("- `Fight.form` (")[1].split("\n- `")[0]
+    assert term in field, term
+
+
+def test_score_row_names_fight_form():
+    row = next(line for line in CONTRACT.splitlines() if line.startswith("| `score`"))
+    assert "`Fight.form`" in row
+
+
+def test_api_doc_explains_fight_form():
+    doc = api_doc()
+    assert "Fight.form" in doc and '`"1.4"`' in doc
