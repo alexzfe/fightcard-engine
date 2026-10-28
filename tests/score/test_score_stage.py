@@ -15,7 +15,7 @@ from fightcard.cli import main
 from fightcard.history.display import fighter_ratings
 from fightcard.history.rating import history_ratings
 from fightcard.history.store import connect, upsert_event
-from fightcard.models import Event, Fight, Fighter, Index, Record, Result
+from fightcard.models import Event, Fight, Fighter, Index, PastFight, Record, Result
 from fightcard.store import Store
 
 NOW = "2026-11-01T06:00:00Z"
@@ -930,3 +930,67 @@ def test_corners_swapped_between_data_and_the_store_follow_the_fighters(data, mo
         "blue_pre": round(sides[ids[5]].pre + shift), "blue_delta": round(sides[ids[5]].delta),
         "red_p4p_rank": rank_going_into(tl, ids[0], UPSET_DAY), "blue_p4p_rank": rank_going_into(tl, ids[5], UPSET_DAY)}
     assert sides[ids[0]].delta < 0 < sides[ids[5]].delta
+
+
+# --- form at fight time: Fight.form on completed fights (docs/CONTRACT.md, "1.4") ----------------------------------------
+
+def lost_to(day: str, i: int, winner: dict) -> PastFight:
+    """A veteran's bout in `history` / `five_bouts_each` (fight id "<day>-<i>", event "UFC <day>-<i>"), from the
+    loser's side."""
+    return PastFight(result="loss", opponent=winner["name"], opponent_id=winner["fighter_id"], method="U-DEC",
+                     round=3, time="5:00", event=f"UFC {day}-{i}", date=day)
+
+
+def beat(day: str, i: int, loser: dict) -> PastFight:
+    return lost_to(day, i, loser).model_copy(update={"result": "win"})
+
+
+def test_a_completed_fight_gets_each_fighters_last_three_results_before_it(data, model_dir, veterans, tmp_path):
+    """v5 lost all five before the upset and v0 won all five: newest first, from each fighter's side, and never the
+    upset itself."""
+    root, _ = data
+    store, db, ids = upset_card(data, veterans, tmp_path)
+    assert score_with(root, model_dir, db) == 0
+    fight = next(f for f in store.load_event("e-upset").fights if f.id == "upset")
+    v = veterans
+    assert fight.form.red == [lost_to(day, 4, v[4]) for day in ("2026-10-01", "2026-09-01", "2026-08-01")]
+    assert fight.form.blue == [beat(day, 0, v[1]) for day in ("2026-10-01", "2026-09-01", "2026-08-01")]
+
+
+def test_upcoming_fights_have_no_form(data, model_dir, veterans, tmp_path):
+    """Upcoming fights show the fighter's recent_fights; Fight.form is only for completed ones."""
+    root, store = data
+    assert score_with(root, model_dir, history(tmp_path, veterans)) == 0
+    assert [f.form for f in store.load_event("future").fights] == [None, None, None]
+
+
+def test_a_debut_has_an_empty_form_not_a_missing_one(data, model_dir, veterans, tmp_path):
+    """Neither fighter has a bout before the card: both lists are empty (the site shows no tiles)."""
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    db = history(tmp_path, veterans)
+    card(store, db, "e-first", "2026-08-15", [won("first", v0, v1)])
+    assert score_with(root, model_dir, db) == 0
+    form = store.load_event("e-first").fights[0].form
+    assert form is not None and form.red == [] and form.blue == []
+
+
+def test_no_history_leaves_fight_form_as_it_is(data, model_dir, veterans, tmp_path):
+    root, _ = data
+    store, db, _ = upset_card(data, veterans, tmp_path)
+    assert score_with(root, model_dir, db) == 0
+    before = store.load_event("e-upset").fights[0].form
+    assert before is not None
+    assert score(root, model_dir) == 0
+    assert store.load_event("e-upset").fights[0].form == before
+
+
+def test_fight_form_is_written_as_a_json_object(data, model_dir, veterans, tmp_path):
+    root, _ = data
+    _, db, _ = upset_card(data, veterans, tmp_path)
+    assert score_with(root, model_dir, db) == 0
+    fights = json.loads((root / "events" / "e-upset.json").read_text())["fights"]
+    assert set(fights[0]["form"]) == {"red", "blue"}
+    assert len(fights[0]["form"]["red"]) == 3
+    upcoming = json.loads((root / "events" / "future.json").read_text())["fights"]
+    assert all(f["form"] is None for f in upcoming)
