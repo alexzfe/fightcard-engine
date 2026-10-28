@@ -136,6 +136,18 @@ def test_refuses_a_fight_elo_that_is_not_a_strict_int(data_dir, out, capsys, fie
     assert "e1.json" in refused(data_dir, out, capsys)
 
 
+@pytest.mark.parametrize("missing", ["red_p4p_rank", "blue_p4p_rank"])
+def test_refuses_a_fight_elo_without_a_rank_key(data_dir, out, capsys, missing):
+    """An unranked fighter's rank is written as null, never left out."""
+    elo = {"red_pre": 1612, "red_delta": 26, "blue_pre": 1588, "blue_delta": -26, "red_p4p_rank": None,
+           "blue_p4p_rank": None}
+    del elo[missing]
+    event = load(data_dir / "events" / "e1.json")
+    event["fights"][0]["elo"] = elo
+    write_json(data_dir / "events" / "e1.json", event)
+    assert "e1.json" in refused(data_dir, out, capsys)
+
+
 def test_snapshot_holds_every_other_file(data_dir, out):
     publish(data_dir, out)
     files = tree(out / "current")
