@@ -175,7 +175,10 @@ Same formatting rule as above. Field meanings, which `/v1/` inherits:
   - It counts every bout with a result in the store, whatever the rating's scope (a small non-UFC card the rating
     leaves out still counts). Bouts the store doesn't have (most regional fights) don't, so a fighter's first UFC
     bouts can show fewer than 3, and a debut an empty list.
-  - `null` for an upcoming fight or one with no result. Recomputed every `score` run from the store; `score
+  - An opponent the store has no name for reads `"Unknown"`, as in `recent_fights`; a malformed win (the winner is
+    neither fighter) is left out.
+  - `null` for an upcoming fight or one with no result. Unlike `Fight.elo` it is set on a fight after `score --now`
+    too (it only looks before the fight's own day). Recomputed every `score` run from the store; `score
     --no-history` leaves it as it is.
 
 ### rankings.json

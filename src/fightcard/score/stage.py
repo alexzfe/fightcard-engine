@@ -33,8 +33,8 @@
   one the pass doesn't have (after `--now`, unrated, another fight id). `--no-history` leaves it as it is.
 - Each completed fight's `form` (`fightcard.history.form`, from the same store): each corner's last three results
   strictly before the bout's day in the store (data/'s date when the store doesn't have the bout), from every bout
-  with a result, whatever the rating's scope. Empty lists for a debut; null without a result. `--no-history` leaves
-  it as it is.
+  with a result, whatever the rating's scope. Empty lists for a debut; null without a result. Unlike `elo` it is set
+  on a fight after `--now` too: it only looks before the fight's own day. `--no-history` leaves it as it is.
 """
 
 from __future__ import annotations
@@ -207,11 +207,12 @@ def fight_elo(fight: Fight, timeline: Timeline, shift: float) -> FightElo | None
 
 
 def fight_form(fight: Fight, day: str, form: Form) -> FightForm | None:
-    """`Fight.form`: each corner's last results strictly before the bout's day: the store's when it has the bout (so
-    the bout never counts toward itself when data/ dates the card later), else `day`. None without a result."""
+    """`Fight.form`: each corner's last results strictly before the bout's day: the store's when it has the bout (this
+    fight id between these fighters, so the bout never counts toward itself when data/ dates the card later), else
+    `day`. None without a result."""
     if fight.result is None:
         return None
-    day = form.day(fight.id) or day
+    day = form.day(fight.id, fight.red, fight.blue) or day
     return FightForm(red=form.before(fight.red, day), blue=form.before(fight.blue, day))
 
 
