@@ -42,3 +42,15 @@ A synthetic store of 24,000 bouts (2,000 cards × 12, 4,500 fighters) loads into
 | 8 | Upcoming fights: `null`; a debut: empty lists; `--no-history` leaves it; written as `{red, blue}` | `…::test_upcoming_fights_have_no_form`, `…::test_a_debut_has_an_empty_form_not_a_missing_one`, `…::test_no_history_leaves_fight_form_as_it_is`, `…::test_fight_form_is_written_as_a_json_object` |
 | 9 | Published, optional in the schema, `FightForm` requires `red` and `blue`; contract 1.4 | `tests/publish/test_publish_stage.py::test_fight_form_is_published_and_in_the_schema`, `…::test_index_adds_contract_version_and_keeps_generated_at`, `…::test_schema_describes_the_top_level_types`, `tests/publish/test_publish_rankings.py::test_the_contract_version_is_1_4` |
 | 10 | CONTRACT.md: the 1.4 line, the field ("strictly before", "newest first", `PastFight`, "rating's scope", "empty"), the score row; API.md explains it | `tests/test_docs.py::test_contract_versioning_says_1_4_added_fight_form`, `…::test_contract_documents_fight_form`, `…::test_score_row_names_fight_form`, `…::test_api_doc_explains_fight_form` |
+
+## Review fixes (PR #12: python-reviewer + code-reviewer; no CRITICAL/HIGH)
+
+| Stage | Commit | Command | Result |
+|---|---|---|---|
+| RED | ebba486 | `uv run pytest -q tests/history/test_history_form.py tests/score/test_score_stage.py` | 3 failed, 77 passed: the opponent with no name read as its id; a win for neither corner counted as a loss for both; the store's day was taken for a different bout under the same fight id. The fourth new test (form after `--now`) passed: it pins documented behaviour. |
+| GREEN | 416f6bc | `uv run pytest -q` | 1125 passed, 1 skipped. No test changed after RED. |
+
+- Taken: the same-bout guard on the store's day (as `fight_elo`'s), `"Unknown"` for a nameless opponent (as the
+  ufcstats parser), malformed wins left out, and docs on form vs. `--now`.
+- Not taken: a strict `FightForm` (its `PastFight` entries would stay lax, so it buys little); tighter doc tests.
+- For step 3 (site): `NEWER_FIELDS` needs `'Fight.form': '1.4'` and `schema.ts` a nullish `FightForm` on `Fight`.
