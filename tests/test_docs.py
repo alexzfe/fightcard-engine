@@ -252,6 +252,26 @@ def test_elo_doc_explains_fight_time_elo(term):
     assert term in (REPO / "docs" / "ELO.md").read_text(), term
 
 
+def test_contract_says_fight_elo_can_change_a_completed_event_file():
+    """Fight.elo is recomputed on today's shift each run, so a completed card's file (ETag, Last-Modified,
+    snapshot) can change when the shift moves."""
+    field = CONTRACT.split("- `Fight.elo` (")[1].split("\n- `")[0].split("\n### ")[0]
+    for term in ("`ETag`", "`Last-Modified`", "snapshot"):
+        assert term in field, term
+
+
+def test_api_doc_says_fight_elo_can_change_a_completed_event_file():
+    paragraph = api_doc().split("A completed fight's `elo`")[1].split("\n\n")[0]
+    assert "`ETag`" in paragraph and "completed" in paragraph
+
+
+def test_elo_doc_says_as_of_includes_the_day():
+    """`rating_bouts(as_of)` is inclusive: the rank going into D is `--as-of` the day before, and `--as-of D`
+    already counts D's bouts."""
+    section = (REPO / "docs" / "ELO.md").read_text().split("### At fight time")[1].split("\n## ")[0]
+    assert "up to and including" in section
+
+
 def test_api_doc_says_rankings_json_appears_from_1_2():
     row = next(line for line in api_doc().splitlines() if line.startswith("| `/v1/rankings.json`"))
     assert '`"1.2"`' in row and '`"1.1"`' not in row

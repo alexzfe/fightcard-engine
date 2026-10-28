@@ -127,10 +127,10 @@ def test_before_any_bout_nobody_is_rated():
 
 def test_the_state_is_decayed_to_the_day_going_in():
     tl = timeline([bout("2020-01-01", "f1", "a", "b"), bout("2023-01-01", "f2", "a", "c")], {})
-    first = tl.bout("f1")["a"]
+    first = tl.bout("f1").sides["a"]
     going_in = tl.state("a", "2023-01-01")
     assert going_in.rating == decayed(START + first.delta, 1096)
-    assert tl.bout("f2")["a"].pre == going_in.rating
+    assert tl.bout("f2").sides["a"].pre == going_in.rating
     assert going_in.last_bout_date == "2020-01-01" and going_in.n_bouts == 1
 
 
@@ -141,8 +141,9 @@ def test_bout_gives_each_fighters_pre_and_own_delta_from_the_log():
     log = rate(bouts, names)[0]
     tl = Timeline(log, bouts, names)
     for row in log:
-        assert tl.bout(row["fight_id"]) == {row["fighter_a"]: Side(row["pre_a"], row["delta_a"]),
-                                            row["fighter_b"]: Side(row["pre_b"], row["delta_b"])}
+        b = tl.bout(row["fight_id"])
+        assert (b.date, b.sides) == (row["date"], {row["fighter_a"]: Side(row["pre_a"], row["delta_a"]),
+                                                   row["fighter_b"]: Side(row["pre_b"], row["delta_b"])})
         for side in ("a", "b"):
             s = tl.state(row[f"fighter_{side}"], row["date"])
             assert row[f"pre_{side}"] == (START if s is None else s.rating)
@@ -157,8 +158,8 @@ def test_a_tournament_day_gives_each_bout_its_own_delta_summing_to_the_days_chan
     day = [r for r in tl.series("m0") if r["date"] == "2020-06-06"]
     assert [r["fight_id"] for r in day] == ["t1", "t3", "t4", "t5"]
     pre = tl.state("m0", "2020-06-06").rating
-    deltas = [tl.bout(r["fight_id"])["m0"].delta for r in day]
-    assert all(tl.bout(r["fight_id"])["m0"].pre == pre for r in day)
+    deltas = [tl.bout(r["fight_id"]).sides["m0"].delta for r in day]
+    assert all(tl.bout(r["fight_id"]).sides["m0"].pre == pre for r in day)
     assert len(set(deltas)) == 4 and deltas[0] > 0 > deltas[3]
     after = tl.ratings("2020-06-07").loc["m0", "rating"]
     assert sum(deltas) == pytest.approx(after - pre, abs=1e-9)
@@ -171,7 +172,7 @@ def test_no_update_bouts_have_a_zero_delta():
                    bout("2020-05-01", "f3", "a", "b", "draw", "CNC"),
                    bout("2020-07-01", "f4", "b", "a", "win", "Overturned")], {})
     for fid in ("f2", "f3", "f4"):
-        assert {s.delta for s in tl.bout(fid).values()} == {0.0}
+        assert {s.delta for s in tl.bout(fid).sides.values()} == {0.0}
 
 
 def test_series_is_the_fighters_bouts_in_date_order():
@@ -180,9 +181,70 @@ def test_series_is_the_fighters_bouts_in_date_order():
     got = tl.series("a")
     assert [(r["date"], r["fight_id"], r["opponent"]) for r in got] == [("2020-01-01", "f1", "b"),
                                                                         ("2020-03-01", "f2", "c")]
-    assert got[1]["pre"] == tl.bout("f2")["a"].pre and got[1]["delta"] == tl.bout("f2")["a"].delta > 0
+    assert got[1]["pre"] == tl.bout("f2").sides["a"].pre and got[1]["delta"] == tl.bout("f2").sides["a"].delta > 0
     assert got[1]["post"] == got[1]["pre"] + got[1]["delta"]
     assert tl.series("nobody") == []
+
+
+def test_bout_says_the_day_it_was_rated_on():
+    """The store's date for the bout, the day its pre is decayed to and the one its rank is taken going into."""
+    tl = timeline([bout("2020-01-01", "f1", "a", "b"), bout("2020-03-01", "f2", "a", "c")], {})
+    assert tl.bout("f1").date == "2020-01-01" and tl.bout("f2").date == "2020-03-01"
+
+
+def test_a_log_row_without_its_bout_is_a_clear_error():
+    bouts = [bout("2020-01-01", "f1", "a", "b"), bout("2020-03-01", "f2", "a", "c")]
+    with pytest.raises(ValueError, match="f2"):
+        Timeline(rate(bouts, {})[0], bouts[:1], {})
+
+
+# --- ranks and the cache -------------------------------------------------------------------------------------------
+
+def test_ranks_are_the_p4p_lists_by_fighter_id_read_only():
+    bouts, names = league()
+    tl = timeline(bouts, names)
+    lists = tl.p4p("2021-06-01")
+    ranks = tl.ranks("2021-06-01")
+    assert dict(ranks) == {e["id"]: e["rank"] for entries in lists.values() for e in entries}
+    assert ranks is tl.ranks("2021-06-01")  # cached per day
+    with pytest.raises(TypeError):
+        ranks["m0"] = 1  # type: ignore[index]
+    assert tl.ranks("2019-01-05") == {}
+
+
+def test_changing_the_p4p_lists_a_caller_got_does_not_change_the_next_call():
+    bouts, names = league()
+    tl = timeline(bouts, names)
+    want = tl.p4p("2021-06-01")
+    got = tl.p4p("2021-06-01")
+    got["men"][0]["rank"] = 99
+    got["men"].clear()
+    got["women"] = []
+    assert tl.p4p("2021-06-01") == want and want["men"] and want["women"]
+    assert tl.ranks("2021-06-01")[want["men"][0]["id"]] == want["men"][0]["rank"]
+
+
+def test_the_lists_going_into_a_day_are_history_rankings_as_of_the_day_before(tmp_path):
+    """docs/ELO.md: `fightcard history rankings --as-of D-1` (bouts up to and including D-1) prints the same P4P
+    lists the timeline gives going into D, and `--as-of D` includes D's own bouts."""
+    from fightcard.history.stage import rankings
+    conn = connect(tmp_path / "h.sqlite")
+    ids = [f"v{i}" for i in range(6)]
+    days = ["2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01"]
+    with conn:
+        for day in days:
+            fights = [Fight(id=f"{day}-{i}", red=ids[i], blue=ids[i + 1], weight_class="Lightweight",
+                            result=Result(winner=ids[i], outcome="win", method="U-DEC")) for i in (0, 2, 4)]
+            if day == days[-1]:  # the last card: the bottom fighter beats the top one
+                fights[0] = fights[0].model_copy(update={"red": ids[5], "blue": ids[0], "result": Result(
+                    winner=ids[5], outcome="win", method="KO/TKO")})
+            upsert_event(conn, Event(id=f"e-{day}", slug="x", name=f"UFC {day}", date=day, status="completed",
+                                     fights=fights), is_ufc=True, source="listing")
+    tl = Timeline.from_pass(history_pass(conn))
+    card = days[-1]
+    assert rankings(conn, date.fromisoformat(eve(card)))["p4p"] == tl.p4p(card)
+    assert rankings(conn, date.fromisoformat(card))["p4p"] != tl.p4p(card)
+    conn.close()
 
 
 # --- the one pass -----------------------------------------------------------------------------------------------
@@ -199,7 +261,7 @@ def test_history_pass_keeps_rates_log_and_the_timeline_builds_from_it(tmp_path):
     hp = history_pass(conn)
     assert hp.log == rate(hp.bouts, hp.names)[0] and [r["fight_id"] for r in hp.log] == ["f1", "f2"]
     tl = Timeline.from_pass(hp)
-    assert tl.bout("f2")["b"].pre == tl.state("b", "2026-02-01").rating
+    assert tl.bout("f2").sides["b"].pre == tl.state("b", "2026-02-01").rating
     conn.close()
 
 
