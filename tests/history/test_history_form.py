@@ -89,3 +89,27 @@ def test_bouts_on_the_same_earlier_day_come_main_event_first(tmp_path):
     form = Form.from_store(conn)
     conn.close()
     assert [f.opponent_id for f in form.before(A, "1994-03-11")] == [B, C]
+
+
+def test_an_opponent_with_no_name_in_the_store_is_unknown_not_an_id(tmp_path):
+    """As the ufcstats parser does: the site shows the name, so never a raw id."""
+    conn = connect(tmp_path / "history.sqlite")
+    with conn:
+        card(conn, "jan", "2026-01-10", [bout("f-jan", A, "ghost", winner=A)])
+        conn.execute("INSERT INTO fighters (fighter_id, name) VALUES (?, ?)", (A, NAMES[A]))
+    form = Form.from_store(conn)
+    conn.close()
+    assert [(f.opponent, f.opponent_id) for f in form.before(A, "2026-12-31")] == [("Unknown", "ghost")]
+
+
+def test_a_win_for_neither_corner_is_not_counted(tmp_path):
+    """A malformed row (the winner is neither fighter) would read as a loss for both; it's left out instead."""
+    conn = connect(tmp_path / "history.sqlite")
+    with conn:
+        card(conn, "jan", "2026-01-10", [bout("f-jan", A, B, winner=A)])
+        card(conn, "feb", "2026-02-14", [bout("f-feb", A, B, winner=A)])
+        conn.execute("UPDATE fights SET winner = 'zzz' WHERE fight_id = 'f-feb'")
+    form = Form.from_store(conn)
+    conn.close()
+    assert [f.date for f in form.before(A, "2026-12-31")] == ["2026-01-10"]
+    assert [f.date for f in form.before(B, "2026-12-31")] == ["2026-01-10"]

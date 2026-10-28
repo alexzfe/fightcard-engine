@@ -1008,3 +1008,29 @@ def test_form_is_taken_before_the_stores_day_for_the_bout(data, model_dir, veter
     form = store.load_event("e-upset").fights[0].form
     assert [f.date for f in form.red] == ["2026-10-01", "2026-09-01", "2026-08-01"]
     assert all(f.event != "UFC e-upset" for f in form.red + form.blue)
+
+
+def test_the_stores_day_is_used_only_for_the_same_bout(data, model_dir, veterans, tmp_path):
+    """The store has this fight id between other fighters (and on another day): that's another bout, so its day isn't
+    this one's. v2's form goes up to data/'s date and includes the store's bout, as an earlier fight."""
+    root, store = data
+    v = [x["fighter_id"] for x in veterans]
+    db = history(tmp_path, veterans)
+    card(store, db, "e-other", "2026-10-25", [won("other", v[2], v[4])], stored_day="2026-10-20",
+         stored=[won("other", v[2], v[3])])
+    assert score_with(root, model_dir, db) == 0
+    form = store.load_event("e-other").fights[0].form
+    assert [f.date for f in form.red] == ["2026-10-20", "2026-10-01", "2026-09-01"]
+
+
+def test_a_completed_fight_after_now_still_gets_its_form(data, model_dir, veterans, tmp_path):
+    """Unlike Fight.elo (null after --now): form only looks before the fight's own day, so a backtest with --now in
+    the past still gets the right form, with no later bouts in it."""
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    db = history(tmp_path, veterans)
+    card(store, db, "e-next", "2026-11-08", [won("next", v0, v1)])
+    assert score_with(root, model_dir, db) == 0
+    fight = store.load_event("e-next").fights[0]
+    assert fight.elo is None
+    assert [f.date for f in fight.form.red] == ["2026-10-01", "2026-09-01"]
