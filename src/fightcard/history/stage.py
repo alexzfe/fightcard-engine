@@ -57,7 +57,7 @@ def backup(db: Path, out: BinaryIO) -> None:
 
 def rankings(conn: sqlite3.Connection, now: date) -> dict[str, object]:
     """Every rankings module over the store's bouts up to `now`."""
-    ratings, bouts, who = history_pass(conn, now.isoformat())
+    ratings, bouts, who, _ = history_pass(conn, now.isoformat())
     divs = divisions(bouts)
     return {"p4p": p4p(ratings, who, divs, now), "active_index": active_index(ratings, who, divs, now),
             "division_ranks": division_ranks(ratings, who, divs, now),

@@ -38,11 +38,9 @@ from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
-import pandas as pd
-
 from fightcard.history.display import fighter_ratings
 from fightcard.history.rankings import divisions, published
-from fightcard.history.rating import history_pass
+from fightcard.history.rating import HistoryPass, history_pass
 from fightcard.history.store import TABLES, complete_events
 from fightcard.models import BestWin, Event, Fight, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
@@ -146,9 +144,9 @@ def _backfill_skips(conn: sqlite3.Connection, tables: set[str]) -> dict[str, str
     return dict(conn.execute("SELECT event_id, reason FROM backfill_skips"))
 
 
-def _history_ratings(db: Path, now: datetime, events: list[Event]) -> tuple[pd.DataFrame, list[dict], dict[str, str]]:
+def _history_ratings(db: Path, now: datetime, events: list[Event]) -> HistoryPass:
     """The full-history pass up to `now`'s date (read-only: score never writes the store), after checking the
-    store is usable and has every completed event in `events` up to then: (ratings, the rating's bouts, names)."""
+    store is usable and has every completed event in `events` up to then: (ratings, the rating's bouts, names, log)."""
     as_of = now.date().isoformat()
     if not db.is_file():
         raise HistoryUnavailable(f"no history store at {db}; run `fightcard history ingest`, "
@@ -207,7 +205,7 @@ def run(args: argparse.Namespace) -> int:
     if not args.no_history:
         db = args.history_db or args.data.resolve().parent / "history" / "history.sqlite"
         try:
-            history, bouts, who = _history_ratings(db, now, events)
+            history, bouts, who, _ = _history_ratings(db, now, events)
         except HistoryUnavailable as e:
             print(f"score: {e}", file=sys.stderr)
             return 1

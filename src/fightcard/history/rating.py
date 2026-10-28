@@ -2,7 +2,8 @@
 
 Ported from fight-auto-research `main:export/rating.py` (d179cf2 era), which computed it for the export until
 then; spec and contract in docs/ELO.md. `history_pass(conn, as_of)` feeds `rate` from `fightcard.history.store`
-(`rating_bouts`, `names`); `fightcard.history.display` turns its rows into the displayed numbers.
+(`rating_bouts`, `names`); `fightcard.history.display` turns its rows into the displayed numbers and
+`fightcard.history.timeline` its per-bout log into ratings as of any date.
 
 Rules (raw scale; re-anchoring, P4P rank and tags are `fightcard.history.display`'s, `PARAMS["display"]`):
   - scope: every bout with a result on a UFC event, or on another card with >= 4 bouts with a result
@@ -67,6 +68,7 @@ import sqlite3
 import sys
 from datetime import date
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -298,17 +300,26 @@ def _dump(obj) -> str:
     return json.dumps(obj, indent=2, sort_keys=True) + "\n"
 
 
-def history_pass(conn: sqlite3.Connection, as_of: str | None = None) -> tuple[pd.DataFrame, list[dict], dict[str, str]]:
+class HistoryPass(NamedTuple):
+    """`history_pass`'s result: `rate`'s export rows indexed by fighter_id, the bouts they were rated from, names, and
+    `rate`'s per-bout log (`fightcard.history.timeline` answers "as of any date" from it)."""
+    ratings: pd.DataFrame
+    bouts: list[dict]
+    names: dict[str, str]
+    log: list[dict]
+
+
+def history_pass(conn: sqlite3.Connection, as_of: str | None = None) -> HistoryPass:
     """The history pass up to `as_of` (None = all), the one `score`, `images` and `fightcard history rankings` share
-    so they agree on who is rated: (`rate`'s export rows indexed by fighter_id, the bouts they were rated from,
-    names)."""
+    so they agree on who is rated."""
     bouts, who = rating_bouts(conn, as_of), store_names(conn)
-    return rate(bouts, who)[1].set_index("fighter_id"), bouts, who
+    log, fighters = rate(bouts, who)
+    return HistoryPass(fighters.set_index("fighter_id"), bouts, who, log)
 
 
 def history_ratings(conn: sqlite3.Connection, as_of: str | None = None) -> pd.DataFrame:
     """`rate` over the store's bouts up to `as_of` (None = all): the export rows indexed by fighter_id."""
-    return history_pass(conn, as_of)[0]
+    return history_pass(conn, as_of).ratings
 
 
 if __name__ == "__main__":
