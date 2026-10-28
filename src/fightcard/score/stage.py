@@ -31,6 +31,10 @@
   and the bout's own change, on today's display shift (as `Fighter.elo`, so they can move a point between runs), and
   their P4P ranks going into the bout's day in the store (as of the day before). Null for a fight with no result or
   one the pass doesn't have (after `--now`, unrated, another fight id). `--no-history` leaves it as it is.
+- Each completed fight's `form` (`fightcard.history.form`, from the same store): each corner's last three results
+  strictly before the bout's day in the store (data/'s date when the store doesn't have the bout), from every bout
+  with a result, whatever the rating's scope. Empty lists for a debut; null without a result. `--no-history` leaves
+  it as it is.
 """
 
 from __future__ import annotations
@@ -43,11 +47,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fightcard.history.display import fighter_ratings, scale
+from fightcard.history.form import Form
 from fightcard.history.rankings import divisions, published
 from fightcard.history.rating import HistoryPass, history_pass
 from fightcard.history.store import TABLES, complete_events
 from fightcard.history.timeline import Timeline
-from fightcard.models import BestWin, Event, Fight, FightElo, Fighter, ModelInfo
+from fightcard.models import BestWin, Event, Fight, FightElo, FightForm, Fighter, ModelInfo
 from fightcard.score.bundle import Bundle, load_bundle
 from fightcard.score.features import bout_context, bout_row
 from fightcard.score.summary import model_summary
@@ -149,9 +154,10 @@ def _backfill_skips(conn: sqlite3.Connection, tables: set[str]) -> dict[str, str
     return dict(conn.execute("SELECT event_id, reason FROM backfill_skips"))
 
 
-def _history_ratings(db: Path, now: datetime, events: list[Event]) -> HistoryPass:
+def _history_ratings(db: Path, now: datetime, events: list[Event]) -> tuple[HistoryPass, Form]:
     """The full-history pass up to `now`'s date (read-only: score never writes the store), after checking the
-    store is usable and has every completed event in `events` up to then: (ratings, the rating's bouts, names, log)."""
+    store is usable and has every completed event in `events` up to then: (ratings, the rating's bouts, names, log),
+    and every fighter's form from the same store."""
     as_of = now.date().isoformat()
     if not db.is_file():
         raise HistoryUnavailable(f"no history store at {db}; run `fightcard history ingest`, "
@@ -175,7 +181,7 @@ def _history_ratings(db: Path, now: datetime, events: list[Event]) -> HistoryPas
             if missing:
                 raise HistoryUnavailable(f"completed events with no bouts in the history store: {', '.join(missing)}; "
                                          f"run `fightcard history ingest`")
-            return history_pass(conn, as_of)
+            return history_pass(conn, as_of), Form.from_store(conn)
         except sqlite3.DatabaseError as e:
             raise unusable from e
 
@@ -200,6 +206,15 @@ def fight_elo(fight: Fight, timeline: Timeline, shift: float) -> FightElo | None
                     red_p4p_rank=rank.get(fight.red), blue_p4p_rank=rank.get(fight.blue))
 
 
+def fight_form(fight: Fight, day: str, form: Form) -> FightForm | None:
+    """`Fight.form`: each corner's last results strictly before the bout's day: the store's when it has the bout (so
+    the bout never counts toward itself when data/ dates the card later), else `day`. None without a result."""
+    if fight.result is None:
+        return None
+    day = form.day(fight.id) or day
+    return FightForm(red=form.before(fight.red, day), blue=form.before(fight.blue, day))
+
+
 def run(args: argparse.Namespace) -> int:
     model_dir = args.model_dir
     try:
@@ -222,11 +237,11 @@ def run(args: argparse.Namespace) -> int:
     fighters = store.load_fighters()
     events = list(store.load_events().values())
     rated = "ratings left as they are (--no-history)"
-    timeline = None
+    timeline = form = None
     if not args.no_history:
         db = args.history_db or args.data.resolve().parent / "history" / "history.sqlite"
         try:
-            hp = _history_ratings(db, now, events)
+            hp, form = _history_ratings(db, now, events)
         except HistoryUnavailable as e:
             print(f"score: {e}", file=sys.stderr)
             return 1
@@ -244,6 +259,7 @@ def run(args: argparse.Namespace) -> int:
         for ev in events:
             for fight in ev.fights:
                 fight.elo = fight_elo(fight, timeline, shift)
+                fight.form = fight_form(fight, ev.date, form)
     for ev in events:
         store.save_event(ev)
     stale_path = store.root / "stale_fighters.json"

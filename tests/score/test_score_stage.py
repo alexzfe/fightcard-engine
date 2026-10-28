@@ -994,3 +994,17 @@ def test_fight_form_is_written_as_a_json_object(data, model_dir, veterans, tmp_p
     assert len(fights[0]["form"]["red"]) == 3
     upcoming = json.loads((root / "events" / "future.json").read_text())["fights"]
     assert all(f["form"] is None for f in upcoming)
+
+
+def test_form_is_taken_before_the_stores_day_for_the_bout(data, model_dir, veterans, tmp_path):
+    """data/ dates the card a day after the store does: the form still stops before the store's day, so the fight never
+    counts toward its own form."""
+    root, _ = data
+    _, store = data
+    ids = [v["fighter_id"] for v in veterans]
+    db = history(tmp_path, veterans, five_bouts_each(veterans))
+    card(store, db, "e-upset", "2026-10-21", [won("upset", ids[5], ids[0])], stored_day=UPSET_DAY)
+    assert score_with(root, model_dir, db) == 0
+    form = store.load_event("e-upset").fights[0].form
+    assert [f.date for f in form.red] == ["2026-10-01", "2026-09-01", "2026-08-01"]
+    assert all(f.event != "UFC e-upset" for f in form.red + form.blue)

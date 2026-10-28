@@ -9,7 +9,7 @@ static files: `fightcard publish` writes them and nginx serves them. The exact r
 | URL | What you get |
 |---|---|
 | `/v1/index.json` | The entry point: upcoming and recent event ids, the model summary, `generated_at`, `contract_version` |
-| `/v1/events/{event_id}.json` | One card: its fights in order, tiers, results, and on a completed fight its `elo` at the time (from `contract_version` `"1.3"`) |
+| `/v1/events/{event_id}.json` | One card: its fights in order, tiers, results, and on a completed fight its `elo` at the time (from `contract_version` `"1.3"`) and each corner's `form` going in (from `"1.4"`) |
 | `/v1/fighters.json` | Every fighter on those cards, keyed by id |
 | `/v1/rankings.json` | The pound-for-pound lists (men, women) and every active fighter's Elo, for a rankings page and fighter search. Optional: it appears from `contract_version` `"1.2"` |
 | `/v1/images/{fighter_id}.webp` | A headshot (the fighter's `image` field gives the exact path) |
@@ -33,6 +33,11 @@ It's `null` on upcoming fights and on fights the ratings don't cover. The values
 `fighters.json`'s `elo`, so an old fight's numbers can move by a point between publishes. That also means a
 completed card's file can get a new `ETag` and `Last-Modified` (and change in the snapshot) when nothing happened
 on the card: expect the occasional `200` where you'd have had a `304`.
+
+A completed fight's `form` (`Fight.form`, `"1.4"`) is each corner's last three results before that fight, newest
+first, in the same shape as `fighters.json`'s `recent_fights`: `{"red": [{"result": "win", "opponent": "Dan Delta",
+...}], "blue": []}`. Use it on a past card instead of `recent_fights`, which is today's and so counts the fights after
+it. A debut's list is empty; it's `null` on upcoming fights.
 
 ## Status codes
 
