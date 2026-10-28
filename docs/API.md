@@ -42,13 +42,20 @@ Every response has a `Cache-Control` header saying how long you may reuse it wit
 the schema and rankings, a day for headshots.
 
 After that, ask again cheaply. Each response has an `ETag`, a fingerprint of the file. Send it back as
-`If-None-Match`. If the file hasn't changed, the server answers `304 Not Modified` with no body, and you keep
-your copy:
+`If-None-Match`, exactly as you got it. If the file hasn't changed, the server answers `304 Not Modified` with
+no body, and you keep your copy:
 
 ```
-curl -sI https://ufc-data.xlobax.com/v1/index.json            # note the ETag
-curl -sI -H 'If-None-Match: "<that etag>"' https://ufc-data.xlobax.com/v1/index.json   # 304
+curl -sI https://ufc-data.xlobax.com/v1/index.json            # note the ETag, e.g. W/"6ae18fc6-617"
+curl -sI -H 'If-None-Match: W/"6ae18fc6-617"' https://ufc-data.xlobax.com/v1/index.json   # 304
 ```
+
+The `ETag` comes in two forms. The service sits behind Cloudflare, which compresses the JSON on the way out and
+then marks the `ETag` weak, with a `W/` in front: you get `W/"6ae18fc6-617"` when you ask for `br` or for no
+compression, and `"6ae18fc6-617"` when you ask for `gzip`. The snapshot and the headshots are already compressed
+and always come with the plain `"..."` form. Either way, store the header as is, `W/` included, and send that
+string back; don't strip or add the `W/`, and don't take the ETag apart. (Both forms get the `304` today, but
+echoing it back is what keeps working.) `If-Modified-Since` with the `Last-Modified` you got works too.
 
 A file that didn't change between updates keeps its ETag, so headshots aren't downloaded again.
 

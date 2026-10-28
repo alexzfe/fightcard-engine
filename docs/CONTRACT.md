@@ -28,13 +28,35 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
 
 - `200` for the resources above; `HEAD` works too.
 - `304 Not Modified` for a conditional GET whose `If-None-Match` matches the `ETag` (or whose `If-Modified-Since`
-  equals `Last-Modified`). It carries the same `ETag` and `Cache-Control`, no body.
+  equals `Last-Modified`). It carries the same `ETag` and `Cache-Control`, no body. A client sends the `ETag`
+  (and `Last-Modified`) back exactly as it received them; see "ETags through Cloudflare" below.
 - `404` for anything else, directories included (no listings). Body `{"error": "not found"}`, `application/json; charset=utf-8`, `Cache-Control: no-store`.
 - `405` for any method but `GET`/`HEAD`, with `Allow: GET, HEAD` and a JSON body.
 - No CORS headers: consumers fetch server-side. No `Server` version.
 - `ETag` is nginx's `"<mtime>-<size>"` in hex. A file that didn't change between generations is shared with the
   previous one (hard link), so its `ETag` stays the same and clients keep their cached copy. A file that changed
   always gets a later mtime than the one it replaces, so its `ETag` always changes.
+
+### ETags through Cloudflare
+
+The public host, `https://ufc-data.xlobax.com`, is nginx behind Cloudflare. nginx doesn't compress, and it sends a
+strong `ETag`; Cloudflare compresses the JSON itself and marks the `ETag` weak when it does (RFC 9110: the bytes
+are no longer the file nginx fingerprinted). What a client sees, checked with curl on 2026-10-28:
+
+| Resource | `Accept-Encoding` | `Content-Encoding` | `ETag` |
+|---|---|---|---|
+| the JSON (`index.json`, events, `fighters.json`, `rankings.json`, `schema.json`) | `gzip` (alone or first in a list, e.g. `gzip, deflate, br`) | `gzip` | `"<mtime>-<size>"` |
+| the JSON | `br` | `br` | `W/"<mtime>-<size>"` |
+| the JSON | none, or `identity` | none | `W/"<mtime>-<size>"` |
+| `snapshot.tar.gz`, headshots | any | none (already compressed) | `"<mtime>-<size>"` |
+
+`Last-Modified` is the same in every case. The opaque part between the quotes doesn't change with the encoding,
+only the `W/` prefix does. Cloudflare compares `If-None-Match` weakly, so either form gets the `304`; the `304`
+itself carries the strong form. Still, a client treats the `ETag` as an opaque string: it stores the header
+verbatim (`W/` included) and sends that back, never strips, adds or rebuilds the prefix. It doesn't compare
+`ETag`s across encodings either, nor parse the mtime or size out of them. `Vary: Accept-Encoding` is set on the
+JSON, so a client that caches per encoding stays consistent. `If-Modified-Since` with the `Last-Modified` it
+received also gets the `304`.
 
 ### Versioning
 
