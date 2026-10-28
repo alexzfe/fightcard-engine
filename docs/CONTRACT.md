@@ -149,13 +149,17 @@ Same formatting rule as above. Field meanings, which `/v1/` inherits:
   `"1612"` for `1612`), or `null`.
   - `red_pre` / `blue_pre`: the fighter's rating going into the bout (from the bouts before the card's day, decayed
     to it), on today's shift: the displayed scale of the run that wrote it, the same as `Fighter.elo`. The anchor
-    moves as fighters come and go, so an old fight's values can move a point between publishes.
+    moves as fighters come and go, so an old fight's values can move a point between publishes. They are
+    recomputed every `score` run, never frozen, so a completed card's event file can change long after the card
+    whenever the shift moves: a new `ETag` and `Last-Modified`, and a changed file in `snapshot.tar.gz`, with no
+    news on the card itself.
   - `red_delta` / `blue_delta`: this bout's own change, rounded on its own (an early-UFC tournament fighter's bouts
     that day each show their own; they needn't add up to the day's change after rounding). `0` for a no contest,
     including CNC and Overturned.
   - `red_p4p_rank` / `blue_p4p_rank`: the P4P rank going into the card, i.e. the lists as of the day before (bouts
-    strictly before the card's day, the same rules as `Fighter.p4p_rank`), `1`–`15` men, `1`–`10` women, or `null`
-    when unranked. A result on the card itself never moves it.
+    strictly before the bout's day in the history store, the day `*_pre` is decayed to, the same rules as
+    `Fighter.p4p_rank`), `1`–`15` men, `1`–`10` women, or `null` when unranked. A result on the card itself never
+    moves it.
   - `null` for an upcoming fight, one with no result, and one the history store doesn't have under that fight id
     (store ids are the site's ids) or that is after `score --now`. `score --no-history` leaves it as it is. There is
     no record at the time (ufcstats records include regional bouts the store doesn't have).

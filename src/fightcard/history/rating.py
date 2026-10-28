@@ -124,7 +124,8 @@ def result_score(result: str, method: str | None) -> float | None:
     return w if result == "win" else 1 - w
 
 
-def _gender(classes: set) -> str | None:
+def gender_of(classes: set) -> str | None:
+    """A fighter's gender from the weight classes they fought at (the rule above); `fightcard.history.timeline` too."""
     named = {c for c in classes if isinstance(c, str) and c not in UNGENDERED_CLASSES}
     if any(c.startswith("Women's") for c in named):
         return "F"
@@ -188,7 +189,7 @@ def rate(bouts: list[dict], names: dict | None = None) -> tuple[list[dict], pd.D
         "n_bouts": np.array([n[f] for f in ids], dtype=np.int64),
         "n_ufc_bouts": np.array([n_ufc[f] for f in ids], dtype=np.int64),
         "peak": np.array([peak.get(f, np.nan) for f in ids], dtype=np.float64),
-        "gender": pd.Series([_gender(classes[f]) for f in ids], dtype=object),
+        "gender": pd.Series([gender_of(classes[f]) for f in ids], dtype=object),
         "best_win_opponent_id": pd.Series([best[f][1] if f in best else None for f in ids], dtype=object),
         "best_win_opponent": pd.Series([names.get(best[f][1]) if f in best else None for f in ids], dtype=object),
         "best_win_rating": np.array([best[f][0] if f in best else np.nan for f in ids], dtype=np.float64),

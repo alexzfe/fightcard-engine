@@ -50,9 +50,13 @@ the current ratings (computed each run, not stored: `score` opens the store read
 - **Scale:** today's shift, the same one as `Fighter.elo` and `rankings.json`, for every published value, so a pre and
   the current Elo compare directly. The anchor moves as fighters come and go, so an old fight's values may move
   a point between publishes.
-- **Rank:** the P4P rank as of the day before the card (bouts strictly before it, the same rules as above), so the
-  card's own results never move it. The same lists `fightcard history rankings --as-of <the day before>` prints.
-  That command gives historical rankings for any day.
+- **Rank:** the P4P rank as of the day before the card (bouts strictly before the bout's day in the store, the day the
+  pre is decayed to; the same rules as above), so the card's own results never move it. `fightcard history rankings
+  --as-of D` rates the bouts up to and including D, so the rank going into a card on D is its `p4p` with
+  `--as-of <D minus one day>`, exactly; `--as-of D` already counts the card. That command gives historical rankings
+  at the end of any day.
+- **Churn:** values are recomputed every run on today's shift (not frozen like tiers), so a completed card's event
+  file can change (new `ETag`, `Last-Modified`, snapshot) when the shift moves.
 - No record at the time: ufcstats records include regional bouts that aren't in the store.
 
 ## Where it is computed

@@ -29,8 +29,8 @@
   `--no-history` scores tiers only and leaves the rating fields as they are.
 - Each completed fight's `elo` (`fightcard.history.timeline`, from the same pass): both fighters' ratings going in
   and the bout's own change, on today's display shift (as `Fighter.elo`, so they can move a point between runs), and
-  their P4P ranks going into the card's day (as of the day before). Null for a fight with no result or one the pass
-  doesn't have (after `--now`, unrated, another fight id). `--no-history` leaves it as it is.
+  their P4P ranks going into the bout's day in the store (as of the day before). Null for a fight with no result or
+  one the pass doesn't have (after `--now`, unrated, another fight id). `--no-history` leaves it as it is.
 """
 
 from __future__ import annotations
@@ -185,15 +185,16 @@ def _rating_fields(r: dict) -> dict:
     return r | {"best_win": None if r["best_win"] is None else BestWin(**r["best_win"])}
 
 
-def fight_elo(fight: Fight, day: str, timeline: Timeline, shift: float) -> FightElo | None:
+def fight_elo(fight: Fight, timeline: Timeline, shift: float) -> FightElo | None:
     """`Fight.elo`: each fighter's rating going into the bout and its own change on the display `shift` (the one
-    Fighter.elo uses), each rounded on its own, and their P4P ranks going into `day`. None without a result, or when
-    the pass doesn't have this fight between these two fighters."""
-    sides = timeline.bout(fight.id) if fight.result is not None else None
-    if sides is None or set(sides) != {fight.red, fight.blue}:
+    Fighter.elo uses), each rounded on its own, and their P4P ranks going into the bout's day (the store's, the day
+    the pre is decayed to, whatever data/ dates the card). None without a result, or when the pass doesn't have this
+    fight between these two fighters."""
+    bout = timeline.bout(fight.id) if fight.result is not None else None
+    if bout is None or set(bout.sides) != {fight.red, fight.blue}:
         return None
-    rank = {e["id"]: e["rank"] for entries in timeline.p4p(day).values() for e in entries}
-    red, blue = sides[fight.red], sides[fight.blue]
+    rank = timeline.ranks(bout.date)
+    red, blue = bout.sides[fight.red], bout.sides[fight.blue]
     return FightElo(red_pre=round(red.pre + shift), red_delta=round(red.delta),
                     blue_pre=round(blue.pre + shift), blue_delta=round(blue.delta),
                     red_p4p_rank=rank.get(fight.red), blue_p4p_rank=rank.get(fight.blue))
@@ -242,7 +243,7 @@ def run(args: argparse.Namespace) -> int:
     if timeline is not None:
         for ev in events:
             for fight in ev.fights:
-                fight.elo = fight_elo(fight, ev.date, timeline, shift)
+                fight.elo = fight_elo(fight, timeline, shift)
     for ev in events:
         store.save_event(ev)
     stale_path = store.root / "stale_fighters.json"
