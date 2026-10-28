@@ -28,7 +28,8 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
 
 - `200` for the resources above; `HEAD` works too.
 - `304 Not Modified` for a conditional GET whose `If-None-Match` matches the `ETag` (or whose `If-Modified-Since`
-  equals `Last-Modified`). It carries the same `ETag` and `Cache-Control`, no body. A client sends the `ETag`
+  equals `Last-Modified`; Cloudflare also answers `304` to a later date). It carries the `ETag` (in either form
+  behind Cloudflare, see below) and `Cache-Control`, no body. A client sends the `ETag`
   (and `Last-Modified`) back exactly as it received them; see "ETags through Cloudflare" below.
 - `404` for anything else, directories included (no listings). Body `{"error": "not found"}`, `application/json; charset=utf-8`, `Cache-Control: no-store`.
 - `405` for any method but `GET`/`HEAD`, with `Allow: GET, HEAD` and a JSON body.
@@ -40,23 +41,21 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
 ### ETags through Cloudflare
 
 The public host, `https://ufc-data.xlobax.com`, is nginx behind Cloudflare. nginx doesn't compress, and it sends a
-strong `ETag`; Cloudflare compresses the JSON itself and marks the `ETag` weak when it does (RFC 9110: the bytes
-are no longer the file nginx fingerprinted). What a client sees, checked with curl on 2026-10-28:
+strong `ETag`; Cloudflare compresses the JSON itself and may weaken the `ETag` (RFC 9110: its bytes needn't be the
+file nginx fingerprinted), on compressed and uncompressed responses alike.
 
-| Resource | `Accept-Encoding` | `Content-Encoding` | `ETag` |
-|---|---|---|---|
-| the JSON (`index.json`, events, `fighters.json`, `rankings.json`, `schema.json`) | `gzip` (alone or first in a list, e.g. `gzip, deflate, br`) | `gzip` | `"<mtime>-<size>"` |
-| the JSON | `br` | `br` | `W/"<mtime>-<size>"` |
-| the JSON | none, or `identity` | none | `W/"<mtime>-<size>"` |
-| `snapshot.tar.gz`, headshots | any | none (already compressed) | `"<mtime>-<size>"` |
+The JSON's `ETag` may come back weak (`W/"<mtime>-<size>"`) or strong (`"<mtime>-<size>"`) whatever the
+`Accept-Encoding`. Which one you get depends on the copy Cloudflare holds, can differ between files and changes
+over time: on 2026-10-28, gzip responses were strong for every file checked, but earlier that day events and
+`rankings.json` were weak over gzip too; `br`, `zstd`, `identity` and no `Accept-Encoding` were weak.
+`snapshot.tar.gz` and the headshots are already compressed, get no `Content-Encoding` and are always strong.
 
-`Last-Modified` is the same in every case. The opaque part between the quotes doesn't change with the encoding,
-only the `W/` prefix does. Cloudflare compares `If-None-Match` weakly, so either form gets the `304`; the `304`
-itself carries the strong form. Still, a client treats the `ETag` as an opaque string: it stores the header
-verbatim (`W/` included) and sends that back, never strips, adds or rebuilds the prefix. It doesn't compare
-`ETag`s across encodings either, nor parse the mtime or size out of them. `Vary: Accept-Encoding` is set on the
-JSON, so a client that caches per encoding stays consistent. `If-Modified-Since` with the `Last-Modified` it
-received also gets the `304`.
+`Last-Modified` and the opaque part between the quotes are the same in every case; only the `W/` prefix varies.
+Cloudflare compares `If-None-Match` weakly, so either form gets the `304`. The `304` carries an `ETag` in either
+form, not necessarily the one you sent; keeping your stored value or replacing it with the 304's both work. A
+client treats the `ETag` as an opaque string: it stores the header verbatim (`W/` included) and sends that back,
+never strips, adds or rebuilds the prefix, and doesn't parse the mtime or size out of it. `Vary: Accept-Encoding`
+is set on the JSON. `If-Modified-Since` with the `Last-Modified` it received also gets the `304`.
 
 ### Versioning
 

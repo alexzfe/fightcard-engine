@@ -51,9 +51,10 @@ curl -sI -H 'If-None-Match: W/"6ae18fc6-617"' https://ufc-data.xlobax.com/v1/ind
 ```
 
 The `ETag` comes in two forms. The service sits behind Cloudflare, which compresses the JSON on the way out and
-then marks the `ETag` weak, with a `W/` in front: you get `W/"6ae18fc6-617"` when you ask for `br` or for no
-compression, and `"6ae18fc6-617"` when you ask for `gzip`. The snapshot and the headshots are already compressed
-and always come with the plain `"..."` form. Either way, store the header as is, `W/` included, and send that
+may mark the `ETag` weak, with a `W/` in front. Whether it does depends on the file and on Cloudflare's cache, not
+just on what you ask for: `index.json` gives `W/"6ae18fc6-617"` to plain curl and, usually, `"6ae18fc6-617"` with
+`Accept-Encoding: gzip`, but expect either form for any JSON file. The snapshot and the headshots are already
+compressed and always come with the plain `"..."` form. Either way, store the header as is, `W/` included, and send that
 string back; don't strip or add the `W/`, and don't take the ETag apart. (Both forms get the `304` today, but
 echoing it back is what keeps working.) `If-Modified-Since` with the `Last-Modified` you got works too.
 
