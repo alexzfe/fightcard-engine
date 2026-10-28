@@ -47,3 +47,50 @@ timeline tests fail.
 
 `p4p(day)` is as of D-1 (bouts before D, decayed to the day before, as `fightcard history rankings --as-of D-1`
 gives), while `state(f, D)` is decayed to D itself, the rating the fighter carried into the bout.
+
+## Phase 2: event fields + contract
+
+### User journeys
+- As a visitor, I want a completed fight to show each fighter's Elo going in, the bout's own change and their P4P
+  rank going in ("1612 (+26) · #4 P4P"), so I can see what the result meant at the time.
+- As a consumer of `/v1/`, I want it as an optional, strictly typed `Fight.elo` announced by `contract_version`
+  `"1.3"`, so older events still validate and I know when it appears.
+
+### Checkpoints
+| Stage | Commit | Command | Result |
+|---|---|---|---|
+| RED | 75b4e64 | `uv run pytest -q` | 33 failed (7 score: no `Fight.elo`; 4 publish: version 1.2, no `elo` in the schema; 3 strict-int refusals; 18 docs; `test_score_tests_find_the_vendored_model_at_the_repo_root`, which reruns the score suite), 1053 passed, 1 skipped |
+| GREEN | a4a57ea | `uv run pytest -q` | 1086 passed, 1 skipped; `uv run pytest -q -m seed tests/history` 7 passed |
+
+`models.FightElo` (strict, like `rankings.json`: `red_pre`, `red_delta`, `blue_pre`, `blue_delta` ints, `red_p4p_rank`,
+`blue_p4p_rank` int ≥ 1 or null, all required) and `Fight.elo: FightElo | None = None`. `score` builds
+`Timeline.from_pass` from its one `history_pass` and, after the tiers, sets `fight.elo = fight_elo(fight, ev.date,
+timeline, shift)` on every fight of every event in data/: `shift` is `display.scale(ratings, now)`'s, the one
+`Fighter.elo` uses; only the `rank` comes from `Timeline.p4p(card day)` (its `elo` values are on that day's own
+shift). `CONTRACT_VERSION = "1.3"`.
+
+Mutation check: taking the rank from `p4p(day + 1)` (after the card) fails 2 score tests.
+
+### Guarantees
+| # | What is guaranteed | Test |
+|---|---|---|
+| 1 | A completed fight's `elo` = the timeline's `bout(fight_id)` pre + today's shift and own delta, each rounded on its own, and `p4p(card day)`'s ranks; the upset winner's delta > 0 > the loser's | `test_a_completed_fight_gets_each_fighters_elo_going_in_and_its_own_change` |
+| 2 | The shift is today's: the winner's pre + delta, decayed to now, + shift is their `Fighter.elo` | `test_the_shift_is_todays_the_same_as_fighter_elo` |
+| 3 | The rank is the one going into the card: v5's rank moved with the upset, and the fight shows the pre-card one | `test_the_rank_is_the_one_going_into_the_card_not_after_it` |
+| 4 | NC (Overturned) → both deltas 0 | `test_a_no_contest_has_a_zero_change` |
+| 5 | Upcoming → null; a completed card in the store under another fight id → null | `test_upcoming_and_unmatched_fights_have_no_elo` |
+| 6 | A fight with a result dated after `--now` → null (not in this run's pass) | `test_a_fight_with_a_result_on_an_upcoming_card_has_no_elo_until_the_store_has_it` |
+| 7 | `--no-history` leaves `Fight.elo` as it is | `test_no_history_leaves_fight_elo_as_it_is` |
+| 8 | Written as a JSON object with the six keys; `null` on upcoming fights | `test_fight_elo_is_written_as_a_json_object` |
+| 9 | Published as in data/; optional in `schema.json`, `FightElo` requires all six; contract 1.3 | `test_fight_elo_is_published_and_in_the_schema`, `test_the_contract_version_is_1_3`, `test_index_adds_contract_version_…`, `test_schema_describes_the_top_level_types` |
+| 10 | Publish refuses `"1612"`, `2.5` or a rank of 0 | `test_refuses_a_fight_elo_that_is_not_a_strict_int` |
+| 11 | CONTRACT.md (1.3 line, field meanings, `score` row), API.md and ELO.md (the day before, the shift caveat, `--as-of`, tournament days) | `tests/test_docs.py` (`…fight_elo…`, `test_contract_covers["1.3"]`) |
+
+### Timing (full store via the `seed_db` fixture, 40 latest cards, 417 fights, three runs)
+| Step | Time |
+|---|---|
+| `history_pass` | 0.06–0.07 s |
+| `Timeline.from_pass` + `display.scale` | 0.06–0.08 s |
+| `fight_elo` over the 417 fights | 0.59–0.62 s (~15 ms per card: one `p4p(day)` per card date, cached) |
+
+data/ holds a handful of completed cards (7 events in the site's data/ today), so it adds well under 0.2 s per run.
