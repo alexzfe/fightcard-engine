@@ -234,7 +234,8 @@ def test_history_ratings_rate_the_store_up_to_as_of(tmp_path):
 
 
 def test_history_pass_is_the_one_pass_score_images_and_the_rankings_cli_share(tmp_path):
-    """(ratings, bouts, names) as of a day: `history_ratings`' rows, plus the bouts and names they were rated from."""
+    """(ratings, bouts, names, log) as of a day: `history_ratings`' rows, the bouts and names they were rated from,
+    and `rate`'s per-bout log (the timeline's input)."""
     from fightcard.history.rating import history_pass
     from fightcard.history.store import names, rating_bouts
     conn = connect(tmp_path / "h.sqlite")
@@ -246,11 +247,12 @@ def test_history_pass_is_the_one_pass_score_images_and_the_rankings_cli_share(tm
         upsert_event(conn, Event(id="e2", slug="y", name="UFC 2", date="2026-02-01", status="completed",
                                  fights=[fights[0].model_copy(update={"id": "f2"})]), is_ufc=True, source="listing")
         conn.execute("INSERT INTO fighters (fighter_id, name) VALUES ('a', 'Al'), ('b', 'Bo')")
-    ratings, bouts, who = history_pass(conn, "2026-01-31")
-    pd.testing.assert_frame_equal(ratings, history_ratings(conn, as_of="2026-01-31"))
-    assert bouts == rating_bouts(conn, "2026-01-31") and len(bouts) == 1
-    assert who == names(conn) == {"a": "Al", "b": "Bo"}
-    assert history_pass(conn)[1] == rating_bouts(conn, None) and len(history_pass(conn)[1]) == 2
+    hp = history_pass(conn, "2026-01-31")
+    pd.testing.assert_frame_equal(hp.ratings, history_ratings(conn, as_of="2026-01-31"))
+    assert hp.bouts == rating_bouts(conn, "2026-01-31") and len(hp.bouts) == 1
+    assert hp.names == names(conn) == {"a": "Al", "b": "Bo"}
+    assert hp.log == rate(hp.bouts, hp.names)[0] and [r["fight_id"] for r in hp.log] == ["f1"]
+    assert history_pass(conn).bouts == rating_bouts(conn, None) and len(history_pass(conn).bouts) == 2
     conn.close()
 
 
