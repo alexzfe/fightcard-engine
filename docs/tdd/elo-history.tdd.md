@@ -94,3 +94,29 @@ Mutation check: taking the rank from `p4p(day + 1)` (after the card) fails 2 sco
 | `fight_elo` over the 417 fights | 0.59–0.62 s (~15 ms per card: one `p4p(day)` per card date, cached) |
 
 data/ holds a handful of completed cards (7 events in the site's data/ today), so it adds well under 0.2 s per run.
+
+## Review fixes (PR #11: python-reviewer + code-reviewer, triaged; no CRITICAL/HIGH)
+
+### Checkpoints
+| Stage | Commit | Command | Result |
+|---|---|---|---|
+| RED | 7d5dde3 | `uv run pytest -q` | 20 failed (10 timeline: `bout().date`/`.sides`, `ranks`, the copy, the ValueError; 5 score; 3 docs; `test_score_tests_find_the_vendored_model_at_the_repo_root`, which reruns the score suite), 1080 passed, 1 skipped |
+| GREEN | 7750bc3 | `uv run pytest -q` | 1100 passed, 1 skipped; `uv run pytest -q -m seed tests/history` 7 passed |
+
+Already green at RED, kept as coverage: the debut test, `FightElo` without a rank key (×2), the `--as-of` test.
+Mutation check: taking the rank going into the day after the bout fails 4 score tests, including the F1 one.
+
+### Fixes
+| Id | Fix | Test |
+|---|---|---|
+| F1 | The rank and pre refer to the same day: `Timeline.bout(fight_id)` returns `Bout(date, sides)` with the store's date for the bout, and `fight_elo(fight, timeline, shift)` takes the rank going into `bout.date` (it no longer takes data/'s `ev.date`). The store's day was chosen over null + a warning: pre and delta are already from it, so it is the consistent one. | `test_the_rank_is_taken_going_into_the_stores_day_for_the_bout`, `test_bout_says_the_day_it_was_rated_on` |
+| F2 | `Timeline.ranks(day)`: {fighter_id: rank}, cached per day as a `MappingProxyType`; `fight_elo` uses it instead of rebuilding a dict per fight. `p4p(day)` returns a copy (new dicts and lists) of the cached lists. | `test_ranks_are_the_p4p_lists_by_fighter_id_read_only`, `test_changing_the_p4p_lists_a_caller_got_does_not_change_the_next_call` |
+| F3 | CONTRACT.md (`Fight.elo`'s pre bullet), API.md and ELO.md: recomputed every run on today's shift, so a completed card's file can change (`ETag`, `Last-Modified`, snapshot) when the shift moves. Not frozen (decided). | `test_contract_says_fight_elo_can_change_a_completed_event_file`, `test_api_doc_says_fight_elo_can_change_a_completed_event_file` |
+| F4 | `rating._gender` → `rating.gender_of` (public, docstring); `rate` and the timeline call it. No behaviour change. | the existing `test_gender_from_weight_classes` and equivalence tests |
+| F5 | Docstrings on `State`, `Side`, `Bout`, `Timeline`; the module docstring says `score` uses `bout`/`ranks` and `state`/`series` are kept for the Elo chart and historical rankings. A log fight id missing from `bouts` raises `ValueError` naming it. | `test_a_log_row_without_its_bout_is_a_clear_error` |
+| F6 | Debut: pre = `round(START + shift)`, rank null. Two bouts on one day: the same pre and rank, each its own delta. Corners swapped between data/ and the store: values follow the fighter ids. The unmatched test now also has a fight id the store has between other fighters (hits the `set(sides) != {red, blue}` guard). `FightElo` without `red_p4p_rank` / `blue_p4p_rank` is refused. | `test_a_fighter_debuting_on_the_card_…`, `test_two_bouts_on_one_day_…`, `test_corners_swapped_…`, `test_upcoming_and_unmatched_fights_have_no_elo`, `test_refuses_a_fight_elo_without_a_rank_key` |
+| F7 | Checked: `fightcard history rankings --as-of X` is `history_pass(as_of=X)` (bouts up to and including X) with `p4p(..., X)`, which is exactly `Timeline.p4p(X + 1 day)`. ELO.md now says "up to and including", that `--as-of <D minus one day>` gives the rank going into D, and that `--as-of D` already counts the card. | `test_the_lists_going_into_a_day_are_history_rankings_as_of_the_day_before`, `test_elo_doc_says_as_of_includes_the_day` |
+
+### Checked, not acting
+- Per-day P4P cost: 0.6 s for 40 cards / 417 fights, and data/ holds a handful of completed cards; left as is (`ranks` now also saves the per-fight dict).
+- Aliasing of `Fight` objects: `score_events` deep-copies every event (`ev.model_copy(deep=True)`), so setting `fight.elo` on what it returns never touches the loaded models.
