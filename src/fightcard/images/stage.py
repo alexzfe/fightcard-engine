@@ -87,7 +87,7 @@ def _p4p_names(db: Path, now: datetime) -> dict[str, str]:
         if not db.is_file():
             raise FileNotFoundError("no such file")
         with closing(sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True)) as conn:
-            ratings, bouts, who = history_pass(conn, now.date().isoformat())
+            ratings, bouts, who, _ = history_pass(conn, now.date().isoformat())
         lists = p4p(ratings, who, divisions(bouts), now.date())
     except Exception as e:  # noqa: BLE001 - the store only says whose headshots to fetch; it never fails the step
         log.warning("no P4P headshots: history store %s is unusable (%s); fetching the card fighters only", db, e)
