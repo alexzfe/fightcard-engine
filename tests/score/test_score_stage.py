@@ -720,3 +720,145 @@ def test_score_takes_its_ratings_from_the_shared_history_pass(data, model_dir, v
     root, _ = data
     assert score_with(root, model_dir, history(tmp_path, veterans)) == 0
     assert [as_of for _, as_of in calls] == [NOW[:10]]
+
+
+# --- fight-time Elo: Fight.elo on completed fights (docs/CONTRACT.md, "1.3") --------------------------------------------
+
+UPSET_DAY = "2026-10-20"
+
+
+def card(store: Store, db: Path, eid: str, day: str, fights: list[Fight]) -> Event:
+    """A completed card in data/ and in the history store, with the same ids (store ids == site ids)."""
+    ev = event(eid, day, fights, status="completed")
+    store.save_event(ev)
+    conn = connect(db)
+    with conn:
+        upsert_event(conn, ev, is_ufc=True, source="listing")
+    conn.close()
+    return ev
+
+
+def won(fid: str, winner: str, loser: str, outcome="win", method="U-DEC") -> Fight:
+    return Fight(id=fid, red=winner, blue=loser, weight_class="Lightweight",
+                 result=Result(winner=winner if outcome == "win" else None, outcome=outcome, method=method, round=3))
+
+
+def upset_card(data, veterans, tmp_path) -> tuple[Store, Path, list[str]]:
+    """Every veteran has 5 UFC bouts (ranked), then on UPSET_DAY v5 (who lost all five) beats v0 (who won all five)
+    and v2 and v3 fight to a no contest."""
+    _, store = data
+    ids = [v["fighter_id"] for v in veterans]
+    db = history(tmp_path, veterans, five_bouts_each(veterans))
+    card(store, db, "e-upset", UPSET_DAY, [won("upset", ids[5], ids[0]),
+                                           won("nc", ids[2], ids[3], outcome="nc", method="Overturned")])
+    return store, db, ids
+
+
+def timeline_of(db: Path, now: str = NOW):
+    from fightcard.history.display import scale
+    from fightcard.history.rating import history_pass
+    from fightcard.history.timeline import Timeline
+    conn = connect(db)
+    try:
+        hp = history_pass(conn, now[:10])
+    finally:
+        conn.close()
+    return Timeline.from_pass(hp), scale(hp.ratings, date.fromisoformat(now[:10]))[2]
+
+
+def rank_going_into(tl, fid: str, day: str) -> int | None:
+    return next((e["rank"] for side in tl.p4p(day).values() for e in side if e["id"] == fid), None)
+
+
+def test_a_completed_fight_gets_each_fighters_elo_going_in_and_its_own_change(data, model_dir, veterans, tmp_path):
+    """pre and delta from the timeline on today's display shift (the same as Fighter.elo), each rounded on its own;
+    the rank is the P4P rank going into the card's day."""
+    root, _ = data
+    store, db, ids = upset_card(data, veterans, tmp_path)
+    assert score_with(root, model_dir, db) == 0
+    tl, shift = timeline_of(db)
+    fight = next(f for f in store.load_event("e-upset").fights if f.id == "upset")
+    sides = tl.bout("upset")
+    assert fight.elo.model_dump() == {
+        "red_pre": round(sides[ids[5]].pre + shift), "red_delta": round(sides[ids[5]].delta),
+        "blue_pre": round(sides[ids[0]].pre + shift), "blue_delta": round(sides[ids[0]].delta),
+        "red_p4p_rank": rank_going_into(tl, ids[5], UPSET_DAY), "blue_p4p_rank": rank_going_into(tl, ids[0], UPSET_DAY)}
+    assert fight.elo.red_delta > 0 > fight.elo.blue_delta
+    assert fight.elo.blue_pre > fight.elo.red_pre
+
+
+def test_the_shift_is_todays_the_same_as_fighter_elo(data, model_dir, veterans, tmp_path):
+    """The winner's last bout is the card: pre + delta on today's shift, decayed to now, is their Fighter.elo give or
+    take the rounding and the decay since the card."""
+    root, _ = data
+    store, db, ids = upset_card(data, veterans, tmp_path)
+    assert score_with(root, model_dir, db) == 0
+    tl, shift = timeline_of(db)
+    from fightcard.history.rating import decayed
+    sides = tl.bout("upset")
+    after = decayed(sides[ids[5]].pre + sides[ids[5]].delta, (date.fromisoformat(NOW[:10])
+                                                               - date.fromisoformat(UPSET_DAY)).days)
+    assert store.load_fighters()[ids[5]].elo == round(after + shift)
+
+
+def test_the_rank_is_the_one_going_into_the_card_not_after_it(data, model_dir, veterans, tmp_path):
+    """v5's rank moved with the upset: the fight shows the rank before the card (P4P as of the day before)."""
+    root, _ = data
+    store, db, ids = upset_card(data, veterans, tmp_path)
+    assert score_with(root, model_dir, db) == 0
+    tl, _ = timeline_of(db)
+    elo = next(f for f in store.load_event("e-upset").fights if f.id == "upset").elo
+    before, after = rank_going_into(tl, ids[5], UPSET_DAY), store.load_fighters()[ids[5]].p4p_rank
+    assert before is not None and after is not None and before != after
+    assert elo.red_p4p_rank == before
+
+
+def test_a_no_contest_has_a_zero_change(data, model_dir, veterans, tmp_path):
+    root, _ = data
+    store, db, _ = upset_card(data, veterans, tmp_path)
+    assert score_with(root, model_dir, db) == 0
+    elo = next(f for f in store.load_event("e-upset").fights if f.id == "nc").elo
+    assert elo is not None and elo.red_delta == 0 and elo.blue_delta == 0
+
+
+def test_upcoming_and_unmatched_fights_have_no_elo(data, model_dir, veterans, tmp_path):
+    """Upcoming: no result. Unmatched: the card is in the store but not this fight id. Both null."""
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    store.save_event(completed("e-late", "2026-10-31", v0, v1))  # fight "e-late-1"; the store has "late"
+    db = history(tmp_path, veterans, [("2026-10-31", "late", v0, v1)])
+    assert score_with(root, model_dir, db) == 0
+    assert [f.elo for f in store.load_event("future").fights] == [None, None, None]
+    assert [f.elo for f in store.load_event("e-late").fights] == [None]
+
+
+def test_a_fight_with_a_result_on_an_upcoming_card_has_no_elo_until_the_store_has_it(data, model_dir, veterans,
+                                                                                       tmp_path):
+    """A fight id the store has, on a card dated after --now: not in this run's pass, so null."""
+    root, store = data
+    v0, v1 = veterans[0]["fighter_id"], veterans[1]["fighter_id"]
+    db = history(tmp_path, veterans)
+    card(store, db, "e-next", "2026-11-08", [won("next", v0, v1)])
+    assert score_with(root, model_dir, db) == 0
+    assert store.load_event("e-next").fights[0].elo is None
+
+
+def test_no_history_leaves_fight_elo_as_it_is(data, model_dir, veterans, tmp_path):
+    root, _ = data
+    store, db, _ = upset_card(data, veterans, tmp_path)
+    assert score_with(root, model_dir, db) == 0
+    before = store.load_event("e-upset").fights[0].elo
+    assert before is not None
+    assert score(root, model_dir) == 0
+    assert store.load_event("e-upset").fights[0].elo == before
+
+
+def test_fight_elo_is_written_as_a_json_object(data, model_dir, veterans, tmp_path):
+    root, _ = data
+    _, db, _ = upset_card(data, veterans, tmp_path)
+    assert score_with(root, model_dir, db) == 0
+    fights = json.loads((root / "events" / "e-upset.json").read_text())["fights"]
+    assert set(fights[0]["elo"]) == {"red_pre", "red_delta", "blue_pre", "blue_delta", "red_p4p_rank",
+                                     "blue_p4p_rank"}
+    upcoming = json.loads((root / "events" / "future.json").read_text())["fights"]
+    assert all(f["elo"] is None for f in upcoming)

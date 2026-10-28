@@ -43,7 +43,7 @@ def test_contract_lists_every_endpoint_with_its_cache_policy(endpoint, cache):
 @pytest.mark.parametrize("term", [
     "https://ufc-data.xlobax.com", "contract_version", "/v2/", "additive", "ETag", "304", "404", "405",
     "application/json; charset=utf-8", "snapshot", "deterministic", "2-space", "sorted", "trailing newline",
-    "fightcard publish", "generations/", "schema.json", "rankings.json", '"1.1"', '"1.2"', "p4p_rank", "as_of",
+    "fightcard publish", "generations/", "schema.json", "rankings.json", '"1.1"', '"1.2"', '"1.3"', "p4p_rank", "as_of",
     # Review fixes: a consumer's allowlist of files broke on rankings.json; the rank/elo guarantee needs a history run.
     "fields and files they don't know", "announced in a minor version", "holds after a history run",
 ])
@@ -221,6 +221,35 @@ def test_contract_versioning_says_1_2_added_rankings_json():
     one_one = next(line for line in section.splitlines() if line.strip().startswith('- `"1.1"`'))
     assert "rankings.json" not in one_one  # 1.1 is the model work's, and stays as it was
     assert '`"1.1"` added `rankings.json`' not in CONTRACT and '`"1.2"` added `rankings.json`' in CONTRACT
+
+
+def test_contract_versioning_says_1_3_added_fight_elo():
+    section = CONTRACT.split("### Versioning")[1].split("###")[0]
+    line = next((line for line in section.splitlines() if line.strip().startswith('- `"1.3"`')), None)
+    assert line is not None and "Fight.elo" in line
+
+
+@pytest.mark.parametrize("term", ["Fight.elo", "red_pre", "red_delta", "blue_pre", "blue_delta", "red_p4p_rank",
+                                  "blue_p4p_rank", "the day before", "today's shift"])
+def test_contract_documents_fight_elo(term):
+    layout = CONTRACT.split("## data/ layout")[1].split("\n## ")[0]
+    assert term in layout, term
+
+
+def test_score_row_names_fight_elo():
+    row = next(line for line in CONTRACT.splitlines() if line.startswith("| `score`"))
+    assert "`Fight.elo`" in row
+
+
+def test_api_doc_explains_fight_elo():
+    doc = api_doc()
+    assert "Fight.elo" in doc or "`elo`" in doc
+    assert '`"1.3"`' in doc and "red_pre" in doc
+
+
+@pytest.mark.parametrize("term", ["Fight.elo", "the day before", "a point", "--as-of", "tournament"])
+def test_elo_doc_explains_fight_time_elo(term):
+    assert term in (REPO / "docs" / "ELO.md").read_text(), term
 
 
 def test_api_doc_says_rankings_json_appears_from_1_2():
