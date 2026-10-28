@@ -68,6 +68,8 @@ is set on the JSON. `If-Modified-Since` with the `Last-Modified` it received als
   - `"1.2"`: adds `rankings.json` (the P4P lists and the active-fighter index). Nothing else changed.
   - `"1.3"`: adds `Fight.elo` (a completed fight's Elo going in, the bout's own change and the P4P rank going in).
     Optional, so events written before it still validate.
+  - `"1.4"`: adds `Fight.form` (a completed fight's last three results per corner before it). Optional, so events
+    written before it still validate.
 - Enum values are closed within `/v1/`: `Event.status`, `Fight.finish_tier`, `Fight.segment`, `PastFight.result`,
   `Result.outcome` and `ModelInfo.tiers`' keys keep exactly the values they have. Consumers validate them strictly
   (the site does), so a new value in an existing enum is a breaking change and ships as `/v2/`. A new field may
@@ -163,6 +165,18 @@ Same formatting rule as above. Field meanings, which `/v1/` inherits:
   - `null` for an upcoming fight, one with no result, and one the history store doesn't have under that fight id
     (store ids are the site's ids) or that is after `score --now`. `score --no-history` leaves it as it is. There is
     no record at the time (ufcstats records include regional bouts the store doesn't have).
+- `Fight.form` (`"1.4"`): each corner's form going into a completed fight, written by `score` from the history store,
+  so a past card shows the results its fighters brought in rather than today's `Fighter.recent_fights` (which would
+  count the fights after it). `{"red": [PastFight, ...], "blue": [PastFight, ...]}`, or `null`.
+  - Each list is that fighter's last results strictly before the bout's day in the history store (data/'s date when
+    the store doesn't have the bout, so the bout never counts toward itself), newest first, at most 3, each a
+    `PastFight` from their side (`win` / `loss` / `draw` / `nc`). Within an earlier day (an early-UFC tournament)
+    the main event comes first.
+  - It counts every bout with a result in the store, whatever the rating's scope (a small non-UFC card the rating
+    leaves out still counts). Bouts the store doesn't have (most regional fights) don't, so a fighter's first UFC
+    bouts can show fewer than 3, and a debut an empty list.
+  - `null` for an upcoming fight or one with no result. Recomputed every `score` run from the store; `score
+    --no-history` leaves it as it is.
 
 ### rankings.json
 
@@ -233,7 +247,7 @@ Run from the repo root: `uv run fightcard --data data <stage>`.
 | `segments` | `fightcard.segments` | events/, fighters.json, ESPN | `Fight.segment` (upcoming events only) |
 | `history ingest` | `fightcard.history` | a ufcstats HTML cache (`--html-dir`) | the history store (`--db`, SQLite), optional sorted JSONL dump |
 | `model pull` | `fightcard.model` | `$FIGHTCARD_MODEL_URL` (`latest.json`, `<version>/<file>`), the baked model/ (first boot seed) | `state/model/<version>/` and the `state/model/current` symlink (`--root`, default `<--data>/../model`); see `docs/SERVICE.md` |
-| `score` | `fightcard.score` | model/, events/, fighters.json, the history store (`--history-db`, read-only; default `<--data>/../history/history.sqlite`) | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json`, `Fighter.elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`, `Fight.elo`, `data/rankings.json` |
+| `score` | `fightcard.score` | model/, events/, fighters.json, the history store (`--history-db`, read-only; default `<--data>/../history/history.sqlite`) | `Fight.finish_tier`, `tier_frozen_at`, `index.model`, `data/stale_fighters.json`, `Fighter.elo`, `elo_peak`, `p4p_rank`, `elo_provisional`, `elo_inactive`, `best_win`, `Fight.elo`, `Fight.form`, `data/rankings.json` |
 | `publish` | `fightcard.publish` | data/ | `<out>/generations/<id>/`, `<out>/current` (the `/v1/` tree) |
 
 - Each stage package exposes `stage.py` with `add_arguments(parser)` and `run(args) -> int` (see `fightcard/cli.py`).

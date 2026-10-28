@@ -92,6 +92,14 @@ class FightElo(_Strict):
     blue_p4p_rank: int | None = Field(ge=1)
 
 
+class FightForm(BaseModel):
+    """A completed bout's form at the time (docs/CONTRACT.md, "1.4"), set by `score` from the history store: each
+    corner's last results strictly before the bout's day, newest first, at most 3; empty for a debut."""
+
+    red: list[PastFight]
+    blue: list[PastFight]
+
+
 class Fight(BaseModel):
     id: str  # ufcstats fight id when known, else "<event_id>-<n>"
     weight_class: str | None = None
@@ -103,6 +111,7 @@ class Fight(BaseModel):
     result: Result | None = None
     segment: CardSegment | None = None  # from ESPN; None = unknown
     elo: FightElo | None = None  # completed bouts in the history store only; None = upcoming / unrated / unmatched
+    form: FightForm | None = None  # completed bouts only; None = upcoming (the site shows recent_fights)
 
 
 class Event(BaseModel):
