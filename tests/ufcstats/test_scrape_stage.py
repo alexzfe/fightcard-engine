@@ -362,6 +362,47 @@ def test_past_event_without_results_stays_upcoming_but_leaves_index(tmp_path):
     assert COMPLETED_ID not in store.load_index().upcoming
 
 
+FIGHT_NIGHT_ID = UPCOMING_IDS[0]  # UFC Fight Night: Moicano vs. Nolan, 2026-10-31
+
+
+def delisted(event_id: str) -> str:
+    """The upcoming listing without `event_id`'s row, as ufcstats shows it once that card has started."""
+    rows = read_fixture("upcoming.html").split('<tr class="b-statistics__table-row">')
+    return '<tr class="b-statistics__table-row">'.join(r for r in rows if f"event-details/{event_id}" not in r)
+
+
+def fight_night(tmp_path, now: datetime, card: str):
+    """Scrape the morning of 2026-10-31, then at `now` with the card off the upcoming listing and `card` its page."""
+    stage.scrape(Store(tmp_path), make_client(), now=datetime(2026, 10, 31, 9, 17, tzinfo=UTC), recent=0)
+    pages = site_pages(upcoming=delisted(FIGHT_NIGHT_ID))
+    pages[f"{BASE}/event-details/{FIGHT_NIGHT_ID}"] = read_fixture(card)
+    client = FakeClient(pages, read_fixture("fighter.html"))
+    assert stage.scrape(Store(tmp_path), client, now=now, recent=0) == 0
+    return Store(tmp_path), client
+
+
+def test_fight_night_card_off_the_upcoming_listing_stays_in_index(tmp_path):
+    store, client = fight_night(tmp_path, datetime(2026, 10, 31, 21, 17, tzinfo=UTC), "event_detail_upcoming.html")
+    assert store.load_event(FIGHT_NIGHT_ID).status == "upcoming"
+    assert store.load_index().upcoming[0] == FIGHT_NIGHT_ID
+    assert f"{BASE}/event-details/{FIGHT_NIGHT_ID}" in client.urls
+
+
+def test_fight_night_results_are_picked_up_the_same_day(tmp_path):
+    store, _ = fight_night(tmp_path, datetime(2026, 10, 31, 23, 17, tzinfo=UTC), "event_detail_completed.html")
+    assert store.load_event(FIGHT_NIGHT_ID).status == "completed"
+    index = store.load_index()
+    assert FIGHT_NIGHT_ID in index.recent
+    assert FIGHT_NIGHT_ID not in index.upcoming
+
+
+def test_card_awaiting_results_the_day_after_stays_in_index(tmp_path):
+    # and so keeps scripts/should_run.py's hourly runs going, which only look at indexed events
+    store, _ = fight_night(tmp_path, datetime(2026, 11, 1, 5, 17, tzinfo=UTC), "event_detail_upcoming.html")
+    assert store.load_event(FIGHT_NIGHT_ID).status == "upcoming"
+    assert store.load_index().upcoming[0] == FIGHT_NIGHT_ID
+
+
 def test_future_event_no_longer_listed_is_left_alone(tmp_path):
     ghost = Event(id="ghost", slug="g", name="Ghost", date="2027-05-01", status="upcoming",
                   fights=[Fight(id="g1", red="a", blue="b")])
