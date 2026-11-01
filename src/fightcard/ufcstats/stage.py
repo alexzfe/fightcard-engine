@@ -57,6 +57,7 @@ FIGHTER_MAX_AGE = timedelta(days=30)
 BACKFILL_PER_RUN = 20  # completed events refetched per run for the history store (~1 request each)
 BACKFILL_RETRY = timedelta(days=7)  # a skipped backfill event is tried again after this
 BUSY_TIMEOUT_MS = 30_000  # how long to wait for another writer to release the history store
+RESULTS_GRACE = timedelta(days=2)  # a card awaiting results stays in index.upcoming this long past its date
 
 
 class ValidationError(Exception):
@@ -218,8 +219,9 @@ class _Run:
 
     def results(self) -> None:
         stale = sorted(
+            # today's: a completed one may have only its first bouts' results yet
             (e for e in self.existing.values()
-             if e.status == "upcoming" and e.date < self.today and e.id not in self.scraped),
+             if (e.date == self.today or (e.status == "upcoming" and e.date < self.today)) and e.id not in self.scraped),
             key=lambda e: e.date,
         )
         targets = {e.id: event_url(e.id) for e in stale}
@@ -348,9 +350,16 @@ class _Run:
         merged = {eid: merge_event(self.existing.get(eid), e) for eid, e in self.scraped.items()}
         events = {**self.existing, **merged}
         old_index = self.store.load_index()
+        # ufcstats takes a card off its upcoming listing once it starts, before results are on its page: keep it
+        # (and should_run's hourly runs, which only look at indexed events) until it's completed or RESULTS_GRACE
+        cutoff = (self.now.date() - RESULTS_GRACE).isoformat()
+        listed = set(self.upcoming_ids)
+        awaiting = sorted((e for e in events.values()
+                           if e.status == "upcoming" and e.id not in listed and cutoff <= e.date <= self.today),
+                          key=lambda e: e.date)
         index = Index(
             generated_at=iso(self.now),
-            upcoming=[eid for eid in self.upcoming_ids if events[eid].date >= self.today],
+            upcoming=[e.id for e in awaiting] + [eid for eid in self.upcoming_ids if events[eid].date >= cutoff],
             recent=[e.id for e in sorted(
                 (e for e in events.values() if e.status == "completed"),
                 key=lambda e: e.date, reverse=True,
