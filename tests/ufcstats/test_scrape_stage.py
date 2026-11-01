@@ -375,7 +375,7 @@ def fight_night(tmp_path, now: datetime, card: str):
     """Scrape the morning of 2026-10-31, then at `now` with the card off the upcoming listing and `card` its page."""
     stage.scrape(Store(tmp_path), make_client(), now=datetime(2026, 10, 31, 9, 17, tzinfo=UTC), recent=0)
     pages = site_pages(upcoming=delisted(FIGHT_NIGHT_ID))
-    pages[f"{BASE}/event-details/{FIGHT_NIGHT_ID}"] = read_fixture(card)
+    pages[f"{BASE}/event-details/{FIGHT_NIGHT_ID}"] = read_fixture(card).replace("October 10, 2026", "October 31, 2026")
     client = FakeClient(pages, read_fixture("fighter.html"))
     assert stage.scrape(Store(tmp_path), client, now=now, recent=0) == 0
     return Store(tmp_path), client
@@ -394,6 +394,13 @@ def test_fight_night_results_are_picked_up_the_same_day(tmp_path):
     index = store.load_index()
     assert FIGHT_NIGHT_ID in index.recent
     assert FIGHT_NIGHT_ID not in index.upcoming
+
+
+def test_fight_night_card_completed_the_same_day_is_refetched_for_its_later_bouts(tmp_path):
+    # the first result on its page completes it, the rest of the card is still being fought
+    store, client = fight_night(tmp_path, datetime(2026, 10, 31, 23, 17, tzinfo=UTC), "event_detail_completed.html")
+    assert stage.scrape(store, client, now=datetime(2026, 10, 31, 23, 47, tzinfo=UTC), recent=0) == 0
+    assert client.urls.count(f"{BASE}/event-details/{FIGHT_NIGHT_ID}") == 2
 
 
 def test_card_awaiting_results_the_day_after_stays_in_index(tmp_path):
