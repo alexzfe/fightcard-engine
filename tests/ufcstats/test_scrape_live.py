@@ -395,3 +395,41 @@ def test_live_is_stdlib_only():
     imports = [line.split()[1] for line in Path(live.__file__).read_text().splitlines()
                if line.startswith(("import ", "from "))]
     assert all(not m.startswith(("fightcard", "pydantic", "bs4")) or m == "__future__" for m in imports), imports
+
+
+# --- error paths ------------------------------------------------------------------------------------------------
+
+
+def test_an_unreadable_index_fails_and_fetches_nothing(tmp_path, capsys):
+    store = morning(tmp_path)
+    (tmp_path / "index.json").write_text("{not json")
+    code, client = live_scrape(store, {LIVE_URL: card(resulted=2)})
+    assert code == 1
+    assert client.urls == []
+    assert "nothing written" in capsys.readouterr().err
+
+
+def test_a_store_write_failing_rolls_back_and_writes_no_data(tmp_path, capsys):
+    store, conn = seeded_store(tmp_path)
+    before_data = tree(tmp_path / "data")
+    before_rows = conn.execute("SELECT * FROM fights WHERE event_id = ?", (LIVE_ID,)).fetchall()
+    conn.execute("CREATE TRIGGER no_pages BEFORE UPDATE ON pages BEGIN SELECT RAISE(ABORT, 'disk full'); END")
+    code, _ = live_scrape(store, {LIVE_URL: card(resulted=2)}, history=conn)
+    assert code == 1
+    assert "nothing written" in capsys.readouterr().err
+    assert tree(tmp_path / "data") == before_data
+    assert conn.execute("SELECT * FROM fights WHERE event_id = ?", (LIVE_ID,)).fetchall() == before_rows
+    conn.close()
+
+
+def test_a_data_write_failing_after_the_store_says_so(tmp_path, monkeypatch, capsys):
+    store, conn = seeded_store(tmp_path)
+
+    def fail(*_):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Store, "save_index", fail)
+    code, _ = live_scrape(store, {LIVE_URL: card(resulted=2)}, history=conn)
+    assert code == 1
+    assert "store updated" in capsys.readouterr().err
+    conn.close()

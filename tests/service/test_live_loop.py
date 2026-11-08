@@ -229,3 +229,13 @@ def test_unreadable_data_does_not_stop_serve(tmp_path):
 def test_due_events_reads_the_index_and_event_files(tmp_path):
     fight_night(tmp_path)
     assert live.due_events(tmp_path, date(2026, 10, 31)) == ["e1"]
+
+
+def test_an_unreadable_index_fails_the_live_gate(tmp_path):
+    cfg = run_config(tmp_path)
+    cfg.data.mkdir(parents=True)
+    (cfg.data / "index.json").write_text("{not json")
+    _, rec, code, lines = live_run(tmp_path)
+    assert code == 1
+    assert rec.stages == []
+    assert step_lines(lines)["gate"]["status"] == "failed"
