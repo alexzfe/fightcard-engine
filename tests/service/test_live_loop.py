@@ -5,6 +5,7 @@ Off where fetching is off (staging), and with FIGHTCARD_LIVE_MINUTES=off. Hourly
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -88,13 +89,56 @@ def test_a_live_run_is_scrape_live_score_publish(tmp_path):
     assert gate["status"] == "run" and "e1" in gate["reason"]
 
 
+def published(cfg: Config, generated_at: str) -> None:
+    """A published generation whose /v1/index.json has this generated_at, as `current`."""
+    gen = cfg.root / "generations" / "g1"
+    gen.mkdir(parents=True, exist_ok=True)
+    (gen / "index.json").write_text(json.dumps({"generated_at": generated_at, "upcoming": [], "recent": []}))
+    if not (cfg.root / "current").is_symlink():
+        (cfg.root / "current").symlink_to("generations/g1")
+
+
 def test_nothing_new_skips_score_and_publish(tmp_path):
-    fight_night(run_config(tmp_path).data)
+    cfg = run_config(tmp_path)
+    fight_night(cfg.data)
+    published(cfg, "2026-10-31T23:17:00Z")  # what data/ holds is what /v1/ serves
     _, rec, code, lines = live_run(tmp_path, Recorder({"scrape": live.UNCHANGED}))
     assert code == 0
     assert rec.stages == ["scrape"]
     assert step_lines(lines)["scrape"]["status"] == "unchanged"
     assert fields(lines[-1])["status"] == "unchanged"
+
+
+@pytest.mark.parametrize("served", ["2026-10-31T22:17:00Z", None])
+def test_unchanged_but_data_ahead_of_v1_still_scores_and_publishes(tmp_path, served):
+    # an earlier run wrote data/ but never published it (score or publish failed, or the run was killed)
+    cfg = run_config(tmp_path)
+    fight_night(cfg.data)
+    if served:
+        published(cfg, served)
+    _, rec, code, lines = live_run(tmp_path, Recorder({"scrape": live.UNCHANGED}))
+    assert code == 0
+    assert rec.stages == ["scrape", "score", "publish"]
+    scrape = step_lines(lines)["scrape"]
+    assert scrape["status"] == "unchanged" and "not published" in scrape["reason"]
+    assert fields(lines[-1])["status"] == "ok"
+
+
+def test_a_live_result_whose_score_failed_is_published_by_the_next_live_run(tmp_path):
+    cfg = run_config(tmp_path)
+    fight_night(cfg.data)
+    published(cfg, "2026-10-31T22:17:00Z")
+    # run 1: scrape --live writes the result to data/ (moving generated_at), then score fails
+    (cfg.data / "index.json").write_text(json.dumps({"generated_at": "2026-10-31T23:05:00Z", "upcoming": [],
+                                                     "recent": ["e1"]}))
+    _, rec, code, _ = live_run(tmp_path, Recorder({"score": 1}))
+    assert code == 1 and rec.stages == ["scrape", "score"]
+    # run 2: the page has nothing newer than data/, but /v1/ still lacks run 1's result
+    _, rec, code, lines = live_run(tmp_path, Recorder({"scrape": live.UNCHANGED}),
+                                   now=datetime(2026, 10, 31, 23, 10, tzinfo=UTC))
+    assert code == 0
+    assert rec.stages == ["scrape", "score", "publish"]
+    assert fields(lines[-1])["status"] == "ok"
 
 
 def test_a_failing_live_scrape_fails_the_run(tmp_path):
@@ -220,6 +264,33 @@ def test_unreadable_data_does_not_stop_serve(tmp_path):
     cfg = serve_config(tmp_path)
     cfg.data.mkdir(parents=True)
     (cfg.data / "index.json").write_text("{not json")
+    world = World("2026-10-31 23:00:00", steps=20)
+    assert world.serve(cfg) == 0
+    assert starts(world, LIVE) == []
+    assert any(fields(line).get("event") == "live" and fields(line).get("status") == "failed" for line in world.lines)
+
+
+@pytest.mark.parametrize("index,event", [
+    ({"upcoming": [], "recent": ["e1"]}, None),  # events/e1.json is `null`
+    ({"upcoming": [], "recent": ["e1"]}, []),
+    ({"upcoming": [], "recent": ["e1"]}, {"date": "2026-10-31", "fights": [None]}),
+    ({"upcoming": [], "recent": ["e1"]}, {"date": "2026-10-31", "fights": [{"result": "win"}]}),
+    ({"upcoming": None, "recent": ["e1"]}, {"date": "2026-10-31", "fights": []}),
+    (None, None),
+    ([], None),
+])
+def test_due_events_refuses_wrong_shaped_json_with_a_value_error(tmp_path, index, event):
+    (tmp_path / "events").mkdir()
+    (tmp_path / "index.json").write_text(json.dumps(index))
+    (tmp_path / "events" / "e1.json").write_text(json.dumps(event))
+    with pytest.raises(ValueError):
+        live.due_events(tmp_path, date(2026, 10, 31))
+
+
+def test_a_wrong_shaped_event_file_does_not_stop_serve(tmp_path):
+    cfg = serve_config(tmp_path)
+    fight_night(cfg.data)
+    (cfg.data / "events" / "e1.json").write_text("null")
     world = World("2026-10-31 23:00:00", steps=20)
     assert world.serve(cfg) == 0
     assert starts(world, LIVE) == []
