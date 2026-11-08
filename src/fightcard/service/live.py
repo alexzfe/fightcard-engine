@@ -35,16 +35,32 @@ def is_live(event: dict, today: date) -> bool:
     return event.get("date") in window and bool(fights) and not all(resulted(f) for f in fights)
 
 
+def _ids(index, path: Path) -> list[str]:
+    if not isinstance(index, dict):
+        raise ValueError(f"{path}: not a JSON object")
+    lists = [index.get(key, []) for key in ("upcoming", "recent")]
+    if not all(isinstance(ids, list) and all(isinstance(i, str) for i in ids) for ids in lists):
+        raise ValueError(f"{path}: upcoming and recent must be lists of event ids")
+    return list(dict.fromkeys(lists[0] + lists[1]))
+
+
+def _is_live(path: Path, today: date) -> bool:
+    try:
+        return is_live(_read(path), today)
+    except (AttributeError, TypeError) as e:  # valid JSON, wrong shape (null, a list, a null fight...)
+        raise ValueError(f"{path}: not an event: {e}") from e
+
+
 def due_events(data_dir: Path, today: date) -> list[str]:
-    """The live events' ids, in index order. Empty without an index.json; ValueError if it or an event is unreadable."""
+    """The live events' ids, in index order. Empty without an index.json; ValueError if it or an event is unreadable
+    or the wrong shape, so callers (serve, PID 1, among them) need catch only OSError and ValueError."""
     data_dir = Path(data_dir)
     index_path = data_dir / "index.json"
     if not index_path.exists():
         return []
-    index = _read(index_path)
     due = []
-    for event_id in dict.fromkeys([*index.get("upcoming", []), *index.get("recent", [])]):
+    for event_id in _ids(_read(index_path), index_path):
         path = data_dir / "events" / f"{event_id}.json"
-        if path.exists() and is_live(_read(path), today):
+        if path.exists() and _is_live(path, today):
             due.append(event_id)
     return due
