@@ -75,10 +75,11 @@ A file that didn't change between updates keeps its ETag, so headshots aren't do
 
 ## From a browser
 
-A web page on any site can `fetch()` /v1/ directly: every response, errors included, has
+A web page on any site can `fetch()` /v1/ directly: every /v1/ response, errors included, has
 `Access-Control-Allow-Origin: *`. Keep it a simple request: a plain `GET` with no custom headers and no
-credentials. `OPTIONS` gets a `405`, so anything that needs a preflight fails. The browser's HTTP cache already
-revalidates with the `ETag` on its own, so you don't need to send `If-None-Match` yourself. Polling an event file
+credentials. In particular, don't set `If-None-Match` (or any other header) yourself, whatever the section above
+says for other clients: it makes the request non-simple, the preflight gets a `405` (`OPTIONS` isn't allowed) and
+the request fails. The browser's HTTP cache revalidates with the `ETag` for you. Polling an event file
 about once a minute is fine; it is cached for 60 seconds, so a faster poll only gets the same copy back.
 
 ## Versioning

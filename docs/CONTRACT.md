@@ -33,7 +33,7 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
   (and `Last-Modified`) back exactly as it received them; see "ETags through Cloudflare" below.
 - `404` for anything else, directories included (no listings). Body `{"error": "not found"}`, `application/json; charset=utf-8`, `Cache-Control: no-store`.
 - `405` for any method but `GET`/`HEAD`, with `Allow: GET, HEAD` and a JSON body.
-- Every response, `404` and `405` included, has `Access-Control-Allow-Origin: *`, so browser pages can read /v1/
+- Every /v1/ response, `404` and `405` included, has `Access-Control-Allow-Origin: *`, so browser pages can read /v1/
   (the site polls a live card's event file). The same for every origin: no `Vary: Origin`, no credentials. `OPTIONS`
   is a `405`, so a browser request must be a simple one (`GET` without custom headers; the browser's own
   revalidation is fine). No `Server` version.
