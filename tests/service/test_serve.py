@@ -27,10 +27,11 @@ class FakeProc:
         self.ends_at = None if lifetime is None else world.ticks + lifetime
         self.pid = next(self.pids)
         self.signals: list[int] = []
+        self.exit_code = world.run_codes.pop(0) if argv[0] != "nginx" and world.run_codes else 0
 
     def poll(self):
         if self.code is None and self.ends_at is not None and self.world.ticks >= self.ends_at:
-            self.code = 0
+            self.code = self.exit_code
         return self.code
 
     def send_signal(self, sig):
@@ -47,8 +48,12 @@ class FakeProc:
 class World:
     """A clock that advances 30s per sleep, a stop event, and a spawn that hands out FakeProcs."""
 
-    def __init__(self, start: str, steps: int, run_lifetime: int | None = 1, nginx_dies_at: int | None = None):
+    def __init__(self, start: str, steps: int, run_lifetime: int | None = 1, nginx_dies_at: int | None = None,
+                 run_codes: list[int] | None = None):
+        """`run_codes`: the exit codes of the first runs, in order (the rest exit 0)."""
         self.now = datetime.fromisoformat(start).replace(tzinfo=UTC)
+        self.run_codes = list(run_codes or [])
+        self.on_spawn = lambda argv: None
         self.steps, self.run_lifetime, self.nginx_dies_at = steps, run_lifetime, nginx_dies_at
         self.stop = threading.Event()
         self.procs: list[FakeProc] = []
@@ -57,6 +62,7 @@ class World:
         self.ticks = 0
 
     def spawn(self, argv, **kwargs):
+        self.on_spawn(argv)
         proc = FakeProc(argv, self, None if argv[0] == "nginx" else self.run_lifetime, **kwargs)
         self.procs.append(proc)
         self.spawned_at.append(self.now)
