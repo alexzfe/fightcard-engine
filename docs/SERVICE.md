@@ -35,6 +35,7 @@ started another way (`fightcard-service run` by hand, or the first start on an e
   also run at `nice` 10, so nginx keeps the CPU it needs.
 - **A slot that fires during a run waits for it** (`status=queued`) and starts as soon as it ends. At most one waits;
   a queued daily slot, which the gate always lets through, wins over a later hourly one (`status=dropped`).
+- **On fight nights a light run every 5 minutes** in between ([Live refresh](#live-refresh)), on prod only.
 - **A restart doesn't run straight away** unless nothing is published yet: after a deploy or a crash, the data
   served is the last published generation until the next slot (at most an hour away). To refresh now, run
   `docker compose exec app fightcard-service run`.
@@ -63,6 +64,7 @@ gate → scrape → segments → images → model pull → score → publish
   | model | 5 min |
   | score | 10 min |
   | publish | 10 min |
+  | scrape --live (live run) | 5 min |
 
 - `SIGTERM` to a run (the supervisor stopping) ends its current stage's process group
   the same way, then the run exits 143 with `status=terminated`.
@@ -81,6 +83,60 @@ gate → scrape → segments → images → model pull → score → publish
   a run writes `state/run.json` (its pid and start time) for the health check.
 - Logs go to **stdout** (`docker logs`), one line per stage:
   `fightcard-run run=<id> step=score status=ok exit=0 duration_s=4.12`, plus a start and an end line per run.
+
+## Live refresh
+
+On fight nights results should reach `/v1/` within minutes of ufcstats posting them, not at the next hourly slot. So
+while an indexed event (in `index.json`'s `upcoming` or `recent`) dated **today or yesterday** in UTC (US cards end
+after midnight UTC) is not fully resulted (some bout has no result with a W/L outcome yet), the supervisor starts a
+light run every **5 min** (`FIGHTCARD_LIVE_MINUTES`, below), `fightcard-service run --event live`:
+
+```
+live gate → scrape --live → score → publish
+```
+
+- **The gate** is `fightcard.service.live.due_events` (stdlib, reading `state/data/` directly). The supervisor asks
+  it every interval too and starts nothing while it names no event, so off fight nights nothing runs and nothing is
+  logged. Once every bout of the card has its result, or the card is two days old, the loop stops by itself; from
+  then on the hourly runs (and `RESULTS_GRACE`) look after the card as before.
+- **`scrape --live`** fetches only those events' pages, through the same client as the full scrape (the `_fmc`
+  cookie and the proof-of-work challenge, the same User-Agent and rate limit): no listings, no fighter pages, no
+  headshots, no ESPN segments, no model pull. A card's name, date and place stay as the hourly run wrote them; its
+  bouts are merged the same way (tiers, `tier_frozen_at`, segments and pre-fight corners kept). When a bout's result
+  or the card changed, it writes those events, the history store (in one transaction, before data/; an event keeps
+  the store's `source`), a stub entry for a fighter new to `fighters.json` (name from the card; the next hourly run
+  fetches the page), and `index.json` with a new **`generated_at`**, with the card moved to `recent` once it has a
+  result. Otherwise it writes nothing and exits 3 (`live.UNCHANGED`): the run logs `step=scrape status=unchanged`,
+  skips score and publish, and ends `status=unchanged`, exit 0. So `generated_at` moves exactly when the data did,
+  and a client can tell.
+- **score and publish** run as in every run. A full score, the whole-history Elo pass included, is cheap: on the
+  real store (1,288 events, 11,694 bouts) `history_pass` takes 0.08 s, form 0.09 s and the whole `fightcard score`
+  about 1.2 s, `publish` about 0.8 s (desktop timings; a few seconds at `nice` 10 on the VPS). So a live run
+  recomputes everything rather than patching the changed fights.
+- **The hourly and daily runs are unchanged**, and they still do everything else (fighter pages, headshots,
+  segments, the model). A live slot that comes while another run is going is skipped, not queued: the next one is
+  an interval away, and an hourly run refetches today's cards anyway. A run's `flock` keeps them from overlapping.
+- **Backoff.** After any run that fails (a live scrape that can't fetch exits 1, nothing written), the next live
+  slot is **15 min** away (`LIVE_BACKOFF`, or the interval if that's longer), logged `fightcard-serve event=live
+  status=backoff next=… reason="last run exited 1"`, so a ufcstats outage or block doesn't get a request every few
+  minutes. A run that found the lock taken (exit 75) doesn't count.
+- **A bout with a method but no W/L outcome** (ufcstats can post the method before the flag) is held as not resulted
+  yet, with a warning (`event <id>: bout <id> has a method but no W/L outcome yet; held as not resulted`), and
+  comes in once the flag is on the page. This also holds in the hourly run, for any card dated within
+  `RESULTS_GRACE`; on older cards it still fails the run (`MissingOutcome`), as it fails `history ingest`.
+- **When results arrive.** Whichever run (live or hourly) first writes a bout's result logs it once:
+  `INFO fightcard.ufcstats.stage: result_seen event=<event id> fight=<fight id> seen_at=<UTC, Z>`. On the next fight
+  night, `docker logs … | grep result_seen` against the bouts' end times says how fast ufcstats posts results.
+- **Fighter records.** The live run doesn't fetch fighter pages, so a card it completes isn't a status change for the
+  next hourly run. The hourly run therefore also refreshes the page of anyone with a result on a card dated within
+  `RESULTS_GRACE` whose page doesn't list a bout on that day yet (until ufcstats updates it).
+- **Load on ufcstats.** One request per live event per interval, on at most two days per card: about 290 a day while
+  a card is live, against the hourly run's listings and pages. Staging has fetching off, so it never runs a live
+  loop: two scrapers on the box's one IP would double the load and risk getting prod's IP blocked.
+
+**Settings.** `FIGHTCARD_LIVE_MINUTES` (default `5`, 1-60) sets the interval; `off` or `0` turns the loop off.
+It is ignored, and the loop off, where fetching is off (`FIGHTCARD_FETCH`, `FIGHTCARD_FETCH_HOST`), i.e. on
+staging, whatever it says. To follow a card by hand: `docker compose exec app fightcard-service run --event live`.
 
 ## The model
 
@@ -226,7 +282,7 @@ any site change (docs/CONTRACT.md, Versioning). This holds once site PR #12 is o
 ## Staging
 
 Staging runs the same image with fetching off: no scrape, segments or images, only the model pull, score and
-publish over the data on its own volume, at :47 (above). Prod and staging share the box's one IP, so a second scraper would double the load on
+publish over the data on its own volume, at :47 (above), and no [live refresh](#live-refresh). Prod and staging share the box's one IP, so a second scraper would double the load on
 ufcstats and risk getting prod's IP blocked; the scrapers are covered by the fixture tests and `-m live`.
 `sites.yml`'s `env` is the same for both envs, so it passes `FIGHTCARD_HOST: "{host}"` and
 `FIGHTCARD_FETCH_HOST: ufc-data.xlobax.com`; fetching is on only where the two match. `FIGHTCARD_FETCH=off` turns
