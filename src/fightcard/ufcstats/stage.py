@@ -518,7 +518,8 @@ def _write_live(store: Store, existing: dict[str, Event], changed: dict[str, Eve
     old = store.load_index()
     index = Index(
         generated_at=iso(now),
-        upcoming=[eid for eid in old.upcoming if events[eid].status != "completed"],
+        # an id with no event file (an earlier partial write) is dropped, as the hourly run's index drops it
+        upcoming=[eid for eid in old.upcoming if eid in events and events[eid].status != "completed"],
         recent=[e.id for e in sorted((e for e in events.values() if e.status == "completed"),
                                      key=lambda e: e.date, reverse=True)],
         model=old.model,
