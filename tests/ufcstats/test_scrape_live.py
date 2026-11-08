@@ -33,7 +33,8 @@ MORNING = datetime(2026, 10, 31, 9, 17, tzinfo=UTC)
 EVENING = datetime(2026, 10, 31, 23, 5, tzinfo=UTC)
 LATER = datetime(2026, 10, 31, 23, 10, tzinfo=UTC)
 EVENING_ISO = "2026-10-31T23:05:00Z"
-CARD = parse_event_detail(read_fixture("event_detail_completed.html"), LIVE_ID).event  # 13 bouts, all resulted
+CARD = parse_event_detail(read_fixture("event_detail_completed.html"), LIVE_ID).event  # all resulted
+BOUTS = len(CARD.fights)
 
 
 def card(resulted: int, no_outcome: tuple[int, ...] = ()) -> str:
@@ -97,7 +98,7 @@ def test_new_results_are_written_and_generated_at_moves(tmp_path):
     code, _ = live_scrape(store, {LIVE_URL: card(resulted=2)})
     assert code == 0
     event = store.load_event(LIVE_ID)
-    assert [f.result is not None for f in event.fights] == [True, True] + [False] * 11
+    assert [f.result is not None for f in event.fights] == [True, True] + [False] * (BOUTS - 2)
     assert event.status == "completed"
     assert store.load_index().generated_at == EVENING_ISO
 
@@ -114,6 +115,8 @@ def test_nothing_new_writes_nothing_and_says_unchanged(tmp_path):
 
 def test_a_card_without_results_yet_is_unchanged(tmp_path):
     store = morning(tmp_path)
+    event = store.load_event(LIVE_ID)  # the bouts the page shows, none fought yet
+    store.save_event(event.model_copy(update={"fights": [f.model_copy(update={"result": None}) for f in CARD.fights]}))
     before = tree(tmp_path)
     code, _ = live_scrape(store, {LIVE_URL: card(resulted=0)})
     assert code == live.UNCHANGED
@@ -130,22 +133,22 @@ def test_with_no_live_event_it_fetches_nothing(tmp_path):
 def test_the_day_after_it_still_follows_a_card_awaiting_results(tmp_path):
     # US cards end after midnight UTC
     store = morning(tmp_path)
-    code, client = live_scrape(store, {LIVE_URL: card(resulted=13)}, now=datetime(2026, 11, 1, 4, 30, tzinfo=UTC))
+    code, client = live_scrape(store, {LIVE_URL: card(resulted=BOUTS)}, now=datetime(2026, 11, 1, 4, 30, tzinfo=UTC))
     assert code == 0
     assert client.urls == [LIVE_URL]
 
 
 def test_two_days_after_it_stops(tmp_path):
     store = morning(tmp_path)
-    code, client = live_scrape(store, {LIVE_URL: card(resulted=13)}, now=datetime(2026, 11, 2, 0, 5, tzinfo=UTC))
+    code, client = live_scrape(store, {LIVE_URL: card(resulted=BOUTS)}, now=datetime(2026, 11, 2, 0, 5, tzinfo=UTC))
     assert code == live.UNCHANGED
     assert client.urls == []
 
 
 def test_a_fully_resulted_card_is_not_fetched_again(tmp_path):
     store = morning(tmp_path)
-    assert live_scrape(store, {LIVE_URL: card(resulted=13)})[0] == 0
-    code, client = live_scrape(store, {LIVE_URL: card(resulted=13)}, now=LATER)
+    assert live_scrape(store, {LIVE_URL: card(resulted=BOUTS)})[0] == 0
+    code, client = live_scrape(store, {LIVE_URL: card(resulted=BOUTS)}, now=LATER)
     assert code == live.UNCHANGED
     assert client.urls == []
 
@@ -277,7 +280,7 @@ def test_results_go_into_the_history_store_too(tmp_path):
     code, _ = live_scrape(store, {LIVE_URL: card(resulted=2)}, history=conn)
     assert code == 0
     rows = conn.execute("SELECT outcome FROM fights WHERE event_id = ? ORDER BY position", (LIVE_ID,)).fetchall()
-    assert [r[0] for r in rows] == ["win", "win"] + [None] * 11
+    assert [r[0] for r in rows] == ["win", "win"] + [None] * (BOUTS - 2)
     assert conn.execute("SELECT status, is_ufc, source FROM events WHERE event_id = ?", (LIVE_ID,)).fetchone() == (
         "completed", is_ufc, source)
     assert conn.execute("SELECT fetched_at FROM pages WHERE url = ?", (LIVE_URL,)).fetchone()[0] == EVENING_ISO

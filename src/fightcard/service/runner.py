@@ -1,5 +1,9 @@
 """`fightcard-service run`: one refresh, gate → scrape → segments → images → model pull → score → publish.
 
+`run --event live` is the fight-night fast loop's light run instead (docs/SERVICE.md, "Live refresh"): gate (an event
+`live.due_events` names, and fetching on) → scrape --live → score → publish. Its scrape fetches only the live events'
+pages and exits `live.UNCHANGED` when no result moved; the run then ends there, `status=unchanged`, exit 0.
+
 Each stage is a `fightcard` process over <root>/state/data, in its own session (so its process group holds it and
 anything it starts) at nice NICE. The run stops at the first stage that exits non-zero or outlives its TIMEOUTS
 entry, except the model pull, which is logged and skipped past: it keeps the current model when it can't adopt a
@@ -21,9 +25,10 @@ import tempfile
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from fightcard.service import live
 from fightcard.service.schedule import MINUTE
 
 ROOT = "/srv/fightcard"  # the volume, and the publish root deploy/nginx/fightcard-engine.conf serves
@@ -36,6 +41,8 @@ _OFF = {"off", "0", "false", "no"}
 TIMEOUTS = {"scrape": 30 * 60, "segments": 15 * 60, "images": 15 * 60, "model": 5 * 60, "score": 10 * 60,
             "publish": 10 * 60}
 KILL_GRACE = 3
+LIVE_SCRAPE_TIMEOUT = 5 * 60  # a live scrape fetches a page or two; a hang shouldn't hold the lock past a slot
+LIVE_MINUTES = 5  # FIGHTCARD_LIVE_MINUTES' default: the fast loop's interval on fight nights
 TIMED_OUT = 124
 TERMINATED = 128 + signal.SIGTERM
 NICE = 10  # stages yield the box's 2 vCPUs to nginx and to the other env
@@ -52,6 +59,7 @@ class Config:
     schedule_minute: int = MINUTE  # the hourly slot's; off the fetch host (staging) half an hour later
     model_url: str | None = None  # FIGHTCARD_MODEL_URL: where `fightcard model pull` looks; None: no pulls
     model_pin: str | None = None  # FIGHTCARD_MODEL_PIN: a kept model version to run instead
+    live_every: timedelta | None = None  # FIGHTCARD_LIVE_MINUTES: the fight-night fast loop; None: off
 
     @property
     def state(self) -> Path:
@@ -104,6 +112,11 @@ class Config:
             minute = str(MINUTE if env.get("FIGHTCARD_HOST", fetch_host) == fetch_host else (MINUTE + 30) % 60)
         if not (minute.isdigit() and int(minute) < 60):
             raise ValueError(f"FIGHTCARD_SCHEDULE_MINUTE must be 0-59, not {minute!r}")
+        live_minutes = env.get("FIGHTCARD_LIVE_MINUTES", str(LIVE_MINUTES)).lower()
+        if live_minutes in _OFF:
+            live_minutes = "0"
+        if not (live_minutes.isdigit() and int(live_minutes) <= 60):
+            raise ValueError(f"FIGHTCARD_LIVE_MINUTES must be 0-60 or off, not {live_minutes!r}")
         return cls(
             root=Path(env.get("FIGHTCARD_ROOT", ROOT)),
             fetch=fetch,
@@ -114,6 +127,8 @@ class Config:
             schedule_minute=int(minute),
             model_url=env.get("FIGHTCARD_MODEL_URL") or None,
             model_pin=env.get("FIGHTCARD_MODEL_PIN") or None,
+            # Only where this env fetches: staging's would be a second scraper on the box's one IP.
+            live_every=timedelta(minutes=int(live_minutes)) if fetch and int(live_minutes) else None,
         )
 
 
@@ -123,6 +138,8 @@ class Step:
     args: tuple[str, ...] | Callable[[], tuple[str, ...]]  # a callable is asked when the step starts
     fetches: bool = False
     fatal: bool = True  # False: a failure is logged and the run goes on
+    timeout: float | None = None  # None: TIMEOUTS[name]
+    may_be_unchanged: bool = False  # live.UNCHANGED ends the run here, ok: nothing new to score or publish
 
 
 def steps(cfg: Config) -> list[Step]:
@@ -138,6 +155,23 @@ def steps(cfg: Config) -> list[Step]:
         Step("score", lambda: ("score", *cfg.model_args(), "--history-db", str(cfg.history_db))),
         Step("publish", ("publish", "--out", str(cfg.root))),
     ]
+
+
+def live_steps(cfg: Config) -> list[Step]:
+    """The live run: the live events' pages only, then score and publish what changed. No segments (merge keeps the
+    card's), images or model pull: the hourly run does those."""
+    full = {step.name: step for step in steps(cfg)}
+    scrape = full["scrape"]
+    return [Step("scrape", ("scrape", "--live", *scrape.args[1:]), fetches=True, timeout=LIVE_SCRAPE_TIMEOUT,
+                 may_be_unchanged=True),
+            full["score"], full["publish"]]
+
+
+def live_gate(cfg: Config, now: datetime) -> tuple[bool, str]:
+    if not cfg.fetch:
+        return False, "fetch-off"
+    due = live.due_events(cfg.data, now.astimezone(UTC).date())
+    return (True, f"live events {','.join(due)}") if due else (False, "no live event")
 
 
 class StageTimeout(Exception):
@@ -209,7 +243,8 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
              execute: Callable[..., int] = execute,
              gate: Callable[[Config, str, str], tuple[bool, str]] = script_gate,
              out: Callable[[str], None] = lambda line: print(line, flush=True),
-             clock: Callable[[], float] = time.monotonic, run_id: str | None = None) -> int:
+             clock: Callable[[], float] = time.monotonic, run_id: str | None = None,
+             now: Callable[[], datetime] = lambda: datetime.now(UTC)) -> int:
     run_id = run_id or f"{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{os.getpid()}"
 
     def log(**fields: object) -> None:
@@ -243,14 +278,23 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
                 log(step="gate", status="run" if go else "skip", reason=reason)
                 if not go:
                     return end("skipped", 0)
+            elif event == "live":
+                try:
+                    go, reason = live_gate(cfg, now())
+                except (OSError, ValueError) as e:
+                    log(step="gate", status="failed", reason=str(e))
+                    return end("failed", 1, failed_step="gate", exit=1)
+                log(step="gate", status="run" if go else "skip", reason=reason)
+                if not go:
+                    return end("skipped", 0)
 
-            for step in steps(cfg):
+            for step in (live_steps(cfg) if event == "live" else steps(cfg)):
                 step_name = step.name
                 if step.fetches and not cfg.fetch:
                     log(step=step.name, status="skipped", reason="fetch-off")
                     continue
                 t0 = clock()
-                limit = TIMEOUTS[step.name]
+                limit = step.timeout or TIMEOUTS[step.name]
                 args = step.args() if callable(step.args) else step.args
                 try:
                     code = execute([cfg.fightcard, "--data", str(cfg.data), *args], timeout=limit,
@@ -265,6 +309,9 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
                     if not step.fatal:
                         continue
                     return end("failed", 127, failed_step=step.name, exit=127)
+                if step.may_be_unchanged and code == live.UNCHANGED:
+                    log(step=step.name, status="unchanged", exit=code, duration_s=f"{clock() - t0:.2f}")
+                    return end("unchanged", 0)
                 log(step=step.name, status="ok" if code == 0 else "failed", exit=code,
                     duration_s=f"{clock() - t0:.2f}")
                 if code != 0 and step.fatal:
