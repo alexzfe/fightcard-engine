@@ -370,3 +370,28 @@ def test_score_row_names_fight_form():
 def test_api_doc_explains_fight_form():
     doc = api_doc()
     assert "Fight.form" in doc and '`"1.4"`' in doc
+
+
+# The fight-night live refresh (feat/live-scrape).
+
+@pytest.mark.parametrize("term", [
+    "## Live refresh", "FIGHTCARD_LIVE_MINUTES", "run --event live", "scrape --live", "status=unchanged",
+    "status=backoff", "LIVE_BACKOFF", "result_seen", "no W/L outcome", "today or yesterday",
+])
+def test_service_doc_covers_the_live_refresh(term):
+    assert term in service_doc(), term
+
+
+def test_service_doc_states_the_live_timings():
+    from fightcard.service.runner import LIVE_MINUTES, LIVE_SCRAPE_TIMEOUT
+    from fightcard.service.serve import LIVE_BACKOFF
+    doc = service_doc()
+    assert f"| scrape --live (live run) | {LIVE_SCRAPE_TIMEOUT // 60} min |" in doc
+    assert f"every **{LIVE_MINUTES} min**" in doc
+    assert f"**{LIVE_BACKOFF.seconds // 60} min**" in doc
+
+
+def test_contract_says_when_generated_at_moves():
+    contract = (REPO / "docs" / "CONTRACT.md").read_text()
+    assert "`generated_at` is when `scrape` last changed the data" in contract
+    assert "live refresh" in contract
