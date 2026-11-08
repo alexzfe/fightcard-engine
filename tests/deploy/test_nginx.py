@@ -22,7 +22,9 @@ from fightcard.publish.generations import publish
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tests" / "publish"))
-from publish_helpers import make_data  # noqa: E402
+from publish_helpers import RANKINGS, make_data  # noqa: E402
+
+from fightcard.store import write_json  # noqa: E402
 
 CONF = REPO / "deploy" / "nginx" / "fightcard-engine.conf"
 IMAGE = ("nginxinc/nginx-unprivileged:1.28-alpine"
@@ -32,7 +34,9 @@ JSON = "application/json; charset=utf-8"
 
 
 def generation(tmp: Path, generated_at: str) -> dict[str, bytes]:
-    return build(make_data(tmp / f"data-{uuid.uuid4().hex[:6]}", generated_at=generated_at))
+    data_dir = make_data(tmp / f"data-{uuid.uuid4().hex[:6]}", generated_at=generated_at)
+    write_json(data_dir / "rankings.json", RANKINGS)  # optional in data/, but /v1/rankings.json is served when present
+    return build(data_dir)
 
 
 # Static checks: run in the default suite, so CI (no docker) still guards the config's shape.
@@ -123,6 +127,7 @@ RESOURCES = [
     ("/v1/events/e1.json", "events/e1.json", JSON, "public, max-age=60"),
     ("/v1/fighters.json", "fighters.json", JSON, "public, max-age=300"),
     ("/v1/schema.json", "schema.json", JSON, "public, max-age=300"),
+    ("/v1/rankings.json", "rankings.json", JSON, "public, max-age=300"),
     ("/v1/images/f1.webp", "images/f1.webp", "image/webp", "public, max-age=86400"),
     ("/v1/images/f2.png", "images/f2.png", "image/png", "public, max-age=86400"),
     ("/v1/snapshot.tar.gz", "snapshot.tar.gz", "application/gzip", "public, max-age=60"),
@@ -216,7 +221,7 @@ def test_snapshot_extracts_to_the_served_files(server):
     _, _, blob = server.get("/v1/snapshot.tar.gz")
     with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
         members = [m for m in tar.getmembers() if m.isfile()]
-        assert len(members) == 7
+        assert len(members) == 8  # rankings.json included
         for m in members:
             status, _, body = server.get(f"/v1/{m.name}")
             assert (status, body) == (200, tar.extractfile(m).read()), m.name

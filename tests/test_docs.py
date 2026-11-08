@@ -53,6 +53,22 @@ def test_contract_covers(term):
     assert term in CONTRACT, term
 
 
+def test_the_docs_say_every_v1_response_has_the_cors_header_not_every_response():
+    # /healthz (unversioned, its own add_header) has no Access-Control-Allow-Origin on its 200.
+    assert "Every /v1/ response" in CONTRACT
+    assert "Every response, `404`" not in CONTRACT
+    assert "every /v1/ response, errors included" in api_doc()
+    assert "every response, errors included" not in api_doc()
+
+
+def test_api_doc_tells_browsers_never_to_set_if_none_match_or_any_header():
+    # If-None-Match isn't CORS-safelisted: setting it makes a preflight, which gets a 405, and the request fails.
+    section = api_doc().split("## From a browser", 1)[1].split("\n## ", 1)[0]
+    assert "don't set `If-None-Match` (or any other header) yourself" in section
+    assert "preflight gets a `405`" in section
+    assert "you don't need to send `If-None-Match` yourself" not in section
+
+
 def test_contract_no_longer_says_consumers_fetch_server_side_only():
     assert "No CORS headers" not in CONTRACT
 
