@@ -38,13 +38,28 @@ the journeys below were derived during this run.
 
 | # | What is guaranteed | Test | Type | Result |
 |---|---|---|---|---|
-| 1 | Every /v1/ resource (index, events, fighters, schema, images, snapshot) says `Access-Control-Allow-Origin: *` | `test_nginx.py::test_resources_are_served_with_their_type_and_cache_policy` | docker | PASS |
+| 1 | Every /v1/ resource (index, events, fighters, schema, rankings, images, snapshot) says `Access-Control-Allow-Origin: *` | `test_nginx.py::test_resources_are_served_with_their_type_and_cache_policy` | docker | PASS |
 | 2 | `/v1/events/<id>.json` is `public, max-age=60`; fighters/schema/rankings stay 300 s, images a day, snapshot 60 s | same; `test_config_sets_every_cache_policy` | docker / static | PASS |
 | 3 | A 304 keeps the CORS header (the browser's revalidation stays readable) | `test_a_matching_etag_gets_304_with_the_cache_policy` | docker | PASS |
 | 4 | 404 and 405 JSON errors carry it too, so a page can tell "gone" from a network error | `test_unknown_paths_and_directories_are_404`, `test_only_get_and_head_are_allowed` | docker | PASS |
 | 5 | The response is the same for every Origin (prod site, staging site, localhost) and for none: `*`, no credentials, no `Vary: Origin` | `test_a_browser_origin_gets_the_same_cacheable_response` | docker | PASS |
 | 6 | The config never echoes `$http_origin`, sends credentials or adds `Vary` | `test_config_allows_any_origin_without_credentials_or_vary_origin` | static | PASS |
 | 7 | CONTRACT.md lists the event at `public, max-age=60` and documents `Access-Control-Allow-Origin: *`; "No CORS headers" is gone | `test_docs.py::test_contract_lists_every_endpoint_with_its_cache_policy`, `test_contract_covers`, `test_contract_no_longer_says_consumers_fetch_server_side_only` | static | PASS |
+
+| 8 | The docs say *every /v1/ response* has the header (`/healthz`'s 200 doesn't), and API.md's "From a browser" says never to set `If-None-Match` or any other header (it forces a preflight, which gets a 405) | `test_docs.py::test_the_docs_say_every_v1_response_has_the_cors_header_not_every_response`, `test_api_doc_tells_browsers_never_to_set_if_none_match_or_any_header` | static | PASS |
+| 9 | `/v1/rankings.json` is served `public, max-age=300` with the CORS header, and is in the snapshot | `test_nginx.py::test_resources_are_served_with_their_type_and_cache_policy[/v1/rankings.json-…]`, `test_snapshot_extracts_to_the_served_files` | docker | PASS |
+
+## Review fixes (phase 3 review)
+
+| Step | Command | Result |
+|---|---|---|
+| RED (`be7056d`) | `uv run pytest -q tests/test_docs.py tests/deploy/test_nginx.py` | `2 failed, 180 passed`: CONTRACT.md says "Every response", API.md says "every response, errors included" and "you don't need to send `If-None-Match` yourself" |
+| RED (`be7056d`) | `uv run pytest -q -m docker tests/deploy/test_nginx.py` | `48 passed`: the new rankings row passes at once (the config already served it right; this was a coverage gap, not a bug). The `generation()` fixture now publishes `rankings.json`, so the snapshot test's member count went from 7 to 8 |
+| GREEN (this commit) | `uv run pytest -q`; `uv run pytest -q -m docker` | `1134 passed, 1 skipped, 68 deselected`; docker `60 passed` |
+
+The review's MEDIUM (unchanged files may keep Cloudflare's old, CORS-less headers after a 304 revalidation) is handled in
+the deploy steps, not in code: purge the ufc-data hostname from Cloudflare after the staging and after the prod deploy,
+then check `fighters.json` (a file the deploy doesn't change) for `access-control-allow-origin: *`.
 
 ## Decisions
 
