@@ -63,3 +63,23 @@ tests in the last commit cover the live gate's failure, the store rollback and t
 
 Gaps: no real ufcstats fetch was made (the scrapers are fixture-tested; `-m live` was not run). How fast ufcstats
 actually posts results is what the `result_seen` lines will show on the next fight night.
+
+## Review fixes (PR #15 phase-2 review: MEDIUM-1, LOW-1, LOW-2; no CRITICAL/HIGH)
+
+| Stage | Commit | Command | Result |
+|---|---|---|---|
+| RED | 5dfa5c1 | `uv run pytest -q tests/service/test_live_loop.py tests/ufcstats/test_scrape_live.py` | 12 failed, 71 passed: an unchanged live scrape ended the run although data/ was ahead of /v1/ (3, `['scrape'] == ['scrape', 'score', 'publish']`); wrong-shaped JSON raised AttributeError/TypeError from `due_events` (7) and crashed serve (1); `_write_live` raised `KeyError` for an indexed id with no event file (1). |
+| GREEN | d4d9933 | `uv run pytest -q` | 1224 passed, 1 skipped, 64 deselected. No test changed after RED. |
+
+| # | What is guaranteed | Test | Type | Result |
+|---|---|---|---|---|
+| 16 | MEDIUM-1 (option a): an unchanged live scrape still runs score and publish when data/index.json's `generated_at` is newer than `<root>/current/index.json`'s or nothing is published; it ends `status=unchanged` only when /v1/ already has data/ | `test_unchanged_but_data_ahead_of_v1_still_scores_and_publishes[2]`, `test_nothing_new_skips_score_and_publish` (now with a matching published generation) | unit | PASS |
+| 17 | MEDIUM-1: live write → score fails → the next live run (scrape unchanged) scores and publishes | `test_a_live_result_whose_score_failed_is_published_by_the_next_live_run` | unit | PASS |
+| 18 | LOW-1: wrong-shaped JSON (`null` event file, a list event, a null fight, a string result, `upcoming: null`, a `null` or list index) is a `ValueError` from `due_events`, and serve logs `event=live status=failed` and keeps going | `test_due_events_refuses_wrong_shaped_json_with_a_value_error[7]`, `test_a_wrong_shaped_event_file_does_not_stop_serve` | unit | PASS |
+| 19 | LOW-2: an indexed id with no event file doesn't break a live write; it's dropped from the index | `tests/ufcstats/test_scrape_live.py::test_an_indexed_event_with_no_file_does_not_break_the_write` | unit | PASS |
+
+- MEDIUM-1 is stateless: `runner.unpublished` compares the two `generated_at` strings (both ISO 8601 UTC ending in Z,
+  which publish enforces), so it also covers a run killed between steps. An unreadable data/ index counts as nothing
+  to publish (score would fail on it anyway); an unreadable or missing published index counts as behind.
+- LOW-1 is fixed in `live.due_events` (shapes validated, nested AttributeError/TypeError wrapped as ValueError), so
+  serve, the live gate and `scrape --live` keep their `(OSError, ValueError)` handling.
