@@ -143,7 +143,9 @@ def test_resources_are_served_with_their_type_and_cache_policy(server, path, nam
 
 
 @pytest.mark.docker
-@pytest.mark.parametrize("origin", ["https://ufc.xlobax.com", "https://ufc-staging.xlobax.com", "http://localhost:4321"])
+@pytest.mark.parametrize("origin", [
+    "https://ufc.xlobax.com", "https://ufc-staging.xlobax.com", "http://localhost:4321",
+])
 def test_a_browser_origin_gets_the_same_cacheable_response(server, origin):
     # The same headers for every origin (and none): one cache entry at Cloudflare serves them all.
     status, headers, body = server.get("/v1/index.json", Origin=origin)

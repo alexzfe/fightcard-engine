@@ -16,7 +16,7 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
 | URL | Content | Content-Type | Cache-Control |
 |---|---|---|---|
 | `/v1/index.json` | `data/index.json` plus `contract_version` (below). `generated_at` is when `scrape` built the data (ISO 8601 UTC with `Z`). | `application/json; charset=utf-8` | `public, max-age=60` |
-| `/v1/events/{event_id}.json` | one `Event`, as `data/events/<id>.json` | `application/json; charset=utf-8` | `public, max-age=300` |
+| `/v1/events/{event_id}.json` | one `Event`, as `data/events/<id>.json` | `application/json; charset=utf-8` | `public, max-age=60` |
 | `/v1/fighters.json` | `{ "<fighter_id>": Fighter, ... }`, as `data/fighters.json` | `application/json; charset=utf-8` | `public, max-age=300` |
 | `/v1/rankings.json` | the P4P lists and the active-fighter index, as `data/rankings.json` (below). Optional: absent until `score` has written it. | `application/json; charset=utf-8` | `public, max-age=300` |
 | `/v1/images/{fighter_id}.webp` | headshot, with whatever extension `data/images/` holds (webp today; png/jpg/jpeg/avif/gif also served). `Fighter.image` is the path relative to `/v1/`, e.g. `images/<id>.webp`. | `image/webp` (`image/png`, …) | `public, max-age=86400` |
@@ -33,7 +33,10 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
   (and `Last-Modified`) back exactly as it received them; see "ETags through Cloudflare" below.
 - `404` for anything else, directories included (no listings). Body `{"error": "not found"}`, `application/json; charset=utf-8`, `Cache-Control: no-store`.
 - `405` for any method but `GET`/`HEAD`, with `Allow: GET, HEAD` and a JSON body.
-- No CORS headers: consumers fetch server-side. No `Server` version.
+- Every response, `404` and `405` included, has `Access-Control-Allow-Origin: *`, so browser pages can read /v1/
+  (the site polls a live card's event file). The same for every origin: no `Vary: Origin`, no credentials. `OPTIONS`
+  is a `405`, so a browser request must be a simple one (`GET` without custom headers; the browser's own
+  revalidation is fine). No `Server` version.
 - `ETag` is nginx's `"<mtime>-<size>"` in hex. A file that didn't change between generations is shared with the
   previous one (hard link), so its `ETag` stays the same and clients keep their cached copy. A file that changed
   always gets a later mtime than the one it replaces, so its `ETag` always changes.

@@ -51,8 +51,8 @@ it. A debut's list is empty; it's `null` on upcoming fights.
 ## Caching, ETag and 304
 
 Every response has a `Cache-Control` header saying how long you may reuse it without asking again:
-60 seconds for `index.json` and the snapshot (they change on every update), 5 minutes for events, fighters,
-the schema and rankings, a day for headshots.
+60 seconds for `index.json`, the snapshot and events (they change on every update, and an event as its results
+come in), 5 minutes for fighters, the schema and rankings, a day for headshots.
 
 After that, ask again cheaply. Each response has an `ETag`, a fingerprint of the file. Send it back as
 `If-None-Match`, exactly as you got it. If the file hasn't changed, the server answers `304 Not Modified` with
@@ -72,6 +72,14 @@ string back; don't strip or add the `W/`, and don't take the ETag apart. (Both f
 echoing it back is what keeps working.) `If-Modified-Since` with the `Last-Modified` you got works too.
 
 A file that didn't change between updates keeps its ETag, so headshots aren't downloaded again.
+
+## From a browser
+
+A web page on any site can `fetch()` /v1/ directly: every response, errors included, has
+`Access-Control-Allow-Origin: *`. Keep it a simple request: a plain `GET` with no custom headers and no
+credentials. `OPTIONS` gets a `405`, so anything that needs a preflight fails. The browser's HTTP cache already
+revalidates with the `ETag` on its own, so you don't need to send `If-None-Match` yourself. Polling an event file
+about once a minute is fine; it is cached for 60 seconds, so a faster poll only gets the same copy back.
 
 ## Versioning
 
