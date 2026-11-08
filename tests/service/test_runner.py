@@ -48,12 +48,12 @@ def stage_of(argv: list[str]) -> str:
     return next(a for a in argv if a in ORDER)
 
 
-def go(cfg: Config, execute=None, gate=None, event="manual", cron=""):
+def go(cfg: Config, execute=None, gate=None, event="manual", cron="", **kw):
     lines: list[str] = []
     ticks = itertools.count(0, 0.5)
     code = runner.run_once(cfg, event=event, cron=cron, execute=execute or Recorder(),
                            gate=gate or (lambda *_: (True, "ok")), out=lines.append, clock=lambda: next(ticks),
-                           run_id="r1")
+                           run_id="r1", **kw)
     return code, lines
 
 
