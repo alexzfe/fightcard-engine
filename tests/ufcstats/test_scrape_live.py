@@ -103,6 +103,18 @@ def test_new_results_are_written_and_generated_at_moves(tmp_path):
     assert store.load_index().generated_at == EVENING_ISO
 
 
+def test_an_indexed_event_with_no_file_does_not_break_the_write(tmp_path, capsys):
+    # e.g. left by an earlier partial data/ write; the hourly run drops such an id from the index, and so does this
+    store = morning(tmp_path)
+    orphan = next(eid for eid in store.load_index().upcoming if eid != LIVE_ID)
+    (store.events_dir / f"{orphan}.json").unlink()
+    code, _ = live_scrape(store, {LIVE_URL: card(resulted=2)})
+    assert code == 0, capsys.readouterr().err
+    index = store.load_index()
+    assert orphan not in index.upcoming + index.recent
+    assert LIVE_ID in index.recent
+
+
 def test_nothing_new_writes_nothing_and_says_unchanged(tmp_path):
     store = morning(tmp_path)
     assert live_scrape(store, {LIVE_URL: card(resulted=2)})[0] == 0
