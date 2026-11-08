@@ -212,7 +212,7 @@ def test_a_live_slot_during_another_run_is_skipped_not_queued(tmp_path):
     fight_night(cfg.data)
     world = World("2026-10-31 23:10:00", steps=32, run_lifetime=14)  # every run takes 7 minutes
     world.serve(cfg)
-    assert [p.argv[4] for p in world.procs[1:]] == ["live", "schedule", "live"]
+    assert [p.argv[5] for p in world.procs[1:]] == ["live", "schedule", "live"]
     assert starts(world, LIVE) == ["23:10", "23:25"]
 
 

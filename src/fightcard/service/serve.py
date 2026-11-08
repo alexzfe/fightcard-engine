@@ -5,6 +5,12 @@ and none longer than RUN_TIMEOUT. A slot that fires during a run waits for it (o
 the gate always lets through, wins over an hourly one) and starts as soon as it ends. If nginx exits, serve exits
 non-zero and Docker restarts the container. SIGTERM/SIGINT stop nginx gracefully and end a running run, together,
 within STOP_GRACE.
+
+The fight-night fast loop (docs/SERVICE.md, "Live refresh"): with `cfg.live_every` set, every that often serve asks
+`live.due_events` whether an indexed event dated today or yesterday still awaits results, and if one does and no run is
+going, starts `run --event live`. A live slot that comes during another run is skipped, not queued (the next one is
+`live_every` away). After a run that fails, the next live slot is LIVE_BACKOFF away instead, so ufcstats trouble
+doesn't get a request every few minutes.
 """
 
 from __future__ import annotations
@@ -15,9 +21,9 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from fightcard.service import runner
+from fightcard.service import live, runner
 from fightcard.service.runner import Config, logfmt
 from fightcard.service.schedule import DAILY_CRON, next_fire
 
@@ -28,6 +34,7 @@ STOP_GRACE = 5
 # A backstop above the run's own per-stage limits (a hung gate, a wedged run): every stage at its limit, plus a
 # KILL_GRACE each, plus slack. Under the health check's 2 h busy limit.
 RUN_TIMEOUT = sum(runner.TIMEOUTS.values()) + len(runner.TIMEOUTS) * runner.KILL_GRACE + 10 * 60
+LIVE_BACKOFF = timedelta(minutes=15)  # the next live slot after a failed run (or live_every, if longer)
 
 
 def _log(out: Callable[[str], None], **fields: object) -> None:
@@ -83,6 +90,7 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
     run_cmd = [cfg.python, "-m", "fightcard.service", "run"]
     nginx = spawn(NGINX)
     run = run_started = pending = None
+    live_at = now()  # the next live slot
 
     def start(*args: str):
         nonlocal run_started
@@ -103,8 +111,11 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
         if run is not None and run.poll() is None and (now() - run_started).total_seconds() > RUN_TIMEOUT:
             _log(out, status="timeout", timeout_s=f"{RUN_TIMEOUT:g}", reason="run took too long; stopping it")
             _stop((run, signal.SIGTERM, True))
-        if run is not None and run.poll() is not None:
+        if run is not None and (code := run.poll()) is not None:
             run = None
+            if cfg.live_every and code not in (0, runner.LOCKED):
+                live_at = max(live_at, now() + max(LIVE_BACKOFF, cfg.live_every))
+                _log(out, event="live", status="backoff", next=live_at.isoformat(), reason=f"last run exited {code}")
         if run is None and pending is not None:
             _log(out, event="schedule", cron=pending, status="started", reason="queued while the last run went")
             run, pending = start("--event", "schedule", "--cron", pending), None
@@ -118,6 +129,17 @@ def serve(cfg: Config, *, spawn: Callable = subprocess.Popen, now: Callable[[], 
                 _log(out, event="schedule", cron=cron, status="queued", reason="previous run still going")
                 pending = cron
             fire, cron = next_fire(now(), cfg.schedule_minute)
+        if cfg.live_every and now() >= live_at:
+            live_at = now() + cfg.live_every
+            if run is None:
+                try:
+                    due = live.due_events(cfg.data, now().date())
+                except (OSError, ValueError) as e:
+                    _log(out, event="live", status="failed", reason=str(e))
+                    due = []
+                if due:
+                    _log(out, event="live", status="started", events=",".join(due))
+                    run = start("--event", "live")
         sleep(1)
     _log(out, status="stopping")
     _stop((nginx, signal.SIGQUIT, False), (run, signal.SIGTERM, True))  # SIGQUIT: nginx's graceful shutdown

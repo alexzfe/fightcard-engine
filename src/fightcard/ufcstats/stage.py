@@ -11,8 +11,20 @@ listing (refetched every run: it says which events are UFC events), every event 
 fetched, through the same parse + upsert path as `history ingest`. Completed events in data/ with no bout in
 the store are refetched so `score` finds them (backfill: up to `BACKFILL_PER_RUN` a run; one whose page 404s or
 lacks an outcome is skipped with a warning). A completed bout with a method but no W/L outcome on this run's
-cards fails the run with nothing written, as it fails `history ingest`. If writing data/ fails after the commit, the run exits 1
+cards fails the run with nothing written, as it fails `history ingest`, except on a card dated within RESULTS_GRACE:
+there it is a bout being fought or just scored, so it is held as not resulted yet (`hold_unresulted`, a warning) and
+picked up once ufcstats posts the W/L flag. If writing data/ fails after the commit, the run exits 1
 saying so; the store being ahead of data/ is harmless, and the next run rewrites data/.
+
+Each bout's result is logged once, by the run that first writes it (`result_seen event=<id> fight=<id>
+seen_at=<UTC>`), on cards dated within RESULTS_GRACE, so fight nights show how fast ufcstats posts results.
+
+`--live` (`scrape_live`) is the fight-night fast loop's scrape (docs/SERVICE.md, "Live refresh"): only the pages of
+the events `fightcard.service.live.due_events` names (indexed, dated today or yesterday, not fully resulted), no
+listings and no fighter pages. When a bout's result (or the card) changed it writes those events, the store, a stub
+for a fighter new to fighters.json, and the index with a new generated_at; otherwise nothing, and it exits
+`live.UNCHANGED`. The hourly run refreshes the fighter pages of everyone with a result on a card within RESULTS_GRACE
+whose page doesn't list a bout on that day yet, so records catch up whichever run saw the result first.
 """
 
 from __future__ import annotations
@@ -38,6 +50,7 @@ from fightcard.history.ingest import (
 )
 from fightcard.history.store import complete_events, connect
 from fightcard.models import Event, Fighter, Index
+from fightcard.service import live
 from fightcard.store import Store
 from fightcard.ufcstats.client import Client, Halt, HttpError
 from fightcard.ufcstats.parsers import (
@@ -102,11 +115,16 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
                          help="bout-history store to keep current (seed it with fightcard history ingest); "
                               "default <--data>/../history/history.sqlite, as for score")
     history.add_argument("--no-history", action="store_true", help="scrape without a history store")
+    parser.add_argument("--live", action="store_true",
+                        help="fight night: refetch only the live events' pages; exit "
+                             f"{live.UNCHANGED} when no result changed (nothing written)")
 
 
 def run(args: argparse.Namespace) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     if args.no_history:
+        if getattr(args, "live", False):
+            return scrape_live(Store(args.data), make_client(args.cookie_file), now=utcnow())
         return scrape(Store(args.data), make_client(args.cookie_file), now=utcnow(), recent=args.recent)
     db = args.history_db or args.data.resolve().parent / "history" / "history.sqlite"
     if not db.is_file():
@@ -115,6 +133,8 @@ def run(args: argparse.Namespace) -> int:
         return 1
     history = connect(db)
     try:
+        if getattr(args, "live", False):
+            return scrape_live(Store(args.data), make_client(args.cookie_file), now=utcnow(), history=history)
         return scrape(Store(args.data), make_client(args.cookie_file), now=utcnow(), recent=args.recent,
                       history=history)
     finally:
@@ -146,6 +166,35 @@ def merge_event(old: Event | None, new: Event) -> Event:
     return new.model_copy(update={"fights": fights})
 
 
+def hold_unresulted(parsed: ParsedEvent) -> ParsedEvent:
+    """The page with each bout that has a method but no W/L outcome (`without_outcome`) taken as not resulted yet,
+    and the status following: on a live card ufcstats can show the method before the flag."""
+    held = set(without_outcome(parsed))
+    if not held:
+        return parsed
+    for fight_id in sorted(held):
+        log.warning("event %s: bout %s has a method but no W/L outcome yet; held as not resulted",
+                    parsed.event.id, fight_id)
+    fights = [f.model_copy(update={"result": None}) if f.id in held else f for f in parsed.event.fights]
+    status = "completed" if any(f.result for f in fights) else "upcoming"
+    return ParsedEvent(event=parsed.event.model_copy(update={"fights": fights, "status": status}),
+                       fighters=parsed.fighters)
+
+
+def log_seen(old: Event | None, new: Event, now: datetime) -> None:
+    """`result_seen` for each bout of `new` with a result `old` didn't have."""
+    before = {f.id for f in old.fights if f.result is not None} if old else set()
+    for fight in new.fights:
+        if fight.result is not None and fight.id not in before:
+            log.info("result_seen event=%s fight=%s seen_at=%s", new.id, fight.id, iso(now))
+
+
+def without_ratings(event: Event) -> Event:
+    """The event without what score fills in from the store (elo, form): what a scrape compares."""
+    return event.model_copy(update={"fights": [f.model_copy(update={"elo": None, "form": None})
+                                               for f in event.fights]})
+
+
 def is_fresh(fighter: Fighter, now: datetime) -> bool:
     if not fighter.details_fetched_at or fighter.recent_fights is None:
         return False
@@ -162,6 +211,7 @@ class _Run:
         self.client = client
         self.now = now
         self.today = now.date().isoformat()
+        self.cutoff = (now.date() - RESULTS_GRACE).isoformat()  # cards dated from here on are current
         self.recent = recent
         self.history = history
         self.existing = store.load_events()
@@ -186,6 +236,8 @@ class _Run:
 
     def _detail(self, url: str, event_id: str) -> Event:
         parsed = parse_event_detail(self._get(url), event_id)
+        if parsed.event.date >= self.cutoff:
+            parsed = hold_unresulted(parsed)
         self.parsed[event_id] = parsed
         for fid, name in parsed.fighters.items():
             self.card_names.setdefault(fid, name)
@@ -281,6 +333,13 @@ class _Run:
         prev = self.existing.get(event_id)
         if event.status == "completed" and (prev is None or prev.status != "completed"):
             self.refresh |= {fid for f in event.fights for fid in (f.red, f.blue)}
+        if event.date >= self.cutoff:
+            # a live run may have completed the card first: refresh whoever has fought since their page was fetched
+            for fid in (fid for f in event.fights if f.result is not None for fid in (f.red, f.blue)):
+                current = self.fighters.get(fid)
+                if current and current.recent_fights is not None and \
+                        not any(p.date == event.date for p in current.recent_fights):
+                    self.refresh.add(fid)
         self.scraped[event_id] = event
         return event
 
@@ -370,6 +429,9 @@ class _Run:
             self.store.save_event(event)
         self.store.save_fighters(self.fighters)
         self.store.save_index(index)
+        for eid, event in merged.items():
+            if eid not in self.backfilled and event.date >= self.cutoff:
+                log_seen(self.existing.get(eid), event, self.now)
         return {
             "events_written": len(merged),
             "upcoming": len(index.upcoming),
@@ -378,6 +440,94 @@ class _Run:
             "fighters": len(self.fighters),
             "requests": getattr(self.client, "requests", 0),
         }
+
+
+def _store_live(history: sqlite3.Connection, pages: list[tuple[str, str, ParsedEvent]], now: datetime) -> None:
+    """The live events' pages into the store, in one transaction, as `_Run.write` does. Each event keeps the store's
+    `source` (whether the completed listing had it), which a live run, without the listing, can't tell."""
+    history.execute(f"PRAGMA busy_timeout = {int(BUSY_TIMEOUT_MS)}")
+    history.execute("BEGIN IMMEDIATE")
+    try:
+        for url, html, parsed in pages:
+            record_page(history, url, page_path(url), html.encode("utf-8"), iso(now))
+            row = history.execute("SELECT source FROM events WHERE event_id = ?", (parsed.event.id,)).fetchone()
+            upsert_card(history, parsed, {parsed.event.id} if row and row[0] == "listing" else set(), set())
+        history.commit()
+    except BaseException:
+        history.rollback()
+        raise
+
+
+def scrape_live(store: Store, client, now: datetime, history: sqlite3.Connection | None = None) -> int:
+    """`fightcard scrape --live`: see the module docstring. 0 when something was written, live.UNCHANGED when
+    nothing was, 1 on a failure (nothing written)."""
+    try:
+        due = live.due_events(store.root, now.date())
+    except ValueError as exc:
+        print(f"scrape failed, nothing written: {exc}", file=sys.stderr)
+        return 1
+    if not due:
+        print("scrape live: no live event, nothing fetched", file=sys.stderr)
+        return live.UNCHANGED
+    existing = store.load_events()
+    changed: dict[str, Event] = {}
+    pages: list[tuple[str, str, ParsedEvent]] = []
+    try:
+        for event_id in due:
+            url = event_url(event_id)
+            html = client.get(url)
+            parsed = hold_unresulted(parse_event_detail(html, event_id))
+            old = existing[event_id]
+            if not parsed.event.fights:
+                log.warning("live: event %s's page has no bouts; left for the hourly run", event_id)
+                continue
+            # the card's name, date and place stay as the hourly run wrote them (from the listing)
+            new = merge_event(old, old.model_copy(update={"fights": parsed.event.fights,
+                                                          "status": parsed.event.status}))
+            if without_ratings(new) != without_ratings(old):
+                changed[event_id] = new
+                pages.append((url, html, parsed))
+        if not changed:
+            print(f"scrape live: unchanged ({', '.join(due)}), nothing written", file=sys.stderr)
+            return live.UNCHANGED
+        if history is not None:
+            _store_live(history, pages, now)
+    except (Halt, HttpError, sqlite3.Error) as exc:
+        print(f"scrape failed, nothing written: {exc}", file=sys.stderr)
+        return 1
+    try:
+        _write_live(store, existing, changed, pages, now)
+    except OSError as exc:
+        print(f"scrape failed: {DataWriteFailed(exc, store_updated=history is not None)}", file=sys.stderr)
+        return 1
+    for event_id, event in changed.items():
+        log_seen(existing[event_id], event, now)
+    results = sum(f.result is not None for e in changed.values() for f in e.fights)
+    print(f"scrape live ok: events_written={len(changed)}, results={results}, "
+          f"requests={getattr(client, 'requests', len(due))}", file=sys.stderr)
+    return 0
+
+
+def _write_live(store: Store, existing: dict[str, Event], changed: dict[str, Event],
+                pages: list[tuple[str, str, ParsedEvent]], now: datetime) -> None:
+    events = {**existing, **changed}
+    fighters = store.load_fighters()
+    stubs = {fid: Fighter(id=fid, name=parsed.fighters.get(fid) or fid)
+             for _, _, parsed in pages for f in changed[parsed.event.id].fights for fid in (f.red, f.blue)
+             if fid not in fighters}
+    old = store.load_index()
+    index = Index(
+        generated_at=iso(now),
+        upcoming=[eid for eid in old.upcoming if events[eid].status != "completed"],
+        recent=[e.id for e in sorted((e for e in events.values() if e.status == "completed"),
+                                     key=lambda e: e.date, reverse=True)],
+        model=old.model,
+    )
+    for event in changed.values():
+        store.save_event(event)
+    if stubs:
+        store.save_fighters({**fighters, **stubs})
+    store.save_index(index)
 
 
 def scrape(store: Store, client, now: datetime, recent: int = 1, history: sqlite3.Connection | None = None) -> int:
