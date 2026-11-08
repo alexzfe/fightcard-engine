@@ -44,11 +44,20 @@ def test_config_listens_on_the_unprivileged_port_and_serves_the_published_root()
     assert "autoindex off;" in conf
 
 
-def test_config_sets_every_cache_policy_and_no_cors():
+def test_config_sets_every_cache_policy():
     conf = CONF.read_text()
     for value in ("public, max-age=60", "public, max-age=300", "public, max-age=86400", "no-store"):
         assert f'"{value}"' in conf, value
-    assert "Access-Control" not in conf
+
+
+def test_config_allows_any_origin_without_credentials_or_vary_origin():
+    # The API is public and read-only, so `*`: a per-origin value would need `Vary: Origin`, which Cloudflare's
+    # cache handles poorly, and credentials can't go with `*` anyway.
+    conf = CONF.read_text()
+    assert 'Access-Control-Allow-Origin "*" always;' in conf
+    assert "Access-Control-Allow-Credentials" not in conf
+    assert "$http_origin" not in conf
+    assert "Vary" not in conf
 
 
 # Against nginx.
@@ -110,7 +119,8 @@ def published(srv: Server, name: str) -> bytes:
 
 RESOURCES = [
     ("/v1/index.json", "index.json", JSON, "public, max-age=60"),
-    ("/v1/events/e1.json", "events/e1.json", JSON, "public, max-age=300"),
+    # An event changes as its results come in; the site polls it about once a minute on fight night.
+    ("/v1/events/e1.json", "events/e1.json", JSON, "public, max-age=60"),
     ("/v1/fighters.json", "fighters.json", JSON, "public, max-age=300"),
     ("/v1/schema.json", "schema.json", JSON, "public, max-age=300"),
     ("/v1/images/f1.webp", "images/f1.webp", "image/webp", "public, max-age=86400"),
@@ -129,7 +139,21 @@ def test_resources_are_served_with_their_type_and_cache_policy(server, path, nam
     assert headers["content-type"] == content_type
     assert headers["cache-control"] == cache
     assert headers["etag"].startswith('"')
-    assert not any(k.startswith("access-control-") for k in headers)
+    assert headers["access-control-allow-origin"] == "*"
+
+
+@pytest.mark.docker
+@pytest.mark.parametrize("origin", ["https://ufc.xlobax.com", "https://ufc-staging.xlobax.com", "http://localhost:4321"])
+def test_a_browser_origin_gets_the_same_cacheable_response(server, origin):
+    # The same headers for every origin (and none): one cache entry at Cloudflare serves them all.
+    status, headers, body = server.get("/v1/index.json", Origin=origin)
+    plain = server.get("/v1/index.json")
+    print(origin, status, {k: v for k, v in headers.items() if k.startswith("access-control-") or k == "vary"})
+    assert (status, body) == (200, plain[2])
+    assert headers["access-control-allow-origin"] == "*"
+    assert "access-control-allow-credentials" not in headers
+    assert "origin" not in headers.get("vary", "").lower()
+    assert {k: v for k, v in headers.items() if k != "date"} == {k: v for k, v in plain[1].items() if k != "date"}
 
 
 @pytest.mark.docker
@@ -147,6 +171,7 @@ def test_a_matching_etag_gets_304_with_the_cache_policy(server, path):
     assert (status, body) == (304, b"")
     assert headers["etag"] == first["etag"]
     assert headers["cache-control"] == first["cache-control"]
+    assert headers["access-control-allow-origin"] == "*"
 
 
 @pytest.mark.docker
@@ -166,6 +191,7 @@ def test_unknown_paths_and_directories_are_404(server, path):
     assert status == 404, path
     assert headers["content-type"] == JSON
     assert b"not found" in body
+    assert headers["access-control-allow-origin"] == "*"  # a page can tell "gone" from a network error
 
 
 @pytest.mark.docker
@@ -175,6 +201,7 @@ def test_only_get_and_head_are_allowed(server, method, path):
     status, headers, _ = server.request(method, path)
     assert status == 405
     assert headers["allow"] == "GET, HEAD"
+    assert headers["access-control-allow-origin"] == "*"
 
 
 @pytest.mark.docker

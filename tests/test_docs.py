@@ -17,7 +17,7 @@ README = (REPO / "README.md").read_text()
 
 ENDPOINTS = [
     ("/v1/index.json", "public, max-age=60"),
-    ("/v1/events/{event_id}.json", "public, max-age=300"),
+    ("/v1/events/{event_id}.json", "public, max-age=60"),
     ("/v1/fighters.json", "public, max-age=300"),
     ("/v1/images/{fighter_id}.webp", "public, max-age=86400"),
     ("/v1/rankings.json", "public, max-age=300"),
@@ -46,9 +46,15 @@ def test_contract_lists_every_endpoint_with_its_cache_policy(endpoint, cache):
     "fightcard publish", "generations/", "schema.json", "rankings.json", '"1.1"', '"1.2"', '"1.3"', "p4p_rank", "as_of",
     # Review fixes: a consumer's allowlist of files broke on rankings.json; the rank/elo guarantee needs a history run.
     "fields and files they don't know", "announced in a minor version", "holds after a history run",
+    # Browsers read /v1/ directly (the site polls a live card).
+    "Access-Control-Allow-Origin: *",
 ])
 def test_contract_covers(term):
     assert term in CONTRACT, term
+
+
+def test_contract_no_longer_says_consumers_fetch_server_side_only():
+    assert "No CORS headers" not in CONTRACT
 
 
 def test_contract_drops_the_site_era_ownership_table():
