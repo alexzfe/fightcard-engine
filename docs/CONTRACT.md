@@ -15,7 +15,7 @@ Base URL `https://ufc-data.xlobax.com`. Public, read-only, static files: nginx
 
 | URL | Content | Content-Type | Cache-Control |
 |---|---|---|---|
-| `/v1/index.json` | `data/index.json` plus `contract_version` (below). `generated_at` is when `scrape` built the data (ISO 8601 UTC with `Z`). | `application/json; charset=utf-8` | `public, max-age=60` |
+| `/v1/index.json` | `data/index.json` plus `contract_version` (below). `generated_at` is when `scrape` last changed the data (ISO 8601 UTC with `Z`): every hourly or daily scrape, and on fight nights the live refresh (every 5 min, [SERVICE.md](SERVICE.md#live-refresh)) only when a result came in. | `application/json; charset=utf-8` | `public, max-age=60` |
 | `/v1/events/{event_id}.json` | one `Event`, as `data/events/<id>.json` | `application/json; charset=utf-8` | `public, max-age=300` |
 | `/v1/fighters.json` | `{ "<fighter_id>": Fighter, ... }`, as `data/fighters.json` | `application/json; charset=utf-8` | `public, max-age=300` |
 | `/v1/rankings.json` | the P4P lists and the active-fighter index, as `data/rankings.json` (below). Optional: absent until `score` has written it. | `application/json; charset=utf-8` | `public, max-age=300` |
