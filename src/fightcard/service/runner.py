@@ -2,7 +2,8 @@
 
 `run --event live` is the fight-night fast loop's light run instead (docs/SERVICE.md, "Live refresh"): gate (an event
 `live.due_events` names, and fetching on) → scrape --live → score → publish. Its scrape fetches only the live events'
-pages and exits `live.UNCHANGED` when no result moved; the run then ends there, `status=unchanged`, exit 0.
+pages and exits `live.UNCHANGED` when no result moved; the run then ends there, `status=unchanged`, exit 0, unless
+data/ is ahead of what's published (`unpublished`: an earlier run's score or publish failed), when it goes on to them.
 
 Each stage is a `fightcard` process over <root>/state/data, in its own session (so its process group holds it and
 anything it starts) at nice NICE. The run stops at the first stage that exits non-zero or outlives its TIMEOUTS
@@ -139,7 +140,7 @@ class Step:
     fetches: bool = False
     fatal: bool = True  # False: a failure is logged and the run goes on
     timeout: float | None = None  # None: TIMEOUTS[name]
-    may_be_unchanged: bool = False  # live.UNCHANGED ends the run here, ok: nothing new to score or publish
+    may_be_unchanged: bool = False  # live.UNCHANGED ends the run here, ok (unless data/ is unpublished)
 
 
 def steps(cfg: Config) -> list[Step]:
@@ -172,6 +173,22 @@ def live_gate(cfg: Config, now: datetime) -> tuple[bool, str]:
         return False, "fetch-off"
     due = live.due_events(cfg.data, now.astimezone(UTC).date())
     return (True, f"live events {','.join(due)}") if due else (False, "no live event")
+
+
+def _generated_at(path: Path) -> str | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8")).get("generated_at")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def unpublished(cfg: Config) -> bool:
+    """data/ holds something /v1/ doesn't: its index.json's generated_at is newer than the published one's, or
+    nothing (readable) is published. generated_at is ISO 8601 UTC ending in Z (publish checks), so strings compare."""
+    data = _generated_at(cfg.data / "index.json")
+    served = _generated_at(cfg.root / "current" / "index.json")
+    return data is not None and (served is None or data > served)
 
 
 class StageTimeout(Exception):
@@ -310,8 +327,13 @@ def run_once(cfg: Config, *, event: str = "manual", cron: str = "",
                         continue
                     return end("failed", 127, failed_step=step.name, exit=127)
                 if step.may_be_unchanged and code == live.UNCHANGED:
-                    log(step=step.name, status="unchanged", exit=code, duration_s=f"{clock() - t0:.2f}")
-                    return end("unchanged", 0)
+                    if not unpublished(cfg):
+                        log(step=step.name, status="unchanged", exit=code, duration_s=f"{clock() - t0:.2f}")
+                        return end("unchanged", 0)
+                    # an earlier run wrote data/ but never published it (score or publish failed, or it was killed)
+                    log(step=step.name, status="unchanged", exit=code, duration_s=f"{clock() - t0:.2f}",
+                        reason="data/ not published yet; scoring and publishing it")
+                    continue
                 log(step=step.name, status="ok" if code == 0 else "failed", exit=code,
                     duration_s=f"{clock() - t0:.2f}")
                 if code != 0 and step.fatal:

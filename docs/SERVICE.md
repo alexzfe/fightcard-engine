@@ -108,7 +108,10 @@ live gate → scrape --live → score → publish
   fetches the page), and `index.json` with a new **`generated_at`**, with the card moved to `recent` once it has a
   result. Otherwise it writes nothing and exits 3 (`live.UNCHANGED`): the run logs `step=scrape status=unchanged`,
   skips score and publish, and ends `status=unchanged`, exit 0. So `generated_at` moves exactly when the data did,
-  and a client can tell.
+  and a client can tell. The one exception: when data/'s `index.json` has a newer `generated_at` than the published
+  one (or nothing is published), an earlier run wrote data/ but never published it (score or publish failed, or the
+  run was killed), so the run scores and publishes anyway (`step=scrape status=unchanged reason="data/ not published
+  yet; …"`). A result that reached data/ reaches /v1/ on the next live run, not the next hourly one.
 - **score and publish** run as in every run. A full score, the whole-history Elo pass included, is cheap: on the
   real store (1,288 events, 11,694 bouts) `history_pass` takes 0.08 s, form 0.09 s and the whole `fightcard score`
   about 1.2 s, `publish` about 0.8 s (desktop timings; a few seconds at `nice` 10 on the VPS). So a live run
